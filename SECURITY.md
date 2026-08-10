@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-AgentPorter is currently in a pre-release design and implementation stage. No production-ready or security-supported release exists yet. Once releases are published, this section will list the supported version range.
+AgentPorter is currently in a pre-release design stage; executable implementation has not started. No production-ready or security-supported release exists yet. Once releases are published, this section will list the supported version range.
 
 ## Reporting a vulnerability
 
@@ -11,7 +11,7 @@ Please report suspected vulnerabilities privately through GitHub's **Security â†
 Include only the information needed to reproduce and assess the issue:
 
 - affected version or commit;
-- affected adapter or command;
+- affected Adapter or installer/uninstaller entry;
 - reproduction steps using sanitized data;
 - expected and observed behavior;
 - potential impact.
@@ -20,16 +20,21 @@ Do **not** attach real API keys, tokens, cookies, private configuration files, p
 
 ## Security boundaries
 
-AgentPorter is intended to modify Agent configuration. Implementations and contributions must therefore preserve these boundaries:
+AgentPorter is intended to create and remove dedicated Hermes Profiles. Implementations and contributions must therefore preserve these boundaries:
 
-- preview changes before writing by default;
-- modify only AgentPorter-owned files or explicitly managed configuration sections;
-- preserve unrelated user configuration;
-- avoid copying authentication material between machines;
-- require explicit remote targets and authorization;
-- validate generated configuration with the target platform where possible;
-- restore a verified snapshot if application or validation fails;
-- redact secret-like values from plans, diffs, logs, and reports.
+- complete installation preflight and preview before any write;
+- refuse to overwrite pre-existing or default Profiles;
+- compensate only current-transaction Profiles with complete creation and identity evidence;
+- discover uninstall targets from protocol-fixed product/component fields and a per-installation ID, never user-editable names;
+- require installation-bound confirmation and warn that uninstall deletes all Profile-local data;
+- fail closed on ambiguous markers, paths, symlinks, or concurrent identity changes;
+- use Hermes native deletion without an AgentPorter-owned recursive-directory fallback;
+- preserve unrelated Profiles and avoid copying authentication material;
+- redact secret-like values from plans, logs, and reports.
+
+The local marker is a non-secret ownership claim, not a signature or user-authentication credential. A malformed, copied, conflicting, or changed marker must make discovery fail closed rather than be treated as cryptographic provenance.
+
+`agentporter-profile.json` is an AgentPorter-reserved protocol filename. Unrelated tools should not create it inside Hermes Profiles; any malformed or conflicting use intentionally blocks automated uninstall rather than being ignored.
 
 A successful syntax check does not prove that a model is authorized, that a remote service is trusted, or that a generated Worker is safe for arbitrary tasks.
 

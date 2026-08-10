@@ -1,0 +1,117 @@
+# AgentPorter 实施计划
+
+## 1. 状态与权威来源
+
+- **产品方向：** Hermes-first 已确认；
+- **设计候选：** 未提交，等待用户确认；
+- **代码、测试、真实 Hermes 验收、发布：** 均未开始；
+- **Codex CLI Adapter：** 仅保留未来边界，不在当前计划内；Hermes Profile `codex-5-3-small-worker` 仍属于第一版 Worker 集。
+
+实施只解释阶段顺序，不重新定义产品语义。文档职责和权威关系见 [合并设计的文档分工](../03-installation-and-uninstall-design.md#1-文档职责与当前状态)；本计划的 Phase 只提供或关闭对应验收证据，其中所有 GATE 仅由 Phase 6 最终关闭。
+
+## 2. 第一版完成定义
+
+在受支持 Hermes 环境中：
+
+主安装器、独立 `uninstall.py`、Hermes 集成验收和开源产物全部满足 [INS/UN/GATE 权威矩阵](../03-installation-and-uninstall-design.md#7-验收矩阵)，且用户确认候选后才允许 commit 或 push。
+
+## 3. Phase 1：领域模型、检测与纯渲染
+
+### RED/GREEN
+
+1. 建立 Python 包、单一安装入口、独立卸载入口和测试骨架；
+2. 为 `workers.yaml`、安装标记和结果状态建立 schema/领域模型；
+3. 冻结 product ID 与两个 component ID 协议常量；
+4. 实现 Portable ID、Hermes 初始名和保留名校验；
+5. 检测 Hermes 路径、版本、`HERMES_HOME`、Profile 根和现有 Profile；
+6. 渲染每个 Worker 的 distribution、config、SOUL 和名称无关标记；
+7. 对 staging 执行 schema、symlink、秘密和私人路径扫描。
+
+### 验收映射
+
+为 `INS-03`、`INS-07`、`GATE-01`、`GATE-03`、`GATE-06` 提供 schema、渲染、临时根和隐私检查基础；所有 GATE 均只在 Phase 6 统一关闭。
+
+## 4. Phase 2：集合预检、计划与确认
+
+### RED/GREEN
+
+1. 聚合两个 Worker 的单次安装计划；
+2. 在任何写入前完成版本、目标初始名和 staging 检查；
+3. 输出 provider/model 准备状态和静态验证边界；
+4. 实现对当前计划的一次交互确认；
+5. 命令执行器使用参数数组和 `shell=False`；
+6. 添加调用即失败 guard，证明失败/取消路径零写入、零模型调用。
+
+### 验收映射
+
+完成 `INS-01`–`INS-04` 的 focused 覆盖，并为 `GATE-05` 提供统一命令执行器证据；GATE 不在本阶段关闭。
+
+## 5. Phase 3：原生安装、读回与补偿
+
+### RED/GREEN
+
+1. 调用 Hermes 原生 Profile distribution 安装；
+2. 设置并读回 description；
+3. 读回 distribution、config、SOUL 和完整安装标记；
+4. 按权威设计维护 `confirmed-created`、`verified-compensable`、`uncertain-remnant`；
+5. 后续失败时按反向安装顺序逐项重验对象快照，仅删除仍匹配的可补偿目标；rename/replace/占名必须降级为不确定残留；
+6. 输出确定的安装和补偿结果状态。
+
+### 验收映射
+
+关闭 `INS-01`–`INS-07`。额外故障注入必须覆盖：第一项在第二项安装前即可进入 `verified-compensable`；“先创建后非零退出/超时/中断”会经 post-attempt 枚举转入 `uncertain-remnant`；进入可补偿状态后发生 rename/replace/原名占用时，补偿重验阻止误删并报告 `compensation-incomplete`。
+
+## 6. Phase 4：名称无关独立卸载
+
+### RED/GREEN
+
+1. 只读扫描实际 Profile 根中的 AgentPorter 标记；
+2. 归并唯一完整 installation set，拒绝全部异常组合；
+3. 展示当前名称、路径、component 和完整数据损失警告；
+4. 实现绑定 installation ID 的确认短语；
+5. 对两个目标执行集合级最终重验；
+6. 每项原生删除前立即重验，并执行枚举/路径双重读回；
+7. 直接采用权威设计的精确词汇，不另造简称：发现 finding/主状态、逐项结果和集合结果分层输出；例如第二项原生删除失败时，逐项为 `delete-failed`，集合为 `partial-delete`。
+
+### 验收映射
+
+关闭 `UN-01`–`UN-09`；为 `GATE-02`–`GATE-05` 提供卸载路径证据。测试必须覆盖批量改名、所有异常集合、路径/inode 变化、非规范 basename 和原生删除后的结果分层。
+
+## 7. Phase 5：Hermes 集成验收
+
+1. 在干净临时 Hermes 根执行正式安装入口；
+2. 使用原生命令读回 Profile、description、config、SOUL 和标记；
+3. 从不同项目目录证明同一配置根可见；
+4. 验证 Kanban assignee 和 worktree 示例；
+5. 原生 rename 两个 Profile 后运行独立卸载；
+6. 验证枚举与路径均不存在；
+7. 证明所有路径不发起模型请求。
+
+当前开发机证据与最低支持版本声明必须分开记录。静态验收不得声称模型运行成功。
+
+### 验收映射
+
+为 `GATE-01`、`GATE-02`、`GATE-05`、`GATE-07`、`GATE-08` 提供真实 Hermes/正式入口证据；这些 GATE 只在 Phase 6 完整门禁通过后统一关闭。
+
+## 8. Phase 6：开源产品化
+
+- `pyproject.toml`、版本策略、变更日志、主安装器入口和独立 `uninstall.py`；
+- Linux/macOS/Windows CI 与 Hermes 兼容矩阵；
+- 中英文安装、卸载和故障排查文档；
+- `LICENSE`、`CONTRIBUTING.md`、`SECURITY.md` 复核；
+- sdist/wheel 构建、内容与隐私扫描；
+- 干净环境安装演练；
+- 版本标签、GitHub Release 和下载后产物验证。
+
+## 9. 完整门禁
+
+Phase 6 对 [权威矩阵中的 `GATE-01`–`GATE-09`](../03-installation-and-uninstall-design.md#73-边界和交付) 执行唯一最终关闭；前序 Phase 只提供证据，不得宣称关闭同一 GATE。执行命令、CI job 和产物检查表在实现时维护于单一验证入口，不在本文复制第二份验收清单。
+
+## 10. 提交与交付纪律
+
+- 每个 Phase 通过 focused tests 和适用完整门禁后形成待确认候选；
+- 文档状态、实现状态和验收状态必须同步；
+- 提交前扫描 staged/index 中的秘密、个人路径和环境值，并验证公开 Git 身份；
+- **只有用户明确确认后才允许 commit 或 push**；
+- 获批执行后验证本地与远程 SHA 一致；
+- Codex CLI Adapter、升级、修复、后台服务和其它生命周期能力不得进入当前实现。

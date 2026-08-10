@@ -34,14 +34,14 @@ Hermes Profile 名必须满足当前 Hermes 原生约束：
 [a-z0-9][a-z0-9_-]{0,63}
 ```
 
-同时拒绝当前 Hermes 保留名。第一版稳定映射：
+同时拒绝当前 Hermes 保留名。第一版初始映射：
 
 | Portable ID | Hermes Profile |
 |---|---|
 | `luna_worker` | `luna_worker` |
 | `codex_5_3_small_worker` | `codex-5-3-small-worker` |
 
-映射必须进入本次安装计划和事务内所有权记录。失败补偿只能作用于本次安装事务确认创建且身份匹配的 Profile；记录随安装结束报告输出，不构成长期管理状态。
+映射只用于安装计划、初始目标寻址和结果展示，不构成所有权身份；事务与补偿规则见 [安装、卸载与验收设计](03-installation-and-uninstall-design.md)。
 
 ## 3. Tier 语义
 
@@ -82,21 +82,22 @@ output: [返回格式]
 <staging>/<profile-name>/
 ├── distribution.yaml
 ├── config.yaml
-└── SOUL.md
+├── SOUL.md
+└── agentporter-profile.json
 ```
 
-第一版不捆绑 cron、MCP 或额外 skills，避免扩大权限和更新面。
+第一版不捆绑 cron、MCP 或额外 skills，避免扩大权限和更新面。`agentporter-profile.json` 使用固定 product/component ID 与共享随机 installation ID；名称无关身份、安装补偿和批量重命名卸载规则由 [安装、卸载与验收设计](03-installation-and-uninstall-design.md) 统一定义。
 
 ### `distribution.yaml`
 
 至少包含：
 
-- 稳定 Profile 名；
+- 安装时初始 Profile 名，仅供 Hermes 安装和诊断，不构成 AgentPorter 所有权身份；
 - AgentPorter distribution 版本；
 - 路由描述；
 - 经真实验证的最低 Hermes 版本；
 - MIT 许可证声明；
-- 显式 `distribution_owned`，第一版只允许 `SOUL.md` 与 `config.yaml`。
+- 显式 `distribution_owned`，第一版只允许 `SOUL.md`、`config.yaml` 与 `agentporter-profile.json`。
 
 ### `config.yaml`
 
@@ -122,22 +123,6 @@ output: [返回格式]
 
 `SOUL.md` 是行为指令，不是文件系统隔离机制。
 
-## 6. 有效性分层
+## 6. Artifact 验证边界
 
-安装报告必须区分：
-
-1. **Manifest 有效：** AgentPorter schema 与 Hermes distribution manifest 可解析；
-2. **Profile 已安装：** Hermes 原生安装成功，Profile 可枚举；
-3. **配置静态有效：** 指定 Profile 下的 Hermes 配置检查通过，模型/provider 字段读回一致；
-4. **路由有效：** Profile description 可读回，Kanban 可识别 assignee；
-5. **运行有效：** 显式授权的最小真实模型调用成功。
-
-前四项不能替代第五项。默认安装不执行第五项。
-
-## 7. 所有权与更新
-
-- 默认遇到同名 Profile 即拒绝，不覆盖；
-- 第一版安装不使用原生 `--force`；
-- 用户的 `.env`、`auth.json`、记忆、会话、状态库和日志不属于 AgentPorter；
-- 第一版从临时本地 staging 安装，因此只承诺全新安装；临时 source 删除后不能依赖原生 `profile update`；
-- 安装后的升级、修复和卸载不属于 AgentPorter；后续管理由 Hermes 原生 Profile 能力和用户承担。
+本规范只要求 `workers.yaml`、distribution、config、SOUL 和 marker 的 schema/映射可验证。安装状态、补偿、模型调用边界和独立卸载均由 [安装、卸载与验收设计](03-installation-and-uninstall-design.md) 定义。

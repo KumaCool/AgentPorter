@@ -2,18 +2,18 @@
 
 AgentPorter is an open-source installer for reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) Worker profiles.
 
-> **Project status:** Hermes-first one-shot installer design approved; implementation has not started.
+> **Project status:** Hermes-first product direction is approved. The consolidated install/uninstall design is an uncommitted candidate awaiting user confirmation; implementation has not started.
 
 ## First product goal
 
-AgentPorter is launched once to install the repository's complete Worker set into Hermes. It is not a command suite and exposes no subcommands, platform selectors, upgrade commands, or verification commands.
+AgentPorter is launched once to install the repository's complete Worker set into Hermes. It is not a command suite and exposes no subcommands, platform selectors, upgrade commands, or verification commands. A separate `uninstall.py` script is planned solely to remove the two dedicated Profiles later.
 
 The first release will install two independent Hermes Profiles:
 
 - `luna_worker` — bounded implementation and analysis after the parent has fixed the goal, scope, constraints, and acceptance checks;
 - `codex-5-3-small-worker` — strictly mechanical work that is simpler and narrower than `luna_worker` work.
 
-Each installed Profile owns its Hermes-native `config.yaml`, `SOUL.md`, and routing description. It can be called directly with `hermes -p <profile>`, assigned through Hermes Kanban, and used from any project directory sharing the same Hermes configuration root.
+Each installed Profile contains Hermes-native `config.yaml`, `SOUL.md`, a routing description, and a non-secret name-independent AgentPorter marker. It can be called directly with `hermes -p <profile>`, assigned through Hermes Kanban, and used from any project directory sharing the same Hermes configuration root.
 
 ## Why Hermes-first?
 
@@ -27,45 +27,36 @@ Hermes already provides the mature primitives AgentPorter needs:
 
 AgentPorter will orchestrate these primitives rather than reimplementing Profile storage, Git distribution, task queues, or worktree management.
 
-## Installation contract
+## Product boundary
 
-The planned one-shot flow is:
+One AgentPorter launch preflights, previews, confirms, installs, statically reads back, performs bounded failure compensation, and exits. It does **not** install a resident service, retain a task database, provide ongoing lifecycle management, replace existing Profiles, copy credentials, or call a model.
 
-1. detect the real Hermes executable, version, active `HERMES_HOME`, Profiles, and model/provider readiness;
-2. validate every Worker and render both Profile distributions into staging;
-3. show a combined plan and capability report;
-4. obtain one explicit confirmation for that exact plan;
-5. install both Profiles through Hermes' native distribution interface;
-6. set and read back the routing descriptions;
-7. run Hermes-native static verification for each Profile;
-8. compensate Profiles proven to have been created by this transaction if the set cannot be installed consistently, and report uncertain remnants for manual handling.
-
-“One-shot” means one AgentPorter launch performs the complete installation and exits. It does **not** install a resident service, retain a task database, provide ongoing lifecycle management, silently copy credentials, replace existing Profiles, make paid model calls, or claim model access that was not verified.
+The standalone uninstaller is a guarded cleanup escape hatch, not a management interface. It discovers renamed Profiles from protocol-fixed product/component IDs plus a per-installation ID; user-editable names never establish identity. The complete transaction and deletion rules live only in the [consolidated design](docs/03-installation-and-uninstall-design.md).
 
 ## Current repository contents
 
 - `workers.yaml` — portable Worker definitions and requested model preferences;
-- `docs/` — Hermes-first architecture, Profile mapping, installation contract, acceptance matrix, and implementation plan.
+- `docs/` — Hermes-first architecture, Worker format, Adapter mapping, consolidated install/uninstall design, acceptance matrix, and implementation plan.
 
-There is currently no runnable AgentPorter installer artifact.
+There is currently no runnable AgentPorter installer or uninstaller artifact.
 
 ## Codex scope
 
-Codex is not part of the first implementation. The architecture keeps a platform-adapter boundary so a Codex adapter can be researched later, but the project will not generate, install, or claim compatibility with Codex until a real supported Codex version and its native validation path are available.
+“Codex” in this scope means a **Codex CLI/platform adapter**, not the model ID requested by the Hermes Profile named `codex-5-3-small-worker`. That Worker remains part of the Hermes-first set. A Codex CLI adapter is not part of the first implementation: the project will not generate Codex configuration, install Codex agents, or claim Codex CLI compatibility until a real supported version and native validation path are available.
 
 ## Documentation
 
 - [Solution overview](docs/00-solution-overview.md)
 - [Portable Worker specification](docs/01-portable-worker-spec.md)
 - [Hermes adapter design](docs/02-platform-adapters.md)
-- [Installation and verification design](docs/03-installation-and-verification.md)
-- [Implementation plan](docs/04-implementation-plan.md)
+- [Installation, uninstall, and acceptance design](docs/03-installation-and-uninstall-design.md)
+- [Implementation plan](docs/plan/01-implementation-plan.md)
 
 The detailed design documents are currently written in Chinese.
 
 ## Security and privacy
 
-AgentPorter must not publish or copy API keys, tokens, `auth.json`, `.env`, memories, sessions, logs, or private runtime state. Existing Profiles are never overwritten by default. The first release never performs live model calls.
+AgentPorter never publishes or copies credentials or private runtime state, never overwrites existing Profiles, and never calls a model during installation. Uninstall requires an installation-bound confirmation and warns that all Profile-local data will be deleted. Local markers are ownership claims, not cryptographic authentication; the [consolidated design](docs/03-installation-and-uninstall-design.md) is authoritative.
 
 Report vulnerabilities according to [SECURITY.md](SECURITY.md).
 
