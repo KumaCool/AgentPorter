@@ -1,99 +1,136 @@
 # 平台 Adapter 方案
 
-## 1. Adapter 接口
+## 1. 当前范围
 
-每个平台 Adapter 最终实现统一生命周期：
+第一版只实现 `HermesAdapter`。`PlatformAdapter` 保留为内部边界，避免核心语义和 Hermes CLI 调用耦合，但不为未验证平台制造通用框架。
 
-```text
-detect → inspect → negotiate → render → diff → apply → validate → report
-```
-
-- `detect`：发现 CLI、版本和配置根；
-- `inspect`：只读枚举已有配置和 Agent；
-- `negotiate`：比较平台能力与 Worker 需求；
-- `render`：生成平台原生文件到 staging；
-- `diff`：展示目标变化；
-- `apply`：只写托管文件/配置段；
-- `validate`：调用当前版本原生命令或解析器；
-- `report`：说明可见范围、兼容降级和是否需要复制。
-
-## 2. Codex Adapter
-
-### 目标映射
-
-预期文件：
+目标生命周期：
 
 ```text
-~/.codex/agents/luna-worker.toml
-~/.codex/agents/codex-5-3-small-worker.toml
+detect → inspect → negotiate → render → plan → apply → validate → report
 ```
 
-预期角色文件采用当前 Codex 支持的字段语义：
+- `detect`：定位真实 `hermes`、版本和目标 Hermes 根；
+- `inspect`：只读枚举 Profile、配置和冲突；
+- `negotiate`：检查版本、名称、模型/provider 配置条件；
+- `render`：为每个 Worker 生成临时 distribution；
+- `plan`：输出集合级变更、限制与验证级别；
+- `apply`：通过 Hermes 原生 distribution install 安装；
+- `validate`：枚举、配置检查、字段与 description 读回；
+- `report`：区分安装、静态、路由和运行状态。
 
-```toml
-model = "..."
-model_reasoning_effort = "max"
-developer_instructions = """..."""
-```
+## 2. HermesAdapter 权威实现
 
-Agent 的路由描述可能需要由主 `config.toml` 的 `[agents.<name>]` 表注册，并通过 `config_file` 指向角色 TOML。Adapter 必须根据**已安装 Codex 版本**检查当前发现/注册机制，不能只创建角色文件后就宣称可见。
+### 2.1 一次产品命令、多个原生 distribution
 
-### 非破坏规则
+Hermes Profile distribution 原生以一个仓库根 manifest 安装一个 Profile。AgentPorter 第一版包含两个 Worker，因此不会把整个 AgentPorter 仓库伪装成单一 Profile distribution。
 
-- 若 `~/.codex/config.toml` 已存在，只追加或更新 AgentPorter 管理的 `[agents.*]` 条目；
-- 不覆盖其他 profile、provider、sandbox、MCP 或未知 Agent；
-- 若当前版本支持目录自动发现，则仍需验证实际列表或启动结果；
-- 若 CLI 未安装，输出 `unsupported: codex CLI not installed`，不猜测兼容性；
-- 模型 ID 是否可用必须与 TOML 是否可解析分开报告。
-
-### 可见性
-
-用户级 `CODEX_HOME` 下的 Agent 通常对共享该配置根的本机 Codex 会话可见；项目级配置只在对应工作区生效。Adapter 必须读出实际 `CODEX_HOME`，不能永远假定为 `~/.codex`。另一台机器或独立容器拥有不同配置根，需要单独安装。
-
-## 3. Hermes Adapter
-
-### 推荐映射
-
-Hermes 不使用 Codex Agent TOML。推荐把 Worker 映射成独立 Profile：
+目标命令：
 
 ```text
-~/.hermes/profiles/luna_worker/
-~/.hermes/profiles/codex-5-3-small-worker/
+agentporter install hermes
 ```
 
-每个 Profile 包含：
-
-- `config.yaml`：模型、provider、reasoning 和允许的工具；
-- `SOUL.md`：Worker instructions；
-- Profile description：供 Kanban 路由和人工识别；
-- 可选 skills：仅加载完成职责所需的最小技能。
-
-`luna_worker` 的 Hermes Profile 名合法。Portable ID `codex_5_3_small_worker` 也合法，但为跨平台展示一致和可读性，Hermes 目标名建议映射为 `codex-5-3-small-worker`。
-
-### 调用方式
-
-临时显式调用：
+内部为每个 Worker 渲染独立本地 staging，并调用等价于：
 
 ```text
-hermes -p luna_worker chat -q "<complete bounded task brief>"
+hermes profile install <staging/luna_worker> --name luna_worker --yes
+hermes profile install <staging/codex-5-3-small-worker> \
+  --name codex-5-3-small-worker --yes
 ```
 
-持久任务路由：通过 Kanban 创建任务并指定 Profile assignee。普通 `delegate_task` 目前适合轻量隔离子任务，但其模型由父会话继承或全局 `delegation.model/provider` 统一覆盖，不能自然表达“每次调用按名称选不同 Profile”。
+`--yes` 只跳过 Hermes 的第二层确认；AgentPorter 在此前必须展示并确认集合级计划。非交互模式要求显式 `--yes`。
 
-### 可见性
-
-Profile 是用户级 Hermes 配置，不属于某个项目工作区。同一主机、同一 Hermes 配置根下的普通目录与 Git worktree 无需复制。若远端只作为 Hermes 的 SSH 命令后端，也不需要复制；只有远端独立启动 Hermes 时才需要安装 Profile。
-
-## 4. 通用 Prompt-only Adapter
-
-对于没有命名 Agent 或 Profile 的平台，生成：
+### 2.2 Profile 产物
 
 ```text
-adapters/prompt-only/<worker-id>.md
+<HERMES_HOME>/profiles/luna_worker/
+<HERMES_HOME>/profiles/codex-5-3-small-worker/
 ```
 
-内容包括 description、instructions、委派契约和模型建议。该模式只能帮助人工选择和粘贴 Prompt，不能宣称平台具备原生命名路由、模型隔离或全局可见性。
+每个 Profile 安装：
 
-## 5. 后续平台
+- `distribution.yaml`：版本、来源和所有权；
+- `config.yaml`：最小模型、provider 和 reasoning 配置；
+- `SOUL.md`：职责与禁止事项；
+- Profile description：由 AgentPorter 使用 `hermes profile describe --text` 设置并读回。
 
-后续可按同一接口增加 Claude Code、OpenCode、Cursor、IDE Agent、MCP 驱动 Agent 或企业内部平台。每个 Adapter 都必须提交能力矩阵、原生验证器和至少一组非破坏合并测试，禁止只增加模板文件而没有检测与验证路径。
+Profile description 不能只存在于 distribution manifest；必须验证 Hermes 路由实际读取的 description。
+
+### 2.3 检测与版本
+
+Adapter 不硬编码 `~/.hermes`：
+
+- 优先尊重调用环境的 `HERMES_HOME`；
+- 使用目标 Profile/Hermes CLI 的实际路径和版本；
+- 执行真实 `hermes --version`、`hermes profile ... --help` 和配置校验；
+- `distribution.yaml.hermes_requires` 只写入经过 CI 和真实安装验收的最低版本。
+
+当前开发机 Hermes v0.20.0、schema v33 是设计取证基线，不自动等于最终最低支持版本。
+
+### 2.4 模型与凭证
+
+仓库中的模型是请求值，不是授权证明。
+
+- 若 Worker 显式给出 provider，只写非秘密 provider ID；
+- 若 provider 未指定，计划要求 `--provider` 或在安装后配置；
+- 不从默认 Profile 复制 `config.yaml`、`.env`、`auth.json` 或私有 base URL；
+- 不把当前开发机 `custom` Provider 当作公开默认值；
+- 安装后无可用凭证时，状态是“Profile 已安装，运行配置待完成”，而不是失败伪装或静默模型替换；
+- `--live-check` 才允许最小模型请求，并在执行前说明可能产生费用。
+
+### 2.5 冲突与补偿回滚
+
+默认规则：
+
+- 任一目标 Profile 已存在，整组安装在写入前拒绝；
+- 不使用 `hermes profile install --force`；
+- 不修改 `default` Profile；
+- 原生安装命令成功后立即记录“已确认创建”，后续读回成功后再记录“身份已验证”；
+- 后续失败时只逆序删除身份已验证的本次新建 Profile；
+- 已确认创建但读回失败的 Profile 不自动删除，进入“不确定残留”并令事务以“补偿不完整”退出；
+- 删除前再次确认 Profile 的 distribution 名、来源/事务标记与目标名；
+- 身份不一致时停止自动删除并报告人工处理，不猜测所有权。
+
+临时 staging 会被删除，Hermes manifest 中记录的本地 source 随后不可用于原生 update。因此第一版只支持全新安装。未来的 `upgrade` 必须采用稳定 Git source 或重新渲染的独立升级事务；`repair`、`uninstall` 也各自拥有独立命令和验收面。
+
+## 3. Hermes 调用与路由
+
+### 直接调用
+
+```text
+hermes -p luna_worker chat -q "<完整任务 brief>"
+```
+
+### Kanban
+
+```text
+hermes kanban create "<任务标题>" \
+  --assignee luna_worker \
+  --workspace worktree \
+  --body "<完整目标、范围、约束和验收>"
+```
+
+Kanban 可以按卡片覆盖模型和 provider，但这是任务级显式覆盖，不应反向修改 Profile 配置。
+
+### delegate_task 限制
+
+普通 `delegate_task` 有独立上下文和终端，但默认继承父模型或使用统一的 `delegation.*`。第一版不把它包装成按 Profile 选择器。若未来需要 `delegate_luna_worker` 一类工具，必须作为单独插件设计，并验证进程、工作区、取消和结果协议。
+
+## 4. 可见性
+
+- Profile 属于 Hermes 配置根，不属于某个 Git 仓库；
+- 同配置根的普通目录和 Git worktree 无需重复安装；
+- Profile 本身不构成 sandbox；需要隔离修改时使用 Kanban worktree、`hermes -w` 或明确 workspace；
+- 远端只是本机 Hermes 的 SSH 终端后端时通常无需安装；
+- 远端独立启动 Hermes、容器或不同 Hermes 根时必须分别安装。
+
+## 5. Codex 接口保留
+
+代码结构可保留 `PlatformAdapter` 协议和 `unsupported platform` 结果，但第一版：
+
+- CLI 不公开 `--platform codex`；
+- 不生成 Codex TOML；
+- 不创建 `~/.codex`；
+- 不把 Codex 纳入 CI、发布门禁或完成状态；
+- 文档仅记录未来需要真实版本取证后另行设计。
