@@ -37,6 +37,8 @@ Hermes changes must preserve the consolidated [install/uninstall design](docs/03
 
 Do not claim model, platform, or security parity without real evidence. Other platform adapters require a separately approved design and native validation path.
 
+Worker behavior and performance evaluation follows the independent [validation and benchmark plan](docs/plan/02-agent-validation-and-benchmark.md). It must remain isolated from installer success, use disposable environments and sanitized fixtures, and never commit raw model output or credential-bearing reports.
+
 ## Reporting security issues
 
 Do not open a public issue for suspected vulnerabilities or accidental disclosure. Follow [SECURITY.md](SECURITY.md).

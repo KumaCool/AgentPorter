@@ -32,6 +32,8 @@ AgentPorter is intended to create and remove dedicated Hermes Profiles. Implemen
 - preserve unrelated Profiles and avoid copying authentication material;
 - redact secret-like values from plans, logs, and reports.
 
+The optional post-install Worker benchmark is not part of installation. It must run only after explicit cost authorization in disposable Hermes/Profile and repository environments, discover targets by the AgentPorter marker protocol, reject ambiguous sets before model calls, and keep raw responses and usage artifacts out of Git by default.
+
 The local marker is a non-secret ownership claim, not a signature or user-authentication credential. A malformed, copied, conflicting, or changed marker must make discovery fail closed rather than be treated as cryptographic provenance.
 
 `agentporter-profile.json` is an AgentPorter-reserved protocol filename. Unrelated tools should not create it inside Hermes Profiles; any malformed or conflicting use intentionally blocks automated uninstall rather than being ignored.

@@ -61,6 +61,8 @@ Adapter 不硬编码 `~/.hermes`：
 - 无凭证时报告“Profile 已安装，运行配置待完成”，不能声称运行有效；
 - 第一版禁止模型请求，并用调用即失败 guard 锁定。
 
+这里的模型禁令覆盖 AgentPorter 安装、静态读回、补偿、卸载和 Plan 01 集成验收。Plan 01 完成后，[Worker 验证与基准计划](plan/02-agent-validation-and-benchmark.md) 可在专用隔离环境中显式调用按 marker 发现的当前 Profile；这里“调用当前 Profile”只指在每次启动参数中使用其当前名称定位该名称对应的 Hermes Profile 环境，不表示名称建立 AgentPorter 所有权。它不是 Adapter 安装流程，也不改变安装结果。
+
 ## 5. Profile 调用与工作区
 
 直接调用：

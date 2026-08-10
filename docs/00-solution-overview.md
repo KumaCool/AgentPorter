@@ -50,9 +50,12 @@ AgentPorter 组合 Hermes 原生 Profile、distribution、description、Kanban �
 
 Worker tier、委派输入和行为不变量由 [Worker 规范](01-portable-worker-spec.md) 定义；Hermes Profile、Kanban、worktree 和直接调用的映射由 [Hermes Adapter](02-platform-adapters.md) 定义。总览不重复其字段或命令。
 
+Plan 01 的安装与卸载交付始终零模型调用；安装后的真实 Worker 行为与性能只由独立 [Worker 验证与基准计划](plan/02-agent-validation-and-benchmark.md) 在显式授权、隔离环境和独立结果状态下评测，不构成产品子命令或安装成功条件。
+
 ## 6. 文档导航
 
 - [可移植 Worker 规范](01-portable-worker-spec.md)：`workers.yaml` 与派生文件格式；
 - [Hermes Adapter 方案](02-platform-adapters.md)：Hermes 原生能力映射和调用边界；
 - [安装、卸载与验收设计](03-installation-and-uninstall-design.md)：安装事务、身份、卸载和验收的唯一权威设计；
-- [实施计划](plan/01-implementation-plan.md)：阶段、TDD、门禁和交付顺序。
+- [实施计划](plan/01-implementation-plan.md)：安装器、卸载器、测试和发布的阶段顺序；
+- [Worker 验证与基准计划](plan/02-agent-validation-and-benchmark.md)：安装完成后的独立代理行为、性能、成本和稳定性评测。

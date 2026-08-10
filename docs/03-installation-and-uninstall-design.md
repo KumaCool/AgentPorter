@@ -4,7 +4,7 @@
 
 本文是 AgentPorter **安装事务、名称无关身份、独立卸载和验收语义的唯一权威设计**。
 
-- **设计状态：** 未提交候选，等待用户确认；
+- **设计状态：** 安装/卸载设计与独立 Plan 02 均已确认；实现与真实验收待开始；
 - **代码状态：** 安装器与卸载脚本均未实现；
 - **真实验收：** 未执行；
 - **安装入口：** 一次性启动，无子命令、平台参数、静默模式或后台服务；
@@ -16,18 +16,19 @@
 - [Worker 规范](01-portable-worker-spec.md)：`workers.yaml` 与派生文件格式；
 - [Hermes Adapter](02-platform-adapters.md)：Hermes v0.20 原生能力映射；
 - **本文：** 安装、补偿、卸载、验证及安全边界；
-- [实施计划](plan/01-implementation-plan.md)：阶段顺序、测试和交付门禁。
+- [实施计划](plan/01-implementation-plan.md)：安装器、卸载器、测试和发布阶段；
+- [Worker 验证与基准计划](plan/02-agent-validation-and-benchmark.md)：Plan 01 完成后的独立真实代理评测，不参与本文安装/卸载状态。
 
 ## 2. 共同不变量
 
 1. 主安装器一次运行完成预检、计划、确认、安装、读回、有限补偿并退出；安装器和独立卸载器均不提供子命令或静默模式。
 2. 不覆盖任一预先存在的 Profile，不修改 `default`。
 3. 不复制或发布 `.env`、`auth.json`、API key、私有 base URL、记忆、会话、日志或状态数据库。
-4. 第一版不发起模型请求；静态安装成功不代表模型运行成功。
+4. 第一版安装器、静态读回、补偿、卸载及 Plan 01 集成验收不发起模型请求；静态安装成功不代表模型运行成功。Plan 01 完成后另行显式运行的 [Worker 基准](plan/02-agent-validation-and-benchmark.md) 不属于这些路径。
 5. **安装失败补偿和日后主动卸载是两种删除语义。** 补偿只处理当前安装事务中可证明新建的目标；卸载会删除后来产生的 Profile-local 数据，必须重新发现、警告并确认。
 6. 原始/当前 Profile 名、Portable ID、Display name 和 description 均不构成所有权身份。
 7. 名称无关 marker 是唯一组件/安装身份；Hermes distribution info 中的 source 只可作为当前安装期的辅助事务证据，不能单独建立身份，也永不参与日后卸载资格。
-8. 所有候选在用户明确确认前不得 commit 或 push。
+8. 通过对应交付门禁的修改可直接 commit；push 仍需用户明确授权。
 
 ## 3. 名称无关安装标记
 
@@ -313,6 +314,6 @@ Hermes v0.20 的 `profile delete` 仅按名称执行，没有原子 identity-con
 | GATE-04 | 覆盖 symlink/path escape、inode 替换、非法/非规范 basename 和 TOCTOU 状态 |
 | GATE-05 | 命令执行使用参数数组与 shell=False |
 | GATE-06 | lint、type、测试、Markdown 链接、git diff 和隐私扫描通过 |
-| GATE-07 | 临时 Hermes 根真实演练原生安装、补偿 TOCTOU（rename/replace/占名）、批量 rename、独立卸载及双重读回 |
+| GATE-07 | 临时 Hermes 根真实演练原生安装、补偿 TOCTOU（rename/replace/占名）、批量 rename、独立卸载及双重读回，并按 Plan 01 保存安装/扫描/删除性能与资源基线；安全语义不得被性能平均值抵消 |
 | GATE-08 | 不把代码存在、离线测试、正式入口接通和真实 Hermes 验收混为完成 |
-| GATE-09 | 用户明确确认前不 commit 或 push |
+| GATE-09 | 提交前通过交付门禁并核验公开 Git 身份；push 前取得用户明确授权 |

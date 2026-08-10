@@ -2,7 +2,7 @@
 
 AgentPorter is an open-source installer for reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) Worker profiles.
 
-> **Project status:** Hermes-first product direction is approved. The consolidated install/uninstall design is an uncommitted candidate awaiting user confirmation; implementation has not started.
+> **Project status:** The Hermes-first install/uninstall design and both plans are accepted. Installer, uninstaller, benchmark tooling, automated tests, and real Hermes/Worker acceptance have not started.
 
 ## First product goal
 
@@ -51,6 +51,7 @@ There is currently no runnable AgentPorter installer or uninstaller artifact.
 - [Hermes adapter design](docs/02-platform-adapters.md)
 - [Installation, uninstall, and acceptance design](docs/03-installation-and-uninstall-design.md)
 - [Implementation plan](docs/plan/01-implementation-plan.md)
+- [Worker validation and benchmark plan](docs/plan/02-agent-validation-and-benchmark.md)
 
 The detailed design documents are currently written in Chinese.
 

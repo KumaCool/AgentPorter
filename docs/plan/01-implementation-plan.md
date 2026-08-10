@@ -3,7 +3,7 @@
 ## 1. 状态与权威来源
 
 - **产品方向：** Hermes-first 已确认；
-- **设计候选：** 未提交，等待用户确认；
+- **设计与计划：** Plan 01、合并设计与独立 Plan 02 均已确认；
 - **代码、测试、真实 Hermes 验收、发布：** 均未开始；
 - **Codex CLI Adapter：** 仅保留未来边界，不在当前计划内；Hermes Profile `codex-5-3-small-worker` 仍属于第一版 Worker 集。
 
@@ -13,7 +13,7 @@
 
 在受支持 Hermes 环境中：
 
-主安装器、独立 `uninstall.py`、Hermes 集成验收和开源产物全部满足 [INS/UN/GATE 权威矩阵](../03-installation-and-uninstall-design.md#7-验收矩阵)，且用户确认候选后才允许 commit 或 push。
+主安装器、独立 `uninstall.py`、Hermes 集成验收和开源产物全部满足 [INS/UN/GATE 权威矩阵](../03-installation-and-uninstall-design.md#7-验收矩阵)。安装完成后的真实 Worker 行为与性能评测由 [Plan 02](02-agent-validation-and-benchmark.md) 独立执行，不阻止本计划交付，也不能改写安装结果。
 
 ## 3. Phase 1：领域模型、检测与纯渲染
 
@@ -85,9 +85,14 @@
 4. 验证 Kanban assignee 和 worktree 示例；
 5. 原生 rename 两个 Profile 后运行独立卸载；
 6. 验证枚举与路径均不存在；
-7. 证明所有路径不发起模型请求。
+7. 证明所有路径不发起模型请求；
+8. 记录冷/热安装总时延、单 Profile 时延、Hermes 子进程次数、峰值 RSS、CPU 时间、staging 峰值和最终磁盘增量；
+9. 对 2、10、100、1000 个合成 Profile 根分别记录卸载发现扫描耗时；扫描/歧义归类零写入。删除、集合/逐项重验和双重读回时延只在唯一完整两组件安装集合上测量，不能删除合成背景 Profile；
+10. 执行至少 100 次安装/卸载与 rename、replace、占名、symlink、inode 替换、根切换、超时和中断故障循环，分别记录安全残留与不安全删除；无关/default Profile 误删必须为 `0`。
 
-当前开发机证据与最低支持版本声明必须分开记录。静态验收不得声称模型运行成功。
+这些性能数据在第一版建立可重复基线，不在没有基线时虚构绝对时延阈值；安全语义仍按权威 `INS/UN/GATE` 判定。当前开发机证据与最低支持版本声明必须分开记录。静态验收不得声称模型运行成功。
+
+本 Phase 不运行 [Plan 02](02-agent-validation-and-benchmark.md) 的真实模型任务；后者只能在本计划全部关闭后独立启动。
 
 ### 验收映射
 
@@ -109,9 +114,9 @@ Phase 6 对 [权威矩阵中的 `GATE-01`–`GATE-09`](../03-installation-and-un
 
 ## 10. 提交与交付纪律
 
-- 每个 Phase 通过 focused tests 和适用完整门禁后形成待确认候选；
+- 每个 Phase 通过 focused tests 和适用完整门禁后形成可提交候选；
 - 文档状态、实现状态和验收状态必须同步；
 - 提交前扫描 staged/index 中的秘密、个人路径和环境值，并验证公开 Git 身份；
-- **只有用户明确确认后才允许 commit 或 push**；
-- 获批执行后验证本地与远程 SHA 一致；
+- 通过交付门禁后可直接 commit，不再要求逐次用户确认；push 仍需用户明确授权；
+- 获批 push 后验证本地与远程 SHA 一致；
 - Codex CLI Adapter、升级、修复、后台服务和其它生命周期能力不得进入当前实现。

@@ -126,3 +126,5 @@ output: [返回格式]
 ## 6. Artifact 验证边界
 
 本规范只要求 `workers.yaml`、distribution、config、SOUL 和 marker 的 schema/映射可验证。安装状态、补偿、模型调用边界和独立卸载均由 [安装、卸载与验收设计](03-installation-and-uninstall-design.md) 定义。
+
+安装完成后的真实 tier、路由、正确拒绝、任务质量和性能只由独立 [Worker 验证与基准计划](plan/02-agent-validation-and-benchmark.md) 评测；该结果不反向修改本规范或安装状态。
