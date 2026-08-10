@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentporter"
+version = "0.1.0"
+description = "Hermes-first portable Worker profile installer"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2,<3", "PyYAML>=6,<7"]
+
+[dependency-groups]
+dev = ["pytest>=9,<10", "pyright>=1.1.411,<2", "ruff>=0.12,<1"]
+
+[project.scripts]
+agentporter = "agentporter:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pyright]
+include = ["src", "install.py", "uninstall.py"]
+typeCheckingMode = "strict"
