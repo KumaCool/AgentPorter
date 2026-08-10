@@ -41,7 +41,7 @@ Hermes Profile 名必须满足当前 Hermes 原生约束：
 | `luna_worker` | `luna_worker` |
 | `codex_5_3_small_worker` | `codex-5-3-small-worker` |
 
-映射必须进入安装计划和管理记录。卸载或补偿回滚只能作用于本次安装记录确认拥有的 Profile。
+映射必须进入本次安装计划和事务内所有权记录。失败补偿只能作用于本次安装事务确认创建且身份匹配的 Profile；记录随安装结束报告输出，不构成长期管理状态。
 
 ## 3. Tier 语义
 
@@ -140,4 +140,4 @@ output: [返回格式]
 - 第一版安装不使用原生 `--force`；
 - 用户的 `.env`、`auth.json`、记忆、会话、状态库和日志不属于 AgentPorter；
 - 第一版从临时本地 staging 安装，因此只承诺全新安装；临时 source 删除后不能依赖原生 `profile update`；
-- 未来升级必须先设计稳定、可重新获取的 distribution source，或由 AgentPorter 重新渲染并执行独立升级事务；在该设计落地前不公开 `upgrade`。
+- 安装后的升级、修复和卸载不属于 AgentPorter；后续管理由 Hermes 原生 Profile 能力和用户承担。

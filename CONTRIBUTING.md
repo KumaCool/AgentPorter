@@ -32,7 +32,7 @@ A new platform adapter must include:
 - dry-run planning and a readable diff;
 - non-destructive merge behavior;
 - native syntax or platform validation where available;
-- rollback or uninstall behavior limited to AgentPorter-owned content;
+- rollback behavior limited to Profiles proven to be created by the current installation transaction;
 - tests proving unrelated user configuration remains unchanged.
 
 Do not claim feature parity when a platform cannot preserve a portable Worker requirement. Report the limitation explicitly and fail closed where proceeding would weaken a required invariant.

@@ -2,15 +2,11 @@
 
 AgentPorter is an open-source installer for reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) Worker profiles.
 
-> **Project status:** Hermes-first design approved; implementation has not started. The commands shown below are target interfaces and are not runnable yet.
+> **Project status:** Hermes-first one-shot installer design approved; implementation has not started.
 
 ## First product goal
 
-Install the repository's Worker set into Hermes with one command:
-
-```text
-agentporter install hermes
-```
+AgentPorter is launched once to install the repository's complete Worker set into Hermes. It is not a command suite and exposes no subcommands, platform selectors, upgrade commands, or verification commands.
 
 The first release will install two independent Hermes Profiles:
 
@@ -33,24 +29,25 @@ AgentPorter will orchestrate these primitives rather than reimplementing Profile
 
 ## Installation contract
 
-The planned one-command flow is:
+The planned one-shot flow is:
 
 1. detect the real Hermes executable, version, active `HERMES_HOME`, Profiles, and model/provider readiness;
 2. validate every Worker and render both Profile distributions into staging;
 3. show a combined plan and capability report;
-4. install both Profiles through Hermes' native distribution interface;
-5. set and read back the routing descriptions;
-6. run Hermes-native static verification for each Profile;
-7. compensate Profiles proven to have been created by this transaction if the set cannot be installed consistently, and report uncertain remnants for manual handling.
+4. obtain one explicit confirmation for that exact plan;
+5. install both Profiles through Hermes' native distribution interface;
+6. set and read back the routing descriptions;
+7. run Hermes-native static verification for each Profile;
+8. compensate Profiles proven to have been created by this transaction if the set cannot be installed consistently, and report uncertain remnants for manual handling.
 
-“One command” means one AgentPorter invocation for the complete Worker set. It does **not** mean silently copying credentials, replacing existing Profiles, making paid model calls, or claiming model access that was not verified.
+“One-shot” means one AgentPorter launch performs the complete installation and exits. It does **not** install a resident service, retain a task database, provide ongoing lifecycle management, silently copy credentials, replace existing Profiles, make paid model calls, or claim model access that was not verified.
 
 ## Current repository contents
 
 - `workers.yaml` — portable Worker definitions and requested model preferences;
 - `docs/` — Hermes-first architecture, Profile mapping, installation contract, acceptance matrix, and implementation plan.
 
-There is currently no installable AgentPorter package or executable CLI.
+There is currently no runnable AgentPorter installer artifact.
 
 ## Codex scope
 
@@ -68,7 +65,7 @@ The detailed design documents are currently written in Chinese.
 
 ## Security and privacy
 
-AgentPorter must not publish or copy API keys, tokens, `auth.json`, `.env`, memories, sessions, logs, or private runtime state. Existing Profiles are never overwritten by default. Live model checks are separately authorized because they can use credentials and incur cost.
+AgentPorter must not publish or copy API keys, tokens, `auth.json`, `.env`, memories, sessions, logs, or private runtime state. Existing Profiles are never overwritten by default. The first release never performs live model calls.
 
 Report vulnerabilities according to [SECURITY.md](SECURITY.md).
 

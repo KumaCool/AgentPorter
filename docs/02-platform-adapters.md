@@ -2,7 +2,7 @@
 
 ## 1. 当前范围
 
-第一版只实现 `HermesAdapter`。`PlatformAdapter` 保留为内部边界，避免核心语义和 Hermes CLI 调用耦合，但不为未验证平台制造通用框架。
+第一版只实现 `HermesAdapter`。`PlatformAdapter` 保留为内部边界，避免核心语义和 Hermes 原生接口调用耦合，但不为未验证平台制造通用框架。
 
 目标生命周期：
 
@@ -21,17 +21,11 @@ detect → inspect → negotiate → render → plan → apply → validate → 
 
 ## 2. HermesAdapter 权威实现
 
-### 2.1 一次产品命令、多个原生 distribution
+### 2.1 一次安装运行、多个原生 distribution
 
 Hermes Profile distribution 原生以一个仓库根 manifest 安装一个 Profile。AgentPorter 第一版包含两个 Worker，因此不会把整个 AgentPorter 仓库伪装成单一 Profile distribution。
 
-目标命令：
-
-```text
-agentporter install hermes
-```
-
-内部为每个 Worker 渲染独立本地 staging，并调用等价于：
+AgentPorter 没有面向用户的子命令。唯一安装入口内部为每个 Worker 渲染独立本地 staging，并调用等价于：
 
 ```text
 hermes profile install <staging/luna_worker> --name luna_worker --yes
@@ -39,7 +33,7 @@ hermes profile install <staging/codex-5-3-small-worker> \
   --name codex-5-3-small-worker --yes
 ```
 
-`--yes` 只跳过 Hermes 的第二层确认；AgentPorter 在此前必须展示并确认集合级计划。非交互模式要求显式 `--yes`。
+内部 `--yes` 只跳过 Hermes 的第二层确认；AgentPorter 在此前必须通过自己的单次安装界面展示集合级计划并取得一次明确确认。第一版不设计无交互或静默安装参数。
 
 ### 2.2 Profile 产物
 
@@ -62,7 +56,7 @@ Profile description 不能只存在于 distribution manifest；必须验证 Herm
 Adapter 不硬编码 `~/.hermes`：
 
 - 优先尊重调用环境的 `HERMES_HOME`；
-- 使用目标 Profile/Hermes CLI 的实际路径和版本；
+- 使用目标 Profile/Hermes 可执行文件的实际路径和版本；
 - 执行真实 `hermes --version`、`hermes profile ... --help` 和配置校验；
 - `distribution.yaml.hermes_requires` 只写入经过 CI 和真实安装验收的最低版本。
 
@@ -73,11 +67,11 @@ Adapter 不硬编码 `~/.hermes`：
 仓库中的模型是请求值，不是授权证明。
 
 - 若 Worker 显式给出 provider，只写非秘密 provider ID；
-- 若 provider 未指定，计划要求 `--provider` 或在安装后配置；
+- 若 provider 未指定，一次安装界面要求用户选择非秘密 provider ID，或明确接受“安装后通过 Hermes 原生配置完成”；不提供 AgentPorter 参数；
 - 不从默认 Profile 复制 `config.yaml`、`.env`、`auth.json` 或私有 base URL；
 - 不把当前开发机 `custom` Provider 当作公开默认值；
 - 安装后无可用凭证时，状态是“Profile 已安装，运行配置待完成”，而不是失败伪装或静默模型替换；
-- `--live-check` 才允许最小模型请求，并在执行前说明可能产生费用。
+- 第一版安装路径禁止执行模型请求；相关调用必须由测试中的调用即失败 guard 锁定。
 
 ### 2.5 冲突与补偿回滚
 
@@ -92,7 +86,7 @@ Adapter 不硬编码 `~/.hermes`：
 - 删除前再次确认 Profile 的 distribution 名、来源/事务标记与目标名；
 - 身份不一致时停止自动删除并报告人工处理，不猜测所有权。
 
-临时 staging 会被删除，Hermes manifest 中记录的本地 source 随后不可用于原生 update。因此第一版只支持全新安装。未来的 `upgrade` 必须采用稳定 Git source 或重新渲染的独立升级事务；`repair`、`uninstall` 也各自拥有独立命令和验收面。
+临时 staging 会被删除，Hermes manifest 中记录的本地 source 随后不可用于原生 update。因此第一版只支持全新安装。后续升级、修复和卸载不属于 AgentPorter；需要时由用户使用 Hermes 原生 Profile 管理能力，当前项目不预留相应入口。
 
 ## 3. Hermes 调用与路由
 
@@ -129,7 +123,7 @@ Kanban 可以按卡片覆盖模型和 provider，但这是任务级显式覆盖�
 
 代码结构可保留 `PlatformAdapter` 协议和 `unsupported platform` 结果，但第一版：
 
-- CLI 不公开 `--platform codex`；
+- 唯一安装入口不提供 Codex 选择；
 - 不生成 Codex TOML；
 - 不创建 `~/.codex`；
 - 不把 Codex 纳入 CI、发布门禁或完成状态；

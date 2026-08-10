@@ -1,28 +1,12 @@
 # 安装与验证方案
 
-> 本文命令是 AgentPorter 第一版目标接口；当前仓库尚未实现 CLI。
+> 本文描述 AgentPorter 第一版的一次性安装体验；当前仓库尚未实现安装器。
 
 ## 1. 用户流程
 
-交互式安装：
+用户启动 AgentPorter 安装器，查看一次集合级计划并确认。安装器完成两个 Hermes Profile 的安装和静态读回后退出。
 
-```text
-agentporter install hermes
-```
-
-自动化环境：
-
-```text
-agentporter install hermes --yes
-```
-
-可选运行验证：
-
-```text
-agentporter verify hermes --live-check
-```
-
-默认安装只做静态与路由验证，不执行模型请求。
+第一版没有子命令、参数模式、静默安装、独立 verify 入口或后续管理界面。默认只做静态与路由验证，不执行模型请求。
 
 ## 2. 集合级安装流程
 
@@ -53,10 +37,10 @@ agentporter verify hermes --live-check
 - provider、模型和凭证准备状态；
 - 不会复制或修改的用户数据；
 - 是否存在冲突；
-- 默认静态验证与可选 live check 的区别；
+- 默认且唯一的静态验证边界，以及“不会发起模型请求”的保证；
 - 失败时哪些新建 Profile 可自动补偿删除。
 
-`--yes` 只接受已生成的同一计划，不得跳过预检、staging 校验、秘密扫描或验证。
+确认动作只接受当前已生成的同一计划，不得跳过预检、staging 校验、秘密扫描或验证。
 
 ## 4. Provider 与运行准备
 
@@ -105,11 +89,11 @@ agentporter verify hermes --live-check
 | BND-03 | 同配置根的不同目录/worktree 不重复安装 |
 | BND-04 | 不同 Hermes 根和远端独立实例被视为独立目标 |
 | BND-05 | 第二个 Profile 安装/验证失败时，只补偿删除本事务新建且身份匹配的 Profile |
-| CMP-01 | 最低 Hermes 版本由 CI 夹具和真实 CLI 验收共同确定 |
-| CMP-02 | 未知 manifest、CLI 或配置行为变化时 fail closed |
+| CMP-01 | 最低 Hermes 版本由 CI 夹具和真实 Hermes 原生接口验收共同确定 |
+| CMP-02 | 未知 manifest、Hermes 原生接口或配置行为变化时 fail closed |
 | CMP-03 | Profile 名使用 Hermes 原生校验与保留名规则 |
-| DEL-01 | schema、单元、临时 HOME 集成、CLI 静态验证和文档链接检查通过 |
-| DEL-02 | 构建包在干净环境完成 `install hermes --yes` 演练 |
+| DEL-01 | schema、单元、临时 HOME 集成、Hermes 原生静态验证和文档链接检查通过 |
+| DEL-02 | 安装产物在干净环境完成一次启动、确认、安装和退出演练 |
 | DEL-03 | 安装后 `hermes profile list/show/info`、description 和配置字段读回一致 |
 | DEL-04 | staged/index 隐私扫描和构建产物内容检查通过 |
 
@@ -127,26 +111,12 @@ agentporter verify hermes --live-check
 
 不能用“目录存在”作为所有权证明。
 
-## 7. 运行验证
+## 7. 运行验证边界
 
-`--live-check` 是单独授权边界：
+第一版不提供运行验证，也不发起任何模型请求。测试必须对模型调用路径设置调用即失败 guard，证明安装、静态读回和失败补偿均不触达模型。真实模型验证若有需要，由用户在安装完成后通过 Hermes 原生能力自行执行，不属于 AgentPorter。
 
-- 执行前列出将使用的 Profile、模型和 provider；
-- 不展示凭证值；
-- 对每个 Profile执行最小只读 Prompt；
-- 分别记录成功、认证失败、模型无权、网络失败和响应超时；
-- 一个 Worker 的失败不被另一个 Worker 的成功掩盖；
-- live check 失败不自动删除静态安装成功的 Profile，除非用户明确要求全有或全无的运行验收模式。
+## 8. 安装后的职责边界
 
-## 8. 升级与卸载
+AgentPorter 理论上只使用一次：完成全新安装后退出，不维护常驻状态，也不提供升级、修复或卸载入口。
 
-第一版从临时本地 staging 安装，只交付全新安装。Hermes 会把本地 staging 路径记录为 source，而 staging 在事务后删除，因此这些 Profile 不能直接依赖 `hermes profile update`。
-
-后续命令必须在稳定 Git source 或 AgentPorter 重新渲染升级事务设计完成后再公开：
-
-```text
-agentporter upgrade hermes
-agentporter uninstall hermes
-```
-
-升级默认保留用户 `config.yaml`，但不能在临时 source 已失效时盲目调用原生 update；卸载必须依赖 AgentPorter 所有权记录和 Hermes distribution 身份，不能按名称猜测。
+Hermes 会把本地 staging 路径记录为 source，而 staging 在安装后删除，因此这些 Profile 不能直接依赖该 source 执行 `hermes profile update`。后续管理由 Hermes 原生 Profile 能力和用户承担；AgentPorter 不按名称猜测所有权，也不承诺后续生命周期操作。

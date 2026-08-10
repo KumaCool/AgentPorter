@@ -4,18 +4,12 @@
 
 AgentPorter 第一阶段是 **Hermes Worker Profile 一键安装器**。
 
-权威目标接口：
-
-```text
-agentporter install hermes
-```
-
-一次调用安装仓库中声明的完整 Worker 集合。第一版包含：
+产品只有一个启动入口，没有子命令、平台参数或长期运行模式。用户启动一次，即安装仓库中声明的完整 Worker 集合。第一版包含：
 
 - `luna_worker`：目标、范围、约束和验收已冻结后的有界补全型 Worker；
 - `codex-5-3-small-worker`：严格比 Luna 更简单、更机械的 Worker。
 
-当前仓库只有设计和 Worker 清单，尚无可执行 CLI、安装器或已安装产物。
+当前仓库只有设计和 Worker 清单，尚无可运行安装器或已安装产物。
 
 ## 2. 架构决策
 
@@ -37,9 +31,9 @@ Hermes Profile distributions
 
 每个 Worker 对应一个独立 Hermes Profile；Profile 是独立 Hermes Home，而不是提示词文件或项目目录。
 
-### 2.2 一键安装的边界
+### 2.2 一次性安装的边界
 
-“一键”表示用户只需发起一次 AgentPorter 命令，AgentPorter 完成整个 Worker 集的预检、计划、安装、读回和失败收口。
+“一次性”表示用户只启动一次 AgentPorter，安装器完成整个 Worker 集的预检、确认、安装、读回和失败收口，然后退出。AgentPorter 不提供命令体系，不驻留后台，也不承担后续升级、修复、卸载或任务调度。
 
 它不表示：
 
@@ -51,7 +45,7 @@ Hermes Profile distributions
 
 ### 2.3 安装集合一致性
 
-Hermes 原生 distribution 每次安装一个 Profile。AgentPorter 负责在一次产品命令中编排两个 distribution：
+Hermes 原生 distribution 每次安装一个 Profile。AgentPorter 负责在一次安装运行中编排两个 distribution：
 
 1. 在任何写入前完成全部 Worker、名称、版本、目标冲突和 staging 校验；
 2. 默认发现同名 Profile 即 fail closed，不调用 `--force`；
@@ -121,7 +115,7 @@ hermes -p luna_worker chat -q "<边界完整的任务>"
 
 ## 7. Codex 保留边界
 
-Codex 仅保留 `PlatformAdapter` 接口位置和未来研究记录，不进入第一版实现、CLI 可选值、发布门禁或完成状态。
+Codex 仅保留 `PlatformAdapter` 接口位置和未来研究记录，不进入第一版实现、安装入口、发布门禁或完成状态。
 
 未来启用 Codex 前必须取得：
 
