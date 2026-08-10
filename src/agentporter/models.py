@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator
 
+from .identity import COMPONENT_IDS
+
 _PORTABLE_ID = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _PROFILE_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 RESERVED_HERMES_PROFILE_NAMES = frozenset({"default"})
@@ -56,8 +58,10 @@ class WorkersManifest(ClosedModel):
     @field_validator("workers")
     @classmethod
     def validate_ids(cls, value: dict[str, WorkerDefinition]) -> dict[str, WorkerDefinition]:
-        if not value:
-            raise ValueError("at least one worker is required")
+        if tuple(value) != tuple(COMPONENT_IDS):
+            raise ValueError(
+                "workers must exactly match the identity registry in declaration order"
+            )
         for portable_id in value:
             PortableId(portable_id)
         return value

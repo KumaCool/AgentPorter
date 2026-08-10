@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from .identity import COMPONENT_IDS, INITIAL_PROFILE_NAMES, PRODUCT_ID
 from .models import MarkerV1
-from .render import DISTRIBUTION_OWNED, DISTRIBUTION_VERSION, MINIMUM_HERMES_VERSION
+from .render import DISTRIBUTION_OWNED, DISTRIBUTION_VERSION
 
 _ALLOWED_FILES: Final[set[str]] = {
     "distribution.yaml",
@@ -63,10 +63,9 @@ def _contains_private_endpoint(text: str) -> bool:
 
 def _validate_distribution(data: object, profile_name: str) -> None:
     expected = {
-        "initial_profile_name": profile_name,
-        "distribution_version": DISTRIBUTION_VERSION,
+        "name": profile_name,
+        "version": DISTRIBUTION_VERSION,
         "description": str,
-        "minimum_hermes_version": MINIMUM_HERMES_VERSION,
         "license": "MIT",
         "distribution_owned": list(DISTRIBUTION_OWNED),
     }

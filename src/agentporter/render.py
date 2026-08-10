@@ -11,7 +11,6 @@ from .identity import COMPONENT_IDS, INITIAL_PROFILE_NAMES, PRODUCT_ID
 from .models import HermesProfileName, MarkerV1, WorkersManifest
 
 DISTRIBUTION_VERSION = "0.1.0"
-MINIMUM_HERMES_VERSION = "0.20.0"
 DISTRIBUTION_OWNED = ("SOUL.md", "config.yaml", "agentporter-profile.json")
 
 
@@ -47,10 +46,9 @@ def render_staging(
         directory = staging_root / profile_name
         directory.mkdir(parents=True, exist_ok=False)
         distribution = {
-            "initial_profile_name": profile_name,
-            "distribution_version": DISTRIBUTION_VERSION,
+            "name": profile_name,
+            "version": DISTRIBUTION_VERSION,
             "description": worker.description,
-            "minimum_hermes_version": MINIMUM_HERMES_VERSION,
             "license": "MIT",
             "distribution_owned": list(DISTRIBUTION_OWNED),
         }
