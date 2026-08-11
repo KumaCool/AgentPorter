@@ -7,6 +7,7 @@ import shutil
 import stat
 import tempfile
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Literal, Protocol
@@ -73,6 +74,9 @@ class ArtifactSeal:
     relative_path: str
     sha256: str
     size: int
+    device: int
+    inode: int
+    file_type: int
 
 
 @dataclass(frozen=True)
@@ -248,8 +252,15 @@ def _identity_matches(path: Path, identity: StagingIdentity) -> bool:
     )
 
 
-def _read_artifact(root_fd: int, relative_path: str) -> bytes:
+def _read_artifact(root_fd: int, relative_path: str) -> tuple[bytes, os.stat_result]:
     parts = Path(relative_path).parts
+    if (
+        not parts
+        or Path(relative_path).is_absolute()
+        or any(part in {"", ".", ".."} for part in parts)
+        or "/".join(parts) != relative_path
+    ):
+        raise OSError("artifact relative path is not closed")
     current_fd = os.dup(root_fd)
     try:
         for part in parts[:-1]:
@@ -272,7 +283,7 @@ def _read_artifact(root_fd: int, relative_path: str) -> bytes:
             chunks: list[bytes] = []
             while chunk := os.read(descriptor, 65536):
                 chunks.append(chunk)
-            return b"".join(chunks)
+            return b"".join(chunks), info
         finally:
             os.close(descriptor)
     finally:
@@ -294,21 +305,95 @@ def _capture_artifacts(
     try:
         seals: list[ArtifactSeal] = []
         for relative in expected:
-            content = _read_artifact(root_fd, relative)
-            seals.append(ArtifactSeal(relative, hashlib.sha256(content).hexdigest(), len(content)))
+            content, info = _read_artifact(root_fd, relative)
+            seals.append(
+                ArtifactSeal(
+                    relative,
+                    hashlib.sha256(content).hexdigest(),
+                    len(content),
+                    info.st_dev,
+                    info.st_ino,
+                    stat.S_IFMT(info.st_mode),
+                )
+            )
         return tuple(seals)
     finally:
         os.close(root_fd)
 
 
 def _cleanup_bound(path: Path, identity: StagingIdentity) -> CleanupOutcome:
-    if _identity_matches(path, identity):
-        try:
-            shutil.rmtree(path)
-        except OSError:
-            residual = path if path.exists() else None
-            return CleanupOutcome("failed", "staging cleanup failed", residual)
-        return CleanupOutcome("cleaned", "staging removed")
+    parent_fd: int | None = None
+    staging_fd: int | None = None
+    quarantine_name: str | None = None
+    try:
+        parent_fd = os.open(
+            identity.canonical_parent,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0),
+        )
+        initial = os.stat(identity.basename, dir_fd=parent_fd, follow_symlinks=False)
+        if (
+            initial.st_dev == identity.device
+            and initial.st_ino == identity.inode
+            and stat.S_IFMT(initial.st_mode) == identity.file_type
+            and stat.S_ISDIR(initial.st_mode)
+        ):
+            staging_fd = os.open(
+                identity.basename,
+                os.O_RDONLY
+                | os.O_DIRECTORY
+                | os.O_NOFOLLOW
+                | getattr(os, "O_CLOEXEC", 0),
+                dir_fd=parent_fd,
+            )
+            opened = os.fstat(staging_fd)
+            if opened.st_dev != identity.device or opened.st_ino != identity.inode:
+                return CleanupOutcome("refused", "staging identity changed", path)
+
+            quarantine_name = f".agentporter-cleanup-{uuid4().hex}"
+            os.rename(
+                identity.basename,
+                quarantine_name,
+                src_dir_fd=parent_fd,
+                dst_dir_fd=parent_fd,
+            )
+            isolated = os.stat(quarantine_name, dir_fd=parent_fd, follow_symlinks=False)
+            if isolated.st_dev != opened.st_dev or isolated.st_ino != opened.st_ino:
+                try:
+                    os.stat(identity.basename, dir_fd=parent_fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    with suppress(OSError):
+                        os.rename(
+                            quarantine_name,
+                            identity.basename,
+                            src_dir_fd=parent_fd,
+                            dst_dir_fd=parent_fd,
+                        )
+                residual = identity.canonical_parent / quarantine_name
+                if not residual.exists() and not residual.is_symlink():
+                    residual = path if path.exists() or path.is_symlink() else None
+                return CleanupOutcome(
+                    "refused", "staging identity changed during cleanup", residual
+                )
+
+            shutil.rmtree(quarantine_name, dir_fd=parent_fd)
+            return CleanupOutcome("cleaned", "staging removed")
+    except FileNotFoundError:
+        pass
+    except OSError:
+        residual = (
+            identity.canonical_parent / quarantine_name
+            if quarantine_name is not None
+            else path
+        )
+        if not residual.exists() and not residual.is_symlink():
+            residual = None
+        return CleanupOutcome("failed", "staging cleanup failed", residual)
+    finally:
+        if staging_fd is not None:
+            os.close(staging_fd)
+        if parent_fd is not None:
+            os.close(parent_fd)
+
     try:
         entries = tuple(identity.canonical_parent.iterdir())
     except OSError:

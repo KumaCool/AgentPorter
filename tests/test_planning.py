@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from dataclasses import FrozenInstanceError, asdict, replace
 from pathlib import Path
@@ -315,6 +316,21 @@ def test_artifact_change_makes_revalidation_and_confirmation_stale(tmp_path: Pat
     assert cleanup_staging(plan).status == "cleaned"
 
 
+def test_artifact_same_bytes_replacement_inode_makes_plan_stale(tmp_path: Path) -> None:
+    plan = plan_installation(
+        _detection(tmp_path), _manifest(tmp_path), staging_parent=tmp_path / "staging"
+    )
+    assert plan.staging_dir is not None
+    artifact = plan.staging_dir / plan.workers[0].profile_name / "config.yaml"
+    replacement = artifact.with_name("replacement")
+    replacement.write_bytes(artifact.read_bytes())
+    os.replace(replacement, artifact)
+
+    assert not revalidate_install_plan(plan)
+    assert not confirm_install_plan(plan, plan.confirmation_token)
+    assert cleanup_staging(plan).status == "cleaned"
+
+
 def test_revalidation_rejects_changed_detection_and_plan_repr_hides_staging_path(
     tmp_path: Path,
 ) -> None:
@@ -356,6 +372,72 @@ def test_cleanup_refuses_replacement_symlink_and_renamed_original(tmp_path: Path
     assert original.is_symlink()
     original.unlink()
     shutil.rmtree(renamed)
+
+
+def test_cleanup_race_never_deletes_replacement_inode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = plan_installation(
+        _detection(tmp_path), _manifest(tmp_path), staging_parent=tmp_path / "staging"
+    )
+    assert plan.staging_dir is not None
+    original = plan.staging_dir
+    moved = original.with_name("moved-original")
+    real_rename = os.rename
+    raced = False
+
+    def replace_at_rename(
+        src: str,
+        dst: str,
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        nonlocal raced
+        if not raced and src == original.name and src_dir_fd is not None:
+            raced = True
+            real_rename(src, moved.name, src_dir_fd=src_dir_fd, dst_dir_fd=src_dir_fd)
+            os.mkdir(src, dir_fd=src_dir_fd)
+            marker_fd = os.open(
+                f"{src}/replacement-marker", os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=src_dir_fd
+            )
+            os.close(marker_fd)
+        real_rename(src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
+
+    monkeypatch.setattr("agentporter.planning.os.rename", replace_at_rename)
+    outcome = cleanup_staging(plan)
+
+    assert raced
+    assert outcome.status == "refused"
+    assert (original / "replacement-marker").is_file()
+    assert moved.is_dir()
+    shutil.rmtree(original)
+    shutil.rmtree(moved)
+
+
+def test_cleanup_isolates_before_rmtree_so_original_name_replacement_survives(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = plan_installation(
+        _detection(tmp_path), _manifest(tmp_path), staging_parent=tmp_path / "staging"
+    )
+    assert plan.staging_dir is not None
+    original = plan.staging_dir
+    real_rmtree = shutil.rmtree
+
+    def replace_at_rmtree(path: str, *, dir_fd: int | None = None) -> None:
+        assert dir_fd is not None
+        assert path != original.name
+        original.mkdir()
+        (original / "replacement-marker").write_text("keep", encoding="utf-8")
+        real_rmtree(path, dir_fd=dir_fd)
+
+    monkeypatch.setattr("agentporter.planning.shutil.rmtree", replace_at_rmtree)
+    outcome = cleanup_staging(plan)
+
+    assert outcome.status == "cleaned"
+    assert (original / "replacement-marker").read_text(encoding="utf-8") == "keep"
+    real_rmtree(original)
 
 
 def test_unexpected_runtime_error_propagates_after_identity_cleanup(
