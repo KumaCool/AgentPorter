@@ -91,24 +91,71 @@ def test_success_returns_installed_without_compensation(monkeypatch: pytest.Monk
 
 
 @pytest.mark.parametrize(
-    "install_status",
-    [
-        InstallWorkflowStatus.ATTEMPT_NO_REMNANT,
-        InstallWorkflowStatus.UNCERTAIN_REMNANT,
-        InstallWorkflowStatus.READBACK_FAILED,
-        InstallWorkflowStatus.DESCRIPTION_FAILED,
-        InstallWorkflowStatus.COLLECTION_FAILED,
-    ],
-)
-@pytest.mark.parametrize(
-    ("compensation_status", "expected_status"),
+    (
+        "install_status",
+        "compensation_status",
+        "has_uncertain",
+        "expected_status",
+    ),
     [
         (
+            InstallWorkflowStatus.ATTEMPT_NO_REMNANT,
             CompensationStatus.COMPENSATED,
+            False,
             InstallTransactionStatus.INSTALLATION_FAILED_COMPENSATED,
         ),
         (
+            InstallWorkflowStatus.UNCERTAIN_REMNANT,
+            CompensationStatus.COMPENSATED,
+            True,
+            InstallTransactionStatus.COMPENSATION_INCOMPLETE,
+        ),
+        (
+            InstallWorkflowStatus.READBACK_FAILED,
+            CompensationStatus.COMPENSATED,
+            True,
+            InstallTransactionStatus.COMPENSATION_INCOMPLETE,
+        ),
+        (
+            InstallWorkflowStatus.DESCRIPTION_FAILED,
+            CompensationStatus.COMPENSATED,
+            True,
+            InstallTransactionStatus.COMPENSATION_INCOMPLETE,
+        ),
+        (
+            InstallWorkflowStatus.COLLECTION_FAILED,
+            CompensationStatus.COMPENSATED,
+            True,
+            InstallTransactionStatus.COMPENSATION_INCOMPLETE,
+        ),
+        (
+            InstallWorkflowStatus.ATTEMPT_NO_REMNANT,
             CompensationStatus.INCOMPLETE,
+            False,
+            InstallTransactionStatus.COMPENSATION_INCOMPLETE,
+        ),
+        (
+            InstallWorkflowStatus.UNCERTAIN_REMNANT,
+            CompensationStatus.INCOMPLETE,
+            True,
+            InstallTransactionStatus.COMPENSATION_INCOMPLETE,
+        ),
+        (
+            InstallWorkflowStatus.READBACK_FAILED,
+            CompensationStatus.INCOMPLETE,
+            True,
+            InstallTransactionStatus.COMPENSATION_INCOMPLETE,
+        ),
+        (
+            InstallWorkflowStatus.DESCRIPTION_FAILED,
+            CompensationStatus.INCOMPLETE,
+            True,
+            InstallTransactionStatus.COMPENSATION_INCOMPLETE,
+        ),
+        (
+            InstallWorkflowStatus.COLLECTION_FAILED,
+            CompensationStatus.INCOMPLETE,
+            True,
             InstallTransactionStatus.COMPENSATION_INCOMPLETE,
         ),
     ],
@@ -117,13 +164,16 @@ def test_ordinary_failure_compensates_only_verified_and_maps_status(
     monkeypatch: pytest.MonkeyPatch,
     install_status: InstallWorkflowStatus,
     compensation_status: CompensationStatus,
+    has_uncertain: bool,
     expected_status: InstallTransactionStatus,
 ) -> None:
+    confirmed = ("first", "uncertain-confirmed") if has_uncertain else ("first",)
+    attempts = ("first", "uncertain-attempt") if has_uncertain else ("first", "second")
     install = _install_result(
         install_status,
-        confirmed=("first", "uncertain-confirmed"),
+        confirmed=confirmed,
         verified=("first",),
-        attempts=("first", "uncertain-attempt"),
+        attempts=attempts,
     )
     compensation = CompensationResult(compensation_status, ())
     calls: list[tuple[str, object]] = []
@@ -145,7 +195,8 @@ def test_ordinary_failure_compensates_only_verified_and_maps_status(
     assert result.status is expected_status
     assert result.install is install
     assert result.compensation is compensation
-    assert result.remaining_uncertain == ("uncertain-confirmed", "uncertain-attempt")
+    expected_uncertain = ("uncertain-confirmed", "uncertain-attempt") if has_uncertain else ()
+    assert result.remaining_uncertain == expected_uncertain
     assert calls == [("install", plan), ("compensate", install.verified_compensable)]
 
 
@@ -199,6 +250,29 @@ def test_second_no_remnant_failure_compensates_first_verified_profile(
 
     assert observed == [install.verified_compensable]
     assert result.remaining_uncertain == ()
+
+
+def test_compensated_status_requires_zero_uncertain_remnants(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    install = _install_result(
+        InstallWorkflowStatus.UNCERTAIN_REMNANT,
+        attempts=("uncertain-attempt",),
+    )
+
+    def fake_install(plan: object, **kwargs: object) -> InstallWorkflowResult:
+        return install
+
+    def fake_compensate(*args: object, **kwargs: object) -> CompensationResult:
+        return CompensationResult(CompensationStatus.COMPENSATED, ())
+
+    monkeypatch.setattr("agentporter.transaction.install_confirmed_plan", fake_install)
+    monkeypatch.setattr("agentporter.transaction.compensate_profiles", fake_compensate)
+
+    result = execute_install_transaction(object(), **_kwargs())  # type: ignore[arg-type]
+
+    assert result.status is InstallTransactionStatus.COMPENSATION_INCOMPLETE
+    assert result.remaining_uncertain == ("uncertain-attempt",)
 
 
 @pytest.mark.parametrize("error", [KeyboardInterrupt("private"), SystemExit(19)])

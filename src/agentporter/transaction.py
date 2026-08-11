@@ -120,7 +120,7 @@ def execute_install_transaction(
             uncertain.append(attempt.profile_name)
     status = (
         InstallTransactionStatus.INSTALLATION_FAILED_COMPENSATED
-        if compensation.status is CompensationStatus.COMPENSATED
+        if compensation.status is CompensationStatus.COMPENSATED and not uncertain
         else InstallTransactionStatus.COMPENSATION_INCOMPLETE
     )
     return InstallTransactionResult(status, install, compensation, tuple(uncertain))

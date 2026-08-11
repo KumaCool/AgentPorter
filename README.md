@@ -2,7 +2,7 @@
 
 AgentPorter is an open-source installer for reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) Worker profiles.
 
-> **Project status:** The Hermes-first install/uninstall design and both plans are accepted. Installer, uninstaller, benchmark tooling, automated tests, and real Hermes/Worker acceptance have not started.
+> **Project status:** The Hermes-first design and implementation Phases 1–3 are complete: the repository includes a runnable one-shot installer, automated tests, and isolated Hermes v0.20 install/readback/compensation exercises. The standalone uninstaller (Phase 4), complete acceptance campaign (Phase 5), and release packaging (Phase 6) remain unfinished.
 
 ## First product goal
 
@@ -25,7 +25,7 @@ Hermes already provides the mature primitives AgentPorter needs:
 - Kanban assignment and worktree-backed execution;
 - distribution installation that excludes credentials and user runtime state.
 
-AgentPorter will orchestrate these primitives rather than reimplementing Profile storage, Git distribution, task queues, or worktree management.
+AgentPorter orchestrates these primitives rather than reimplementing Profile storage, Git distribution, task queues, or worktree management.
 
 ## Product boundary
 
@@ -36,9 +36,12 @@ The standalone uninstaller is a guarded cleanup escape hatch, not a management i
 ## Current repository contents
 
 - `workers.yaml` — portable Worker definitions and requested model preferences;
-- `docs/` — Hermes-first architecture, Worker format, Adapter mapping, consolidated install/uninstall design, acceptance matrix, and implementation plan.
+- `install.py` and the `agentporter` entry point — the runnable one-shot installer;
+- `src/agentporter/` — validation, staging, confirmation, native installation, static readback, and bounded compensation implementation;
+- `tests/` — unit, adversarial filesystem, transaction, and isolated real-Hermes tests;
+- `docs/` — architecture, Worker format, Adapter mapping, install/uninstall design, acceptance matrix, and implementation plans.
 
-There is currently no runnable AgentPorter installer or uninstaller artifact.
+The independent uninstaller is still a Phase 4 skeleton; the project is not yet a release candidate.
 
 ## Codex scope
 

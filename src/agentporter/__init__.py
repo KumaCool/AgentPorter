@@ -4,11 +4,36 @@ from __future__ import annotations
 
 import os
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 
 from .application import run_installer
 from .transaction import InstallTransactionStatus
 from .workflow import WorkflowStatus
+
+_ENTRY_ENV_ALLOWLIST = frozenset(
+    {
+        "HOME",
+        "HERMES_HOME",
+        "PATH",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "PYTHONIOENCODING",
+        "SYSTEMROOT",
+        "WINDIR",
+        "COMSPEC",
+        "PATHEXT",
+        "TMP",
+        "TEMP",
+        "TMPDIR",
+    }
+)
+
+
+def _minimal_install_environment(source: Mapping[str, str]) -> dict[str, str]:
+    """Copy only non-credential process state required by Hermes CLI execution."""
+    return {key: source[key] for key in _ENTRY_ENV_ALLOWLIST if source.get(key)}
 
 
 def run_product_installer() -> None:
@@ -18,7 +43,7 @@ def run_product_installer() -> None:
         result = run_installer(
             manifest,
             Path(temporary),
-            dict(os.environ),
+            _minimal_install_environment(os.environ),
         )
     if result.workflow.status is WorkflowStatus.CANCELLED:
         raise SystemExit("AgentPorter installation cancelled")

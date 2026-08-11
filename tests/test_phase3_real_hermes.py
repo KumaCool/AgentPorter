@@ -247,7 +247,7 @@ def test_real_hermes_nonzero_after_first_install_is_uncertain_and_never_product_
     first, second = plan.workers
     assert result.install.status is InstallWorkflowStatus.UNCERTAIN_REMNANT
     assert result.install.verified_compensable == ()
-    assert result.status is InstallTransactionStatus.INSTALLATION_FAILED_COMPENSATED
+    assert result.status is InstallTransactionStatus.COMPENSATION_INCOMPLETE
     assert result.remaining_uncertain == (first.profile_name,)
     assert (detection.profiles_root / first.profile_name).is_dir()
     assert not (detection.profiles_root / second.profile_name).exists()
