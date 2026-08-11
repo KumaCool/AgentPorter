@@ -4,7 +4,7 @@
 
 - **产品方向：** Hermes-first 已确认；
 - **设计与计划：** Plan 01、合并设计与独立 Plan 02 均已确认；
-- **代码与测试：** Phase 1 已完成；Phase 2 的集合预检、不可变封印计划、非秘密 provider 选择、单次确认、确认前后重验、identity-bound staging 清理和统一 `shell=False` 执行边界已实现并通过门禁；Phase 3–6 尚未实现；
+- **代码与测试：** Phase 1–2 已完成；Phase 3 的正式一次性安装入口、原生安装、description 设置与静态读回、逐项可补偿快照、集合验证、有限反向补偿及故障归类已实现，并通过临时根 Hermes v0.20 真实演练；Phase 4–6 尚未实现；
 - **真实 Hermes 验收与发布：** Phase 1 仅完成临时根下的原生 parser/install 契约验证；正式入口、完整集成验收与发布尚未开始；
 - **Codex CLI Adapter：** 仅保留未来边界，不在当前计划内；Hermes Profile `codex-5-3-small-worker` 仍属于第一版 Worker 集。
 
@@ -36,7 +36,7 @@
 
 ## 4. Phase 2：集合预检、计划与确认
 
-**当前状态：** 实现、组合测试与完整机械门禁已完成，等待本阶段集中语义复审。`configuration-required` 仍可静态安装和确认，但不代表运行配置完成；Phase 2 不执行原生安装。
+**当前状态：** 已通过本阶段集中语义复审。`configuration-required` 仍可静态安装和确认，但不代表运行配置完成；Phase 2 不执行原生安装。
 
 ### RED/GREEN
 
@@ -52,6 +52,8 @@
 完成 `INS-01`–`INS-04` 的 focused 覆盖，并为 `GATE-05` 提供统一命令执行器证据；GATE 不在本阶段关闭。
 
 ## 5. Phase 3：原生安装、读回与补偿
+
+**当前状态：** 实现、完整机械门禁及临时根真实 Hermes v0.20 安装/读回/补偿演练已完成，等待本阶段集中语义复审。该状态关闭 Phase 3 实现项，不提前关闭 Phase 6 的最终 GATE。
 
 ### RED/GREEN
 
