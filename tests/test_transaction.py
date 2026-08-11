@@ -276,12 +276,41 @@ def test_compensated_status_requires_zero_uncertain_remnants(
 
 
 @pytest.mark.parametrize("error", [KeyboardInterrupt("private"), SystemExit(19)])
+def test_install_baseexception_with_uncertain_state_reports_incomplete_compensation(
+    monkeypatch: pytest.MonkeyPatch,
+    error: BaseException,
+) -> None:
+    install = _install_result(
+        InstallWorkflowStatus.UNCERTAIN_REMNANT,
+        attempts=("uncertain-attempt",),
+    )
+    error.install_workflow_result = install  # type: ignore[attr-defined]
+
+    def fail_install(plan: object, **kwargs: object) -> InstallWorkflowResult:
+        raise error
+
+    def compensate(readbacks: object, **kwargs: object) -> CompensationResult:
+        return CompensationResult(CompensationStatus.COMPENSATED, ())
+
+    monkeypatch.setattr("agentporter.transaction.install_confirmed_plan", fail_install)
+    monkeypatch.setattr("agentporter.transaction.compensate_profiles", compensate)
+
+    with pytest.raises(type(error)) as raised:
+        execute_install_transaction(object(), **_kwargs())  # type: ignore[arg-type]
+
+    assert raised.value is error
+    assert any("compensation incomplete" in note for note in error.__notes__)
+    assert not any("compensation completed" in note for note in error.__notes__)
+    assert all("uncertain-attempt" not in note for note in error.__notes__)
+
+
+@pytest.mark.parametrize("error", [KeyboardInterrupt("private"), SystemExit(19)])
 def test_install_baseexception_compensates_attached_verified_then_propagates_original(
     monkeypatch: pytest.MonkeyPatch, error: BaseException
 ) -> None:
     install = _install_result(
         InstallWorkflowStatus.READBACK_FAILED,
-        confirmed=("first", "unverified"),
+        confirmed=("first",),
         verified=("first",),
     )
     error.install_workflow_result = install  # type: ignore[attr-defined]
@@ -305,7 +334,7 @@ def test_install_baseexception_compensates_attached_verified_then_propagates_ori
     assert raised.value is error
     assert events == ["install", "compensate"]
     assert any("compensation completed" in note for note in error.__notes__)
-    assert all("first" not in note and "unverified" not in note for note in error.__notes__)
+    assert all("first" not in note for note in error.__notes__)
 
 
 def test_compensation_baseexception_does_not_mask_install_baseexception(

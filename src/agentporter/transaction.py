@@ -39,6 +39,21 @@ class InstallTransactionResult:
     remaining_uncertain: tuple[str, ...]
 
 
+def _remaining_uncertain(install: InstallWorkflowResult) -> tuple[str, ...]:
+    verified_names = {item.worker.profile_name for item in install.verified_compensable}
+    uncertain: list[str] = []
+    for attempt in install.confirmed_created:
+        if attempt.profile_name not in verified_names and attempt.profile_name not in uncertain:
+            uncertain.append(attempt.profile_name)
+    for attempt in install.attempts:
+        if (
+            attempt.classification is AttemptClassification.UNCERTAIN_REMNANT
+            and attempt.profile_name not in uncertain
+        ):
+            uncertain.append(attempt.profile_name)
+    return tuple(uncertain)
+
+
 def execute_install_transaction(
     plan: InstallPlan,
     *,
@@ -94,7 +109,8 @@ def execute_install_transaction(
         except BaseException:
             error.add_note("AgentPorter compensation interrupted; outcome is not verified")
         else:
-            if outcome.status is CompensationStatus.COMPENSATED:
+            exception_uncertain = _remaining_uncertain(state)
+            if outcome.status is CompensationStatus.COMPENSATED and not exception_uncertain:
                 error.add_note("AgentPorter compensation completed and was verified")
             else:
                 error.add_note("AgentPorter compensation incomplete; manual review required")
@@ -107,20 +123,10 @@ def execute_install_transaction(
             (),
         )
     compensation = compensate(install)
-    verified_names = {item.worker.profile_name for item in install.verified_compensable}
-    uncertain: list[str] = []
-    for attempt in install.confirmed_created:
-        if attempt.profile_name not in verified_names and attempt.profile_name not in uncertain:
-            uncertain.append(attempt.profile_name)
-    for attempt in install.attempts:
-        if (
-            attempt.classification is AttemptClassification.UNCERTAIN_REMNANT
-            and attempt.profile_name not in uncertain
-        ):
-            uncertain.append(attempt.profile_name)
+    uncertain = _remaining_uncertain(install)
     status = (
         InstallTransactionStatus.INSTALLATION_FAILED_COMPENSATED
         if compensation.status is CompensationStatus.COMPENSATED and not uncertain
         else InstallTransactionStatus.COMPENSATION_INCOMPLETE
     )
-    return InstallTransactionResult(status, install, compensation, tuple(uncertain))
+    return InstallTransactionResult(status, install, compensation, uncertain)
