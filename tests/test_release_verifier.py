@@ -240,7 +240,8 @@ def test_release_workflow_docs_urls_and_pyright_contract() -> None:
     assert "hermes-agent==${HERMES_VERSION}" not in workflow
     assert "sudo python -m venv" not in workflow
     assert 'ACCEPTANCE_PYTHON="$(python -c' in workflow
-    assert '"${ACCEPTANCE_PYTHON}" -m venv hermes-acceptance-venv' in workflow
+    assert 'sudo "${ACCEPTANCE_PYTHON}" -m venv /usr/local/lib/hermes-agent/venv' in workflow
+    assert "sudo mv hermes-acceptance-venv" not in workflow
     assert "NousResearch/AgentPorter" not in "\n".join(
         path.read_text(encoding="utf-8")
         for path in repository.rglob("*.md")
