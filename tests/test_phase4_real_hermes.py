@@ -38,7 +38,7 @@ from agentporter.uninstall_planning import (
 )
 
 HERMES = Path("/usr/local/lib/hermes-agent/venv/bin/hermes")
-MANIFEST = Path(__file__).parents[1] / "workers.yaml"
+MANIFEST = Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml"
 MODEL_COMMANDS = frozenset({"chat", "run"})
 RENAMED = ("zz-phase4-renamed-luna", "aa-phase4-renamed-orion")
 

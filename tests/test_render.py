@@ -13,7 +13,7 @@ from agentporter.render import render_staging
 
 
 def test_render_staging_produces_minimal_valid_artifacts_for_both_workers(tmp_path: Path) -> None:
-    manifest = load_manifest(Path(__file__).parents[1] / "workers.yaml")
+    manifest = load_manifest(Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml")
     installation_id = UUID("12345678-1234-4abc-8def-1234567890ab")
 
     rendered = render_staging(manifest, tmp_path, installation_id)
@@ -61,7 +61,7 @@ def test_render_staging_produces_minimal_valid_artifacts_for_both_workers(tmp_pa
 
 
 def test_render_includes_optional_provider_and_mechanical_boundary(tmp_path: Path) -> None:
-    manifest = load_manifest(Path(__file__).parents[1] / "workers.yaml")
+    manifest = load_manifest(Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml")
     worker = manifest.workers["codex_5_3_small_worker"]
     worker.provider = "public-provider"
 

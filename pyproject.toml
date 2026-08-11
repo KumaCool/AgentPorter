@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentporter"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Hermes-first portable Worker profile installer"
 requires-python = ">=3.11"
 dependencies = ["pydantic>=2,<3", "PyYAML>=6,<7"]
@@ -14,9 +14,16 @@ dev = ["pytest>=9,<10", "pyright>=1.1.411,<2", "ruff>=0.12,<1"]
 
 [project.scripts]
 agentporter = "agentporter:main"
+agentporter-uninstall = "agentporter.uninstall_entry:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[tool.setuptools.dynamic]
+version = {attr = "agentporter.__version__"}
+
+[tool.setuptools.package-data]
+"agentporter.resources" = ["workers.yaml"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

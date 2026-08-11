@@ -5,11 +5,14 @@ from __future__ import annotations
 import os
 import tempfile
 from collections.abc import Mapping
+from importlib.resources import as_file, files
 from pathlib import Path
 
 from .application import run_installer
 from .transaction import InstallTransactionStatus
 from .workflow import WorkflowStatus
+
+__version__ = "0.1.0"
 
 _ENTRY_ENV_ALLOWLIST = frozenset(
     {
@@ -37,9 +40,12 @@ def _minimal_install_environment(source: Mapping[str, str]) -> dict[str, str]:
 
 
 def run_product_installer() -> None:
-    """Run the one-shot installer against the repository-owned Worker manifest."""
-    manifest = Path(__file__).resolve().parents[2] / "workers.yaml"
-    with tempfile.TemporaryDirectory(prefix="agentporter-run-") as temporary:
+    """Run the one-shot installer against the packaged Worker manifest."""
+    resource = files("agentporter.resources").joinpath("workers.yaml")
+    with (
+        as_file(resource) as manifest,
+        tempfile.TemporaryDirectory(prefix="agentporter-run-") as temporary,
+    ):
         result = run_installer(
             manifest,
             Path(temporary),
@@ -58,4 +64,4 @@ def main() -> None:
     run_product_installer()
 
 
-__all__ = ["main", "run_product_installer"]
+__all__ = ["__version__", "main", "run_product_installer"]

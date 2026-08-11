@@ -15,7 +15,7 @@ from agentporter.security import StagingViolation, scan_staging
 
 
 def _valid_staging(tmp_path: Path) -> Path:
-    manifest = load_manifest(Path(__file__).parents[1] / "workers.yaml")
+    manifest = load_manifest(Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml")
     render_staging(manifest, tmp_path, UUID("12345678-1234-4abc-8def-1234567890ab"))
     return tmp_path
 

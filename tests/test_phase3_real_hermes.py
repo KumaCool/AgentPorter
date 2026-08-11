@@ -19,7 +19,7 @@ from agentporter.transaction import InstallTransactionStatus, execute_install_tr
 from agentporter.workflow import render_plan_text
 
 HERMES = Path("/usr/local/lib/hermes-agent/venv/bin/hermes")
-MANIFEST = Path(__file__).parents[1] / "workers.yaml"
+MANIFEST = Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml"
 MODEL_COMMANDS = frozenset({"chat", "run"})
 
 

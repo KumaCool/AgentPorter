@@ -17,7 +17,11 @@ INSTALLATION_ID = UUID("12345678-1234-4abc-8def-1234567890ab")
 
 
 def _manifest(tmp_path: Path) -> Path:
-    data = yaml.safe_load((Path(__file__).parents[1] / "workers.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load(
+        (Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
     for worker in data["workers"].values():
         worker["provider"] = "static-public-provider"
     path = tmp_path / "workers.yaml"

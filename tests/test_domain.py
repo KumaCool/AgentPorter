@@ -18,7 +18,7 @@ from agentporter.models import (
 
 
 def test_repository_manifest_is_closed_and_typed() -> None:
-    manifest = load_manifest(Path(__file__).parents[1] / "workers.yaml")
+    manifest = load_manifest(Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml")
 
     assert isinstance(manifest, WorkersManifest)
     assert manifest.version == 1

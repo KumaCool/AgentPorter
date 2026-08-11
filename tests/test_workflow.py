@@ -27,7 +27,7 @@ INSTALLATION_ID = UUID("12345678-1234-4abc-8def-1234567890ab")
 
 
 def _manifest(tmp_path: Path, *, providers: bool = True) -> Path:
-    source = Path(__file__).parents[1] / "workers.yaml"
+    source = Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml"
     data = yaml.safe_load(source.read_text(encoding="utf-8"))
     if providers:
         for worker in data["workers"].values():

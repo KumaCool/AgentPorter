@@ -24,7 +24,7 @@ REQUIRED = frozenset({"install", "delete", "describe", "list", "info"})
 
 
 def _plan(tmp_path: Path):
-    source = Path(__file__).parents[1] / "workers.yaml"
+    source = Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml"
     manifest = tmp_path / "workers.yaml"
     data = yaml.safe_load(source.read_text(encoding="utf-8"))
     for worker in data["workers"].values():

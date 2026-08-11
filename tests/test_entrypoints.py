@@ -1,20 +1,14 @@
 from __future__ import annotations
 
-import importlib.util
+import importlib
 import os
-from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
 
 
 def _uninstall_module() -> ModuleType:
-    path = Path(__file__).parents[1] / "uninstall.py"
-    spec = importlib.util.spec_from_file_location("agentporter_uninstall_entry", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return importlib.import_module("agentporter.uninstall_entry")
 
 
 def test_install_entry_is_connected_to_the_phase_3_application(

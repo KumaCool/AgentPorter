@@ -19,11 +19,12 @@ EXPECTED_WORKERS = ("luna_worker", "codex_5_3_small_worker")
 
 
 def _manifest_data() -> dict[str, object]:
-    return yaml.safe_load((REPOSITORY_ROOT / "workers.yaml").read_text(encoding="utf-8"))
+    manifest = REPOSITORY_ROOT / "src/agentporter/resources/workers.yaml"
+    return yaml.safe_load(manifest.read_text(encoding="utf-8"))
 
 
 def test_distribution_uses_only_phase_1_native_hermes_fields(tmp_path: Path) -> None:
-    manifest = load_manifest(REPOSITORY_ROOT / "workers.yaml")
+    manifest = load_manifest(REPOSITORY_ROOT / "src/agentporter/resources/workers.yaml")
 
     rendered = render_staging(manifest, tmp_path, UUID("12345678-1234-4abc-8def-1234567890ab"))
 
@@ -67,7 +68,8 @@ def test_manifest_workers_must_exactly_match_registry_in_declaration_order(
 
 
 def test_load_manifest_rejects_duplicate_worker_key(tmp_path: Path) -> None:
-    source = (REPOSITORY_ROOT / "workers.yaml").read_text(encoding="utf-8")
+    manifest = REPOSITORY_ROOT / "src/agentporter/resources/workers.yaml"
+    source = manifest.read_text(encoding="utf-8")
     duplicate = source.replace(
         "  codex_5_3_small_worker:\n",
         "  luna_worker:\n"
@@ -100,7 +102,7 @@ def test_real_hermes_v020_installs_rendered_distributions_in_temporary_root(
 
     staging = tmp_path / "staging"
     staging.mkdir()
-    manifest = load_manifest(REPOSITORY_ROOT / "workers.yaml")
+    manifest = load_manifest(REPOSITORY_ROOT / "src/agentporter/resources/workers.yaml")
     rendered = render_staging(manifest, staging, UUID("12345678-1234-4abc-8def-1234567890ab"))
     hermes_home = tmp_path / "hermes-home"
     home = tmp_path / "home"

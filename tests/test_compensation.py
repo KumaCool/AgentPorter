@@ -46,7 +46,7 @@ def _outcome(status: CommandStatus, returncode: int | None = None) -> CommandOut
 
 
 def _fixtures(tmp_path: Path) -> tuple[HermesDetection, tuple[InstalledProfileReadback, ...]]:
-    source_manifest = Path(__file__).parents[1] / "workers.yaml"
+    source_manifest = Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml"
     manifest = tmp_path / "workers.yaml"
     data = yaml.safe_load(source_manifest.read_text(encoding="utf-8"))
     for worker in data["workers"].values():

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import builtins
-import importlib.util
+import importlib
 import json
 import os
 import resource
@@ -27,13 +27,8 @@ from agentporter.render import DISTRIBUTION_VERSION
 from agentporter.uninstall_application import UninstallerStatus
 
 HERMES = Path("/usr/local/lib/hermes-agent/venv/bin/hermes")
-MANIFEST = Path(__file__).parents[1] / "workers.yaml"
-_UNINSTALL_SPEC = importlib.util.spec_from_file_location(
-    "agentporter_phase5_uninstall_entry", Path(__file__).parents[1] / "uninstall.py"
-)
-assert _UNINSTALL_SPEC is not None and _UNINSTALL_SPEC.loader is not None
-uninstall_entry = importlib.util.module_from_spec(_UNINSTALL_SPEC)
-_UNINSTALL_SPEC.loader.exec_module(uninstall_entry)
+MANIFEST = Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml"
+uninstall_entry = importlib.import_module("agentporter.uninstall_entry")
 RENAMED = ("phase5-renamed-luna", "phase5-renamed-codex")
 REAL_RUN_INSTALLER = install_application.run_installer
 REAL_RUN_UNINSTALLER = uninstall_entry.run_uninstaller
