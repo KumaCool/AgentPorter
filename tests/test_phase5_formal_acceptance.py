@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+import importlib.util
 import json
 import os
 import resource
@@ -17,7 +18,6 @@ import yaml
 
 import agentporter
 import agentporter.application as install_application
-import uninstall as uninstall_entry
 from agentporter.execution import CommandExecutor
 from agentporter.identity import COMPONENT_IDS, INITIAL_PROFILE_NAMES, PRODUCT_ID
 from agentporter.models import MarkerV1, WorkersManifest
@@ -26,6 +26,12 @@ from agentporter.uninstall_application import UninstallerStatus
 
 HERMES = Path("/usr/local/lib/hermes-agent/venv/bin/hermes")
 MANIFEST = Path(__file__).parents[1] / "workers.yaml"
+_UNINSTALL_SPEC = importlib.util.spec_from_file_location(
+    "agentporter_phase5_uninstall_entry", Path(__file__).parents[1] / "uninstall.py"
+)
+assert _UNINSTALL_SPEC is not None and _UNINSTALL_SPEC.loader is not None
+uninstall_entry = importlib.util.module_from_spec(_UNINSTALL_SPEC)
+_UNINSTALL_SPEC.loader.exec_module(uninstall_entry)
 RENAMED = ("phase5-renamed-luna", "phase5-renamed-codex")
 FORBIDDEN_COMMANDS = frozenset({"chat", "run", "model"})
 REAL_RUN_INSTALLER = install_application.run_installer
@@ -36,7 +42,11 @@ CREDENTIAL_KEYS = frozenset(
 
 
 @pytest.fixture
-def isolated_root(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+def isolated_root(
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[Path]:
+    monkeypatch.delenv("PYTHONIOENCODING", raising=False)
     root = tmp_path_factory.mktemp("phase5-formal")
     try:
         yield root
@@ -215,9 +225,7 @@ def _assert_exact_static_readback(env: Mapping[str, str], names: Sequence[str]) 
     for (portable_id, worker), name in zip(manifest.workers.items(), names, strict=True):
         profile = profiles_root / name
         config = yaml.safe_load((profile / "config.yaml").read_text(encoding="utf-8"))
-        distribution = yaml.safe_load(
-            (profile / "distribution.yaml").read_text(encoding="utf-8")
-        )
+        distribution = yaml.safe_load((profile / "distribution.yaml").read_text(encoding="utf-8"))
         marker = MarkerV1.model_validate_json(
             (profile / "agentporter-profile.json").read_text(encoding="utf-8")
         )
@@ -297,11 +305,14 @@ def test_formal_entries_real_hermes_cold_hot_acceptance_and_resource_baseline(
                 described = _run_cli(runner, env, foreign_cwd, "profile", "describe", name).stdout
                 assert DISTRIBUTION_VERSION in info
                 assert name in shown
-                assert next(
-                    worker.description
-                    for key, worker in _manifest().workers.items()
-                    if INITIAL_PROFILE_NAMES[key] == name
-                ) in described
+                assert (
+                    next(
+                        worker.description
+                        for key, worker in _manifest().workers.items()
+                        if INITIAL_PROFILE_NAMES[key] == name
+                    )
+                    in described
+                )
             _assert_exact_static_readback(env, initial_names)
 
             # This delegate_task child is forbidden from mutating Kanban. Ground the example in
@@ -322,9 +333,7 @@ def test_formal_entries_real_hermes_cold_hot_acceptance_and_resource_baseline(
             assert all(item["on_disk"] is True for item in assignees if item["name"] in RENAMED)
             _assert_exact_static_readback(env, RENAMED)
 
-            uninstall_output, uninstall_seconds = _uninstall_formally(
-                monkeypatch, env, runner
-            )
+            uninstall_output, uninstall_seconds = _uninstall_formally(monkeypatch, env, runner)
             assert "permanently deleted in its entirety" in uninstall_output
             absent_listing = _run_cli(runner, env, foreign_cwd, "profile", "list").stdout
             assert not (set(RENAMED) & _profile_names(absent_listing))
