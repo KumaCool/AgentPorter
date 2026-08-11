@@ -13,9 +13,11 @@ from agentporter.uninstall_discovery import DiscoveryStatus, discover_installati
 from agentporter.uninstall_planning import (
     InteractionStatus,
     PlanStatus,
+    RevalidationStatus,
     build_uninstall_plan,
     render_uninstall_plan,
     revalidate_uninstall_collection,
+    revalidate_uninstall_target,
     run_uninstall_confirmation,
 )
 
@@ -150,6 +152,41 @@ def test_collection_revalidation_fails_closed_for_path_or_identity_mutation(
 
     assert outcome.status is InteractionStatus.STALE
     assert continuations == 0
+
+
+def test_per_target_revalidation_remains_valid_after_an_earlier_target_is_deleted(
+    tmp_path: Path,
+) -> None:
+    plan = build_uninstall_plan(_discover(tmp_path))
+    first, second = plan.targets
+
+    assert revalidate_uninstall_target(plan, first) is RevalidationStatus.VALID
+    for child in first.path.iterdir():
+        child.unlink()
+    first.path.rmdir()
+
+    assert revalidate_uninstall_target(plan, second) is RevalidationStatus.VALID
+
+
+def test_per_target_revalidation_distinguishes_marker_change_from_unsafe_path(
+    tmp_path: Path,
+) -> None:
+    marker_plan = build_uninstall_plan(_discover(tmp_path / "marker"))
+    marker = marker_plan.targets[0].path / MARKER_NAME
+    marker.write_bytes(marker.read_bytes() + b"\n")
+
+    assert (
+        revalidate_uninstall_target(marker_plan, marker_plan.targets[0])
+        is RevalidationStatus.MARKER_CHANGED
+    )
+
+    unsafe_plan = build_uninstall_plan(_discover(tmp_path / "unsafe"))
+    target = unsafe_plan.targets[0]
+    moved = tmp_path / "moved-target"
+    target.path.rename(moved)
+    target.path.symlink_to(moved, target_is_directory=True)
+
+    assert revalidate_uninstall_target(unsafe_plan, target) is RevalidationStatus.UNSAFE_PATH
 
 
 def test_revalidation_capability_check_is_dynamic_and_fail_closed(

@@ -38,6 +38,12 @@ class InteractionStatus(StrEnum):
     STALE = "stale"
 
 
+class RevalidationStatus(StrEnum):
+    VALID = "valid"
+    MARKER_CHANGED = "marker-changed"
+    UNSAFE_PATH = "unsafe-path"
+
+
 class UninstallCandidate(Protocol):
     @property
     def current_name(self) -> str: ...
@@ -284,23 +290,111 @@ def _read_bounded_marker(marker_fd: int) -> bytes | None:
             return None
 
 
+def _valid_revalidation_plan(plan: UninstallPlan) -> bool:
+    return (
+        plan.status is PlanStatus.READY
+        and plan.hermes_home is not None
+        and plan.profiles_root is not None
+        and plan.root_device is not None
+        and plan.root_inode is not None
+        and plan.root_type == stat.S_IFDIR
+        and plan.fingerprint == _fingerprint(replace(plan, fingerprint=""))
+        and _revalidation_supported()
+        and _is_canonical(plan.hermes_home)
+        and _is_canonical(plan.profiles_root)
+        and plan.profiles_root == plan.hermes_home / "profiles"
+        and plan.profiles_root.name == "profiles"
+    )
+
+
+def revalidate_uninstall_target(plan: UninstallPlan, target: TargetSnapshot) -> RevalidationStatus:
+    """Revalidate one sealed target independently immediately before deletion."""
+    if not _valid_revalidation_plan(plan) or target not in plan.targets:
+        return RevalidationStatus.UNSAFE_PATH
+    assert plan.hermes_home is not None
+    assert plan.profiles_root is not None
+    if (
+        target.path != plan.profiles_root / target.current_name
+        or target.path.parent != plan.profiles_root
+    ):
+        return RevalidationStatus.UNSAFE_PATH
+    try:
+        HermesProfileName(target.current_name)
+    except (TypeError, ValueError):
+        return RevalidationStatus.UNSAFE_PATH
+
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    home_fd: int | None = None
+    root_fd: int | None = None
+    profile_fd: int | None = None
+    marker_fd: int | None = None
+    try:
+        home_fd = os.open(plan.hermes_home, directory_flags)
+        root_before = os.stat("profiles", dir_fd=home_fd, follow_symlinks=False)
+        if _stat_identity(root_before) != (
+            plan.root_device,
+            plan.root_inode,
+            plan.root_type,
+        ):
+            return RevalidationStatus.UNSAFE_PATH
+        root_fd = os.open("profiles", directory_flags, dir_fd=home_fd)
+        if _stat_identity(os.fstat(root_fd)) != _stat_identity(root_before):
+            return RevalidationStatus.UNSAFE_PATH
+        profile_before = os.stat(target.current_name, dir_fd=root_fd, follow_symlinks=False)
+        if _stat_identity(profile_before) != (
+            target.profile_device,
+            target.profile_inode,
+            target.profile_type,
+        ):
+            return RevalidationStatus.UNSAFE_PATH
+        profile_fd = os.open(target.current_name, directory_flags, dir_fd=root_fd)
+        if _stat_identity(os.fstat(profile_fd)) != _stat_identity(profile_before):
+            return RevalidationStatus.UNSAFE_PATH
+        marker_before = os.stat(MARKER_NAME, dir_fd=profile_fd, follow_symlinks=False)
+        if _stat_identity(marker_before) != (
+            target.marker_device,
+            target.marker_inode,
+            target.marker_type,
+        ):
+            return RevalidationStatus.MARKER_CHANGED
+        marker_fd = os.open(MARKER_NAME, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=profile_fd)
+        marker_opened = os.fstat(marker_fd)
+        if _stat_identity(marker_opened) != _stat_identity(marker_before):
+            return RevalidationStatus.MARKER_CHANGED
+        payload = _read_bounded_marker(marker_fd)
+        if payload is None or hashlib.sha256(payload).hexdigest() != target.marker_sha256:
+            return RevalidationStatus.MARKER_CHANGED
+        marker = MarkerV1.model_validate_json(payload)
+        if (
+            marker.product_id != target.product_id
+            or marker.component_id != target.component_id
+            or marker.installation_id != target.installation_id
+        ):
+            return RevalidationStatus.MARKER_CHANGED
+        marker_after = os.stat(MARKER_NAME, dir_fd=profile_fd, follow_symlinks=False)
+        profile_after = os.stat(target.current_name, dir_fd=root_fd, follow_symlinks=False)
+        root_after = os.stat("profiles", dir_fd=home_fd, follow_symlinks=False)
+        if _stat_identity(marker_after) != _stat_identity(marker_opened):
+            return RevalidationStatus.MARKER_CHANGED
+        if _stat_identity(profile_after) != _stat_identity(profile_before) or _stat_identity(
+            root_after
+        ) != _stat_identity(root_before):
+            return RevalidationStatus.UNSAFE_PATH
+        return RevalidationStatus.VALID
+    except (OSError, ValueError):
+        return RevalidationStatus.UNSAFE_PATH
+    finally:
+        for descriptor in (marker_fd, profile_fd, root_fd, home_fd):
+            if descriptor is not None:
+                os.close(descriptor)
+
+
 def revalidate_uninstall_collection(plan: UninstallPlan) -> bool:
     """Revalidate every sealed target without searching, renaming, or writing."""
-    if (
-        plan.status is not PlanStatus.READY
-        or plan.hermes_home is None
-        or plan.profiles_root is None
-        or plan.root_device is None
-        or plan.root_inode is None
-        or plan.root_type != stat.S_IFDIR
-        or plan.fingerprint != _fingerprint(replace(plan, fingerprint=""))
-        or not _revalidation_supported()
-        or not _is_canonical(plan.hermes_home)
-        or not _is_canonical(plan.profiles_root)
-        or plan.profiles_root != plan.hermes_home / "profiles"
-        or plan.profiles_root.name != "profiles"
-    ):
+    if not _valid_revalidation_plan(plan):
         return False
+    assert plan.hermes_home is not None
+    assert plan.profiles_root is not None
 
     directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     try:

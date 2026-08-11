@@ -11,13 +11,12 @@ from typing import Protocol
 from .execution import CommandExecutor, CommandOutcome, CommandStatus
 from .hermes import ProfileEntry
 from .models import HermesProfileName
-from .uninstall_planning import PlanStatus, TargetSnapshot, UninstallPlan
-
-
-class RevalidationStatus(StrEnum):
-    VALID = "valid"
-    MARKER_CHANGED = "marker-changed"
-    UNSAFE_PATH = "unsafe-path"
+from .uninstall_planning import (
+    PlanStatus,
+    RevalidationStatus,
+    TargetSnapshot,
+    UninstallPlan,
+)
 
 
 class UninstallItemStatus(StrEnum):

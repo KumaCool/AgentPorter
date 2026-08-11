@@ -1,8 +1,20 @@
 from __future__ import annotations
 
+import importlib.util
 import os
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
 
 import pytest
+
+
+def _uninstall_module() -> ModuleType:
+    path = Path(__file__).parents[1] / "uninstall.py"
+    spec = importlib.util.spec_from_file_location("agentporter_uninstall_entry", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_install_entry_is_connected_to_the_phase_3_application(
@@ -68,3 +80,62 @@ def test_product_entry_forwards_only_minimal_noncredential_environment(
         for marker in ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
     )
     assert os.environ["AUDIT_PROVIDER_API_KEY"] == sentinel
+
+
+def test_uninstall_entry_forwards_only_minimal_noncredential_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uninstall = _uninstall_module()
+    from agentporter.uninstall_application import UninstallerStatus
+
+    captured: dict[str, str] = {}
+    sentinel = "uninstall-sentinel-secret"
+    monkeypatch.setenv("AUDIT_PROVIDER_API_KEY", sentinel)
+    monkeypatch.setenv("PATH", "/safe/bin")
+    monkeypatch.setenv("HOME", "/safe/home")
+    monkeypatch.setenv("HERMES_HOME", "/safe/hermes")
+    monkeypatch.setenv("LANG", "C.UTF-8")
+
+    def fake_uninstaller(env: dict[str, str]) -> object:
+        captured.update(env)
+        return SimpleNamespace(status=UninstallerStatus.ALREADY_ABSENT)
+
+    monkeypatch.setattr(uninstall, "run_uninstaller", fake_uninstaller)
+
+    uninstall.main()
+
+    assert captured == {
+        "HOME": "/safe/home",
+        "HERMES_HOME": "/safe/hermes",
+        "LANG": "C.UTF-8",
+        "PATH": "/safe/bin",
+    }
+    assert sentinel not in captured.values()
+
+
+@pytest.mark.parametrize(
+    ("status", "successful"),
+    [
+        ("already-absent", True),
+        ("deleted", True),
+        ("cancelled", False),
+        ("ambiguous", False),
+        ("stale", False),
+        ("failed", False),
+        ("partial-delete", False),
+    ],
+)
+def test_uninstall_entry_exit_contract(
+    monkeypatch: pytest.MonkeyPatch, status: str, successful: bool
+) -> None:
+    uninstall = _uninstall_module()
+    from agentporter.uninstall_application import UninstallerStatus
+
+    result = SimpleNamespace(status=UninstallerStatus(status))
+    monkeypatch.setattr(uninstall, "run_uninstaller", lambda env: result)
+
+    if successful:
+        uninstall.main()
+    else:
+        with pytest.raises(SystemExit, match=status):
+            uninstall.main()
