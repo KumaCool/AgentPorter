@@ -4,8 +4,8 @@
 
 - **产品方向：** Hermes-first 已确认；
 - **设计与计划：** Plan 01、合并设计与独立 Plan 02 均已确认；
-- **代码与测试：** Phase 1–2 已完成；Phase 3 的正式一次性安装入口、原生安装、description 设置与静态读回、逐项可补偿快照、集合验证、有限反向补偿及故障归类已实现，并通过临时根 Hermes v0.20 真实演练；Phase 4–6 尚未实现；
-- **真实 Hermes 验收与发布：** Phase 1 仅完成临时根下的原生 parser/install 契约验证；正式入口、完整集成验收与发布尚未开始；
+- **代码与测试：** Phase 1–5 已完成：原生分发契约、集合预检与确认、正式安装/静态读回/有限补偿、名称无关独立卸载，以及临时根 Hermes v0.20 正式入口/资源/规模/故障验收均已通过对应阶段集中复审；Phase 6 开源产品化与最终 GATE 尚未完成；
+- **真实 Hermes 验收与发布：** 已完成隔离临时根下正式安装、跨目录读回、批量 rename、正式卸载、冷/热资源基线和 120 次故障循环；Kanban 证据限于 parser 与只读 assignee 枚举，未运行 Worker/模型；尚未构建发布产物、执行跨平台 CI、打标签或发布 GitHub Release；
 - **Codex CLI Adapter：** 仅保留未来边界，不在当前计划内；Hermes Profile `codex-5-3-small-worker` 仍属于第一版 Worker 集。
 
 实施只解释阶段顺序，不重新定义产品语义。文档职责和权威关系见 [合并设计的文档分工](../03-installation-and-uninstall-design.md#1-文档职责与当前状态)；本计划的 Phase 只提供或关闭对应验收证据，其中所有 GATE 仅由 Phase 6 最终关闭。
@@ -88,7 +88,7 @@
 
 ## 7. Phase 5：Hermes 集成验收
 
-**当前状态：** 正式安装/卸载入口的临时根 Hermes v0.20 冷热周期、跨目录读回、批量改名、资源基线，2/10/100/1000 合成根扫描和 120 次故障循环已实现并通过机械门禁；等待本阶段集中语义复审。Phase 6 最终 GATE 仍保持开放。Kanban 证据限于真实 CLI parser 与只读 assignee 枚举，未创建卡片或触发 Worker/模型运行。
+**当前状态：** 正式安装/卸载入口的临时根 Hermes v0.20 冷热周期、跨目录读回、批量改名、资源基线，2/10/100/1000 合成根扫描和 120 次故障循环已实现并通过机械门禁及本阶段集中语义复审。Phase 6 最终 GATE 仍保持开放。Kanban 证据限于真实 CLI parser 与只读 assignee 枚举，未创建卡片或触发 Worker/模型运行。
 
 1. 在干净临时 Hermes 根执行正式安装入口；
 2. 使用原生命令读回 Profile、description、config、SOUL 和标记；
