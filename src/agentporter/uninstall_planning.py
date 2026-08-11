@@ -326,9 +326,7 @@ def revalidate_uninstall_collection(plan: UninstallPlan) -> bool:
                     return False
                 if target.path != plan.profiles_root / target.current_name:
                     return False
-                profile_before = os.stat(
-                    target.current_name, dir_fd=root_fd, follow_symlinks=False
-                )
+                profile_before = os.stat(target.current_name, dir_fd=root_fd, follow_symlinks=False)
                 if _stat_identity(profile_before) != (
                     target.profile_device,
                     target.profile_inode,
@@ -339,18 +337,14 @@ def revalidate_uninstall_collection(plan: UninstallPlan) -> bool:
                 try:
                     if _stat_identity(os.fstat(profile_fd)) != _stat_identity(profile_before):
                         return False
-                    marker_before = os.stat(
-                        MARKER_NAME, dir_fd=profile_fd, follow_symlinks=False
-                    )
+                    marker_before = os.stat(MARKER_NAME, dir_fd=profile_fd, follow_symlinks=False)
                     if _stat_identity(marker_before) != (
                         target.marker_device,
                         target.marker_inode,
                         target.marker_type,
                     ):
                         return False
-                    marker_fd = os.open(
-                        MARKER_NAME, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=profile_fd
-                    )
+                    marker_fd = os.open(MARKER_NAME, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=profile_fd)
                     try:
                         marker_opened = os.fstat(marker_fd)
                         if _stat_identity(marker_opened) != _stat_identity(marker_before):

@@ -72,8 +72,7 @@ def ready_plan(tmp_path: Path):
 
 def enumerate_root(root: Path) -> tuple[ProfileEntry, ...]:
     return tuple(
-        ProfileEntry(path.name, path, ProfileEntryKind.PROFILE)
-        for path in sorted(root.iterdir())
+        ProfileEntry(path.name, path, ProfileEntryKind.PROFILE) for path in sorted(root.iterdir())
     )
 
 
@@ -115,9 +114,7 @@ def test_deletes_each_target_in_plan_order_with_exact_native_argv(tmp_path: Path
         UninstallItemStatus.DELETED,
     ]
     assert validations == names
-    assert calls == [
-        (str(executable), "profile", "delete", name, "--yes") for name in names
-    ]
+    assert calls == [(str(executable), "profile", "delete", name, "--yes") for name in names]
 
 
 def test_first_command_failure_stops_with_delete_failed_even_when_target_absent(
@@ -199,11 +196,7 @@ def test_second_marker_change_stops_without_second_command_as_partial_delete(
     def revalidate(_plan: object, _target: object) -> RevalidationStatus:
         nonlocal validations
         validations += 1
-        return (
-            RevalidationStatus.VALID
-            if validations == 1
-            else RevalidationStatus.MARKER_CHANGED
-        )
+        return RevalidationStatus.VALID if validations == 1 else RevalidationStatus.MARKER_CHANGED
 
     result = execute_uninstall_plan(
         plan,

@@ -154,9 +154,7 @@ def execute_uninstall_plan(
         else:
             item_status = UninstallItemStatus.VERIFICATION_FAILED
             collection_status = UninstallExecutionStatus.VERIFICATION_FAILED
-        items.append(
-            UninstallItemResult(target, item_status, command, profiles_after, path_absent)
-        )
+        items.append(UninstallItemResult(target, item_status, command, profiles_after, path_absent))
         if item_status is not UninstallItemStatus.DELETED:
             if len(items) > 1:
                 collection_status = UninstallExecutionStatus.PARTIAL_DELETE
