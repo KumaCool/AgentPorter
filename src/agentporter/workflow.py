@@ -117,7 +117,7 @@ def confirm_preflight_plan(
         cleanup_verified=False,
     )
     pending_error: BaseException | None = None
-    cleanup_error: BaseException | None = None
+    cleanup_issue: object | None = None
     cleanup_verified = False
     try:
         if _revalidate(plan, current_detection_provider()):
@@ -141,15 +141,21 @@ def confirm_preflight_plan(
         pending_error = error
     finally:
         try:
-            cleanup_verified = _cleanup_verified(cleanup_fn(plan))
+            cleanup_outcome = cleanup_fn(plan)
+            cleanup_verified = _cleanup_verified(cleanup_outcome)
+            if not cleanup_verified:
+                cleanup_issue = cleanup_outcome
+        except Exception as error:
+            cleanup_issue = error
         except BaseException as error:
-            cleanup_error = error
+            if pending_error is None:
+                raise
+            cleanup_issue = error
 
     if pending_error is not None:
         if not cleanup_verified:
-            pending_error.add_note("AgentPorter staging cleanup was not verified")
-            if cleanup_error is not None:
-                pending_error.add_note(f"cleanup failure type: {type(cleanup_error).__name__}")
+            cleanup_type = type(cleanup_issue).__name__
+            pending_error.add_note(f"AgentPorter staging cleanup was not verified ({cleanup_type})")
         raise pending_error
     if not cleanup_verified:
         return WorkflowOutcome(
@@ -175,31 +181,16 @@ def preflight_and_confirm(
     **preflight_kwargs: object,
 ) -> WorkflowOutcome:
     """Production Phase-2 composition from preflight through the sole continuation."""
-    detections: list[HermesDetection] = []
-
-    def recording_detector() -> HermesDetection:
-        detection = detector()
-        detections.append(detection)
-        return detection
-
     plan = planning.preflight_installation(
-        recording_detector,
+        detector,
         manifest_path,
         staging_parent=staging_parent,
         **preflight_kwargs,
     )
-    first = True
-
-    def current_detection() -> HermesDetection:
-        nonlocal first
-        if first and detections:
-            first = False
-            return detections[-1]
-        return detector()
 
     return confirm_preflight_plan(
         plan,
-        current_detection_provider=current_detection,
+        current_detection_provider=detector,
         continuation=continuation,
         input_fn=input_fn,
         output=output,

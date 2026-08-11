@@ -101,7 +101,7 @@ def detect_hermes(
     executable_text = shutil.which("hermes", path=effective_env.get("PATH"))
     if executable_text is None:
         raise DetectionError("Hermes executable was not found")
-    executable = Path(executable_text)
+    executable = Path(executable_text).expanduser().resolve(strict=True)
     version_result = runner((str(executable), "--version"), shell=False, env=effective_env)
     if version_result.returncode != 0:
         raise DetectionError("Hermes version probe failed")
@@ -117,20 +117,23 @@ def detect_hermes(
 
     hermes_home_text = effective_env.get("HERMES_HOME")
     if hermes_home_text:
-        hermes_home = Path(hermes_home_text).expanduser()
+        hermes_home = Path(hermes_home_text).expanduser().resolve(strict=False)
     else:
         user_home_text = effective_env.get("HOME")
         if not user_home_text:
             raise DetectionError("Hermes home could not be resolved")
-        hermes_home = Path(user_home_text) / ".hermes"
+        hermes_home = (Path(user_home_text).expanduser() / ".hermes").resolve(strict=False)
+    profiles_path = hermes_home / "profiles"
+    profile_entries = _enumerate_profiles(profiles_path)
+    profiles_root = profiles_path.resolve(strict=False)
     return HermesDetection(
         executable=executable,
         version=match.group(1),
         hermes_home=hermes_home,
-        profiles_root=hermes_home / "profiles",
+        profiles_root=profiles_root,
         capabilities=HermesCapabilities(
             available_profile_commands=profile_commands,
             missing_profile_commands=required_commands - profile_commands,
         ),
-        profile_entries=_enumerate_profiles(hermes_home / "profiles"),
+        profile_entries=profile_entries,
     )

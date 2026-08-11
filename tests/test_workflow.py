@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import ast
+import hashlib
+import inspect
 from dataclasses import replace
 from io import StringIO
 from pathlib import Path
@@ -9,10 +12,6 @@ from uuid import UUID
 import pytest
 import yaml
 
-from agentporter import manifest as manifest_module
-from agentporter import planning
-from agentporter import render as render_module
-from agentporter import security as security_module
 from agentporter.hermes import HermesCapabilities, HermesDetection, ProfileEntry, ProfileEntryKind
 from agentporter.planning import CleanupOutcome, InstallPlan, cleanup_staging, plan_installation
 from agentporter.workflow import (
@@ -240,15 +239,72 @@ def test_pending_baseexception_is_not_masked_by_cleanup_failure(tmp_path: Path) 
     def interrupt(_: InstallPlan) -> Never:
         raise KeyboardInterrupt("stop")
 
+    def failed_outcome(_: InstallPlan) -> CleanupOutcome:
+        return CleanupOutcome("failed", "sensitive cleanup detail")
+
     with pytest.raises(KeyboardInterrupt, match="stop") as raised:
         _confirm(
             plan,
             tmp_path,
             answer=f"INSTALL AGENTPORTER {plan.fingerprint[:8]}",
             continuation=interrupt,
-            cleanup_fn=lambda _: CleanupOutcome("failed", "synthetic failure"),
+            cleanup_fn=failed_outcome,
         )
-    assert any("cleanup" in note for note in raised.value.__notes__)
+    notes = raised.value.__notes__
+    assert any("CleanupOutcome" in note for note in notes)
+    assert all("sensitive cleanup detail" not in note for note in notes)
+    assert cleanup_staging(plan).status in {"cleaned", "already-absent"}
+
+
+def test_pending_baseexception_records_cleanup_exception_type_without_sensitive_detail(
+    tmp_path: Path,
+) -> None:
+    plan = _plan(tmp_path)
+
+    def interrupt(_: InstallPlan) -> Never:
+        raise KeyboardInterrupt("stop")
+
+    def cleanup_error(_: InstallPlan) -> Never:
+        raise RuntimeError("sensitive cleanup detail")
+
+    with pytest.raises(KeyboardInterrupt, match="stop") as raised:
+        _confirm(
+            plan,
+            tmp_path,
+            answer=f"INSTALL AGENTPORTER {plan.fingerprint[:8]}",
+            continuation=interrupt,
+            cleanup_fn=cleanup_error,
+        )
+    assert any("RuntimeError" in note for note in raised.value.__notes__)
+    assert all("sensitive cleanup detail" not in note for note in raised.value.__notes__)
+    assert cleanup_staging(plan).status in {"cleaned", "already-absent"}
+
+
+@pytest.mark.parametrize("cleanup_error", [KeyboardInterrupt("stop"), SystemExit(17)])
+def test_cleanup_baseexception_without_pending_error_propagates_unchanged(
+    tmp_path: Path, cleanup_error: BaseException
+) -> None:
+    plan = _plan(tmp_path)
+
+    def interrupt_cleanup(_: InstallPlan) -> Never:
+        raise cleanup_error
+
+    with pytest.raises(type(cleanup_error)) as raised:
+        _confirm(plan, tmp_path, cleanup_fn=interrupt_cleanup)
+    assert raised.value is cleanup_error
+    assert cleanup_staging(plan).status in {"cleaned", "already-absent"}
+
+
+def test_cleanup_exception_without_pending_error_is_explicit_typed_failure(tmp_path: Path) -> None:
+    plan = _plan(tmp_path)
+
+    def failed_cleanup(_: InstallPlan) -> Never:
+        raise RuntimeError("sensitive cleanup detail")
+
+    outcome = _confirm(plan, tmp_path, cleanup_fn=failed_cleanup)
+
+    assert outcome.status is WorkflowStatus.CLEANUP_FAILED
+    assert "sensitive cleanup detail" not in outcome.reason
     assert cleanup_staging(plan).status in {"cleaned", "already-absent"}
 
 
@@ -268,7 +324,71 @@ def test_cleanup_refused_or_failed_is_explicit_typed_failure(tmp_path: Path, sta
     assert cleanup_staging(plan).status in {"cleaned", "already-absent"}
 
 
-def test_preflight_and_confirm_is_real_two_detection_composition(tmp_path: Path) -> None:
+def _tree_hash(root: Path) -> str:
+    digest = hashlib.sha256()
+    if not root.exists():
+        return digest.hexdigest()
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        digest.update(relative.encode())
+        if path.is_symlink():
+            digest.update(b"symlink")
+            digest.update(path.readlink().as_posix().encode())
+        elif path.is_file():
+            digest.update(b"file")
+            digest.update(path.read_bytes())
+        else:
+            digest.update(b"directory")
+    return digest.hexdigest()
+
+
+def _forbidden_boundary_calls(source: str) -> list[str]:
+    tree = ast.parse(source)
+    forbidden: list[str] = []
+    profile_mutations = {"install", "delete", "describe"}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = ""
+        if isinstance(node.func, ast.Attribute):
+            parts = [node.func.attr]
+            value = node.func.value
+            while isinstance(value, ast.Attribute):
+                parts.append(value.attr)
+                value = value.value
+            if isinstance(value, ast.Name):
+                parts.append(value.id)
+            name = ".".join(reversed(parts))
+        elif isinstance(node.func, ast.Name):
+            name = node.func.id
+        lowered = name.lower()
+        is_sensitive_api = "credential" in lowered or (
+            "model" in lowered and any(marker in lowered for marker in ("api", "client", "call"))
+        )
+        if lowered.startswith("subprocess.") or is_sensitive_api:
+            forbidden.append(name)
+            continue
+        literals = {
+            value
+            for argument in node.args
+            for value in (
+                [argument.value]
+                if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
+                else [
+                    item.value
+                    for item in argument.elts
+                    if isinstance(item, ast.Constant) and isinstance(item.value, str)
+                ]
+                if isinstance(argument, (ast.Tuple, ast.List))
+                else []
+            )
+        }
+        if "profile" in literals and literals & profile_mutations:
+            forbidden.append(name or "<call>")
+    return forbidden
+
+
+def test_preflight_and_confirm_uses_three_fresh_detections(tmp_path: Path) -> None:
     calls: list[str] = []
     continued: list[InstallPlan] = []
 
@@ -283,7 +403,6 @@ def test_preflight_and_confirm_is_real_two_detection_composition(tmp_path: Path)
     def answer(_: str) -> str:
         calls.append("prompt")
         assert continued == []
-        # The phrase is canonical and can be recovered only from the rendered request.
         fingerprint = output.getvalue().split("Plan fingerprint: ", 1)[1].splitlines()[0]
         return f"INSTALL AGENTPORTER {fingerprint[:8]}"
 
@@ -299,29 +418,101 @@ def test_preflight_and_confirm_is_real_two_detection_composition(tmp_path: Path)
     )
 
     assert outcome.status is WorkflowStatus.CONFIRMED
-    assert calls == ["detect", "prompt", "detect", "continue"]
+    assert calls == ["detect", "detect", "prompt", "detect", "continue"]
     assert len(continued) == 1
     assert continued[0].staging_dir is not None and not continued[0].staging_dir.exists()
 
 
-def test_real_composition_has_no_credential_model_or_hermes_write_seam(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # Guard actual module symbols that the production composition could reach.
-    monkeypatch.setattr(manifest_module, "credential_reader", _forbidden, raising=False)
-    monkeypatch.setattr(manifest_module, "model_caller", _forbidden, raising=False)
-    monkeypatch.setattr(render_module, "hermes_profile_installer", _forbidden, raising=False)
-    monkeypatch.setattr(security_module, "credential_reader", _forbidden, raising=False)
-    monkeypatch.setattr(security_module, "model_caller", _forbidden, raising=False)
-    monkeypatch.setattr(planning, "hermes_profile_installer", _forbidden, raising=False)
-    assert "credential" not in preflight_and_confirm.__annotations__
-    assert "model" not in preflight_and_confirm.__annotations__
-    outcome = preflight_and_confirm(
-        lambda: _detection(tmp_path),
-        _manifest(tmp_path),
-        staging_parent=tmp_path / "staging",
-        continuation=_forbidden,
-        input_fn=lambda _: "cancel",
-        output=StringIO(),
+def test_fresh_conflict_before_prompt_blocks_input_and_continuation(tmp_path: Path) -> None:
+    plan_detection = _detection(tmp_path)
+    conflict_detection = _detection(
+        tmp_path,
+        profile_entries=(
+            ProfileEntry(
+                "luna_worker",
+                plan_detection.profiles_root / "luna_worker",
+                ProfileEntryKind.PROFILE,
+            ),
+        ),
     )
+    detections = iter((plan_detection, conflict_detection))
+    calls: list[str] = []
+
+    def detector() -> HermesDetection:
+        calls.append("detect")
+        return next(detections)
+
+    outcome = preflight_and_confirm(
+        detector,
+        _manifest(tmp_path),
+        staging_parent=tmp_path / "external-staging",
+        continuation=_forbidden,
+        input_fn=_forbidden,
+        output=StringIO(),
+        installation_id_factory=lambda: INSTALLATION_ID,
+    )
+
+    assert outcome.status is WorkflowStatus.REJECTED
+    assert calls == ["detect", "detect"]
+
+
+@pytest.mark.parametrize("answer", ["cancel", ""])
+def test_preflight_cancel_does_not_modify_real_hermes_home(
+    tmp_path: Path, answer: str
+) -> None:
+    hermes_home = tmp_path / "actual-hermes-home"
+    profiles = hermes_home / "profiles"
+    profiles.mkdir(parents=True)
+    (profiles / "existing-profile").mkdir()
+    (profiles / "existing-profile" / "config.yaml").write_text("preserve: true\n")
+    detection = replace(
+        _detection(tmp_path), hermes_home=hermes_home, profiles_root=profiles
+    )
+    before = _tree_hash(hermes_home)
+    staging_parent = tmp_path / "external-staging"
+    assert not staging_parent.is_relative_to(hermes_home)
+
+    outcome = preflight_and_confirm(
+        lambda: detection,
+        _manifest(tmp_path),
+        staging_parent=staging_parent,
+        continuation=_forbidden,
+        input_fn=lambda _: answer,
+        output=StringIO(),
+        installation_id_factory=lambda: INSTALLATION_ID,
+    )
+
     assert outcome.status is WorkflowStatus.CANCELLED
+    assert _tree_hash(hermes_home) == before
+
+
+def test_composition_exposes_only_one_write_seam() -> None:
+    signature = inspect.signature(preflight_and_confirm)
+    callable_parameters = {
+        name
+        for name, parameter in signature.parameters.items()
+        if "Callable" in str(parameter.annotation)
+    }
+    assert callable_parameters == {"detector", "continuation", "input_fn"}
+    assert "cleanup_fn" not in signature.parameters
+
+
+def test_phase2_preconfirmation_modules_have_no_forbidden_boundary_calls() -> None:
+    source_root = Path(__file__).parents[1] / "src" / "agentporter"
+    for name in ("planning.py", "workflow.py", "interaction.py", "execution.py"):
+        source = (source_root / name).read_text(encoding="utf-8")
+        assert _forbidden_boundary_calls(source) == [], name
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import subprocess\nsubprocess.run(['hermes', 'profile', 'install'])\n",
+        "credential_api()\n",
+        "model_client.call()\n",
+        "runner(('hermes', 'profile', 'delete'))\n",
+        "runner(['hermes', 'profile', 'describe'])\n",
+    ],
+)
+def test_forbidden_boundary_inventory_positive_controls(source: str) -> None:
+    assert _forbidden_boundary_calls(source)

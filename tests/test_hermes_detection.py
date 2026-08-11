@@ -223,6 +223,76 @@ def test_detect_uses_home_only_as_isolated_fallback_when_hermes_home_is_unset(
     assert result.hermes_home == fallback_home
 
 
+def test_detect_canonicalizes_relative_which_and_home_paths_before_cwd_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    origin = tmp_path / "origin"
+    executable = origin / "bin" / "hermes"
+    executable.parent.mkdir(parents=True)
+    executable.touch(mode=0o700)
+    home = origin / "state"
+    (home / "profiles" / "existing").mkdir(parents=True)
+    canonical_executable = executable.resolve(strict=True)
+    canonical_home = home.resolve(strict=False)
+    runner = RecordingRunner(
+        {
+            (str(canonical_executable), "--version"): completed(
+                (str(canonical_executable), "--version"), "Hermes v2.0.0"
+            ),
+            (str(canonical_executable), "profile", "--help"): completed(
+                (str(canonical_executable), "profile", "--help"),
+                "install delete describe list info",
+            ),
+        }
+    )
+    monkeypatch.chdir(origin)
+
+    result = detect_hermes(
+        env={"PATH": "bin", "HERMES_HOME": "state/../state"}, runner=runner
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert result.executable == canonical_executable
+    assert result.hermes_home == canonical_home
+    assert result.profiles_root == canonical_home / "profiles"
+    assert result.profile_entries[0].path == canonical_home / "profiles" / "existing"
+    assert all(
+        path.is_absolute()
+        for path in (result.executable, result.hermes_home, result.profiles_root)
+    )
+    assert [call[0][0] for call in runner.calls] == [str(canonical_executable)] * 2
+
+
+def test_detect_canonicalizes_relative_home_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    origin = tmp_path / "origin"
+    executable = origin / "bin" / "hermes"
+    executable.parent.mkdir(parents=True)
+    executable.touch(mode=0o700)
+    fallback = origin / "user" / ".hermes"
+    fallback.mkdir(parents=True)
+    canonical_executable = executable.resolve(strict=True)
+    runner = RecordingRunner(
+        {
+            (str(canonical_executable), "--version"): completed(
+                (str(canonical_executable), "--version"), "Hermes v2.0.0"
+            ),
+            (str(canonical_executable), "profile", "--help"): completed(
+                (str(canonical_executable), "profile", "--help"),
+                "install delete describe list info",
+            ),
+        }
+    )
+    monkeypatch.chdir(origin)
+
+    result = detect_hermes(env={"PATH": "bin", "HOME": "user"}, runner=runner)
+    monkeypatch.chdir(tmp_path)
+
+    assert result.hermes_home == fallback.resolve(strict=False)
+    assert result.profiles_root == (fallback / "profiles").resolve(strict=False)
+
+
 def test_detection_path_never_uses_filesystem_mutation_or_model_commands(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
