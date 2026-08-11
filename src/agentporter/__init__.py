@@ -4,8 +4,8 @@ from __future__ import annotations
 
 
 def main() -> None:
-    """Permanent product entry; installation behavior begins in a later phase."""
-    raise SystemExit("AgentPorter installation is not available in Phase 1")
+    """Permanent product entry; native installation begins in Phase 3."""
+    raise SystemExit("AgentPorter installation is not available before Phase 3")
 
 
 __all__ = ["main"]

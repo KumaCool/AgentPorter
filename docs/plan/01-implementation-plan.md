@@ -4,7 +4,7 @@
 
 - **产品方向：** Hermes-first 已确认；
 - **设计与计划：** Plan 01、合并设计与独立 Plan 02 均已确认；
-- **代码与测试：** Phase 1 已实现并通过 focused、全量及真实临时 Hermes v0.20 原生安装探针；Phase 2–6 尚未实现；
+- **代码与测试：** Phase 1 已完成；Phase 2 的集合预检、不可变封印计划、非秘密 provider 选择、单次确认、确认前后重验、identity-bound staging 清理和统一 `shell=False` 执行边界已实现并通过门禁；Phase 3–6 尚未实现；
 - **真实 Hermes 验收与发布：** Phase 1 仅完成临时根下的原生 parser/install 契约验证；正式入口、完整集成验收与发布尚未开始；
 - **Codex CLI Adapter：** 仅保留未来边界，不在当前计划内；Hermes Profile `codex-5-3-small-worker` 仍属于第一版 Worker 集。
 
@@ -18,7 +18,7 @@
 
 ## 3. Phase 1：领域模型、检测与纯渲染
 
-**当前状态：** 实现与本阶段测试已完成，等待最终 closure review 后形成稳定 Phase 1 候选。该状态只说明本阶段证据就绪，不关闭任何最终 GATE。
+**当前状态：** 已通过最终 closure review；该状态只说明本阶段证据已验收，不关闭任何最终 GATE。
 
 ### RED/GREEN
 
@@ -35,6 +35,8 @@
 为 `INS-03`、`INS-07`、`GATE-01`、`GATE-03`、`GATE-06` 提供 schema、渲染、临时根和隐私检查基础；所有 GATE 均只在 Phase 6 统一关闭。
 
 ## 4. Phase 2：集合预检、计划与确认
+
+**当前状态：** 实现、组合测试与完整机械门禁已完成，等待本阶段集中语义复审。`configuration-required` 仍可静态安装和确认，但不代表运行配置完成；Phase 2 不执行原生安装。
 
 ### RED/GREEN
 
