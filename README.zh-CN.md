@@ -83,7 +83,7 @@ agentporter-uninstall
 
 ## 平台与兼容性证据
 
-离线 CI 面向 Linux、macOS 和 Windows，并覆盖 Python 3.11–3.13。真实 Hermes 验收单独在 Linux 上针对固定、不可变的 Hermes 上游提交运行，因为它需要原生 Hermes 可执行文件和更强的隔离条件。
+离线 CI 在 Linux 和 macOS 的 Python 3.11–3.13 上运行完整可移植测试；Windows 运行格式、lint、以 Linux 为目标的严格类型检查、打包契约和分发构建，不声称能原生执行依赖 POSIX 描述符语义的生命周期实现。真实 Hermes 验收单独在 Linux 上针对固定、不可变的 Hermes 上游提交运行，因为它需要原生 Hermes 可执行文件和更强的隔离条件。
 
 离线矩阵通过不代表已证明所有平台和 Hermes 版本的原生兼容性。Hermes v0.20.0 是当前真实验收版本，不是通用兼容范围承诺。
 

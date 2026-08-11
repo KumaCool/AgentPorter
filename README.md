@@ -63,7 +63,7 @@ For wheel installation, result states, recovery, platform-evidence distinctions,
 
 ## Platform and compatibility evidence
 
-Offline CI is intended for Linux, macOS, and Windows on Python 3.11–3.13. Real Hermes acceptance runs separately on Linux against an explicitly selected Hermes version because it needs a native executable and stronger isolation. Offline matrix success does not claim native Hermes compatibility on every platform or version.
+Offline CI runs the complete portable suite on Linux and macOS with Python 3.11–3.13. Windows checks formatting, lint, Linux-targeted strict typing, packaging contracts, and distribution builds; it does not claim native execution of the descriptor-bound POSIX lifecycle implementation. Real Hermes acceptance runs separately on Linux against an explicitly selected Hermes version because it needs a native executable and stronger isolation.
 
 ## Repository map
 
