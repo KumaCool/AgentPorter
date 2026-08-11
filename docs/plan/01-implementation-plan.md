@@ -4,7 +4,8 @@
 
 - **产品方向：** Hermes-first 已确认；
 - **设计与计划：** Plan 01、合并设计与独立 Plan 02 均已确认；
-- **代码、测试、真实 Hermes 验收、发布：** 均未开始；
+- **代码与测试：** Phase 1 已实现并通过 focused、全量及真实临时 Hermes v0.20 原生安装探针；Phase 2–6 尚未实现；
+- **真实 Hermes 验收与发布：** Phase 1 仅完成临时根下的原生 parser/install 契约验证；正式入口、完整集成验收与发布尚未开始；
 - **Codex CLI Adapter：** 仅保留未来边界，不在当前计划内；Hermes Profile `codex-5-3-small-worker` 仍属于第一版 Worker 集。
 
 实施只解释阶段顺序，不重新定义产品语义。文档职责和权威关系见 [合并设计的文档分工](../03-installation-and-uninstall-design.md#1-文档职责与当前状态)；本计划的 Phase 只提供或关闭对应验收证据，其中所有 GATE 仅由 Phase 6 最终关闭。
@@ -16,6 +17,8 @@
 主安装器、独立 `uninstall.py`、Hermes 集成验收和开源产物全部满足 [INS/UN/GATE 权威矩阵](../03-installation-and-uninstall-design.md#7-验收矩阵)。安装完成后的真实 Worker 行为与性能评测由 [Plan 02](02-agent-validation-and-benchmark.md) 独立执行，不阻止本计划交付，也不能改写安装结果。
 
 ## 3. Phase 1：领域模型、检测与纯渲染
+
+**当前状态：** 实现与本阶段测试已完成，等待最终 closure review 后形成稳定 Phase 1 候选。该状态只说明本阶段证据就绪，不关闭任何最终 GATE。
 
 ### RED/GREEN
 

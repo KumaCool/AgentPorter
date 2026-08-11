@@ -95,7 +95,7 @@ output: [返回格式]
 - 安装时初始 Profile 名，仅供 Hermes 安装和诊断，不构成 AgentPorter 所有权身份；
 - AgentPorter distribution 版本；
 - 路由描述；
-- 经真实验证的最低 Hermes 版本；
+- 可选的最低 Hermes 版本约束；只有兼容矩阵证明真实支持下限后才允许加入，Phase 1 不因开发机版本而作出最低版本承诺；
 - MIT 许可证声明；
 - 显式 `distribution_owned`，第一版只允许 `SOUL.md`、`config.yaml` 与 `agentporter-profile.json`。
 
