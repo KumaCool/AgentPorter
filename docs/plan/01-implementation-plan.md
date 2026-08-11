@@ -111,13 +111,14 @@
 
 ## 8. Phase 6：开源产品化
 
-**当前状态：** 打包资源、双 console 入口、版本/元数据、离线跨平台 CI、固定上游提交的真实 Hermes Linux workflow、fail-closed 发布验证器、中英文文档、sdist/wheel 构建及仓库外干净环境安装均已实现并通过集中 closure review。`GATE-01`–`GATE-08` 已由本地候选证据关闭；`GATE-09` 仍等待用户明确授权后执行 push、远程 CI、版本标签、GitHub Release 和托管产物下载回验。
+**当前状态：** 打包资源、双 console 入口、版本/元数据、离线跨平台 CI、固定上游提交的真实 Hermes Linux workflow、fail-closed 发布验证器、中英文文档、sdist/wheel 构建及仓库外干净环境安装均已实现并通过集中 closure review；POSIX `curl | sh` 引导安装已实现并具备离线成功、校验失败、拒绝覆盖及产品安装失败保留卸载器测试。`GATE-01`–`GATE-08` 已由本地候选证据关闭；`GATE-09` 仍等待用户明确授权后执行 push、远程 CI、版本标签、GitHub Release（包括 wheel 与 `.sha256` sidecar）和托管产物下载回验。
 
 - `pyproject.toml`、版本策略、变更日志、主安装器入口和独立 `uninstall.py`；
 - Linux/macOS/Windows CI 与 Hermes 兼容矩阵；
 - 中英文安装、卸载和故障排查文档；
 - `LICENSE`、`CONTRIBUTING.md`、`SECURITY.md` 复核；
 - sdist/wheel 构建、内容与隐私扫描；
+- POSIX 引导脚本下载固定版本 wheel、校验 `.sha256` sidecar、隔离安装并启动原有交互确认；
 - 干净环境安装演练；
 - 版本标签、GitHub Release 和下载后产物验证。
 

@@ -4,6 +4,19 @@
 
 AgentPorter 是预发布、Hermes 优先的一次性安装器。仓库已经具备离线契约测试，并在隔离环境中对 Hermes v0.20.0 做过真实验收；这个版本只是**已观察版本**，不是承诺的最低版本或通用兼容范围。
 
+## curl 一键安装（POSIX）
+
+匹配的受支持 GitHub Release 发布后，可运行：
+
+```bash
+curl --fail --location --proto '=https' --tlsv1.2 \
+  https://raw.githubusercontent.com/KumaCool/AgentPorter/v0.1.0/install.sh | sh
+```
+
+引导脚本会下载固定版本 wheel 与对应 `.sha256` 文件，在私有同级暂存目录中完成校验和安装，回读软件包版本后原子发布 `${XDG_DATA_HOME:-$HOME/.local/share}/agentporter/0.1.0`，在 `${XDG_BIN_HOME:-$HOME/.local/bin}` 建立 `agentporter-uninstall` 链接，再通过 `/dev/tty` 启动原有交互式安装器。已有安装目录或卸载入口时会拒绝覆盖。若用户取消或产品安装失败，已校验的软件包和卸载入口会保留，便于诊断或清理。该卸载器删除 Hermes Profile，不删除此独立 Python 环境。
+
+校验和能防止意外损坏或托管错配，但它与 GitHub Release 账户并非独立信任源。wheel 声明的依赖仍由 pip 解析下载（仅允许二进制分发），Release 校验和不会独立认证这些依赖下载。如需更强来源保证，请先检查脚本，并核对发布证明与校验和。必要时将 `${XDG_BIN_HOME:-$HOME/.local/bin}` 加入 `PATH`。
+
 ## 前置条件
 
 - Python 3.11 或更高版本；
@@ -92,6 +105,7 @@ agentporter-uninstall
      --entry-point 'agentporter=agentporter:main' \
      --entry-point 'agentporter-uninstall=agentporter.uninstall_entry:main' \
      --resource 'resources/workers.yaml' \
+     --bootstrap-checksum <wheel>.sha256 \
      <wheel> <sdist>
    ```
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import configparser
 import email
+import hashlib
 import re
 import stat
 import tarfile
@@ -293,6 +294,42 @@ def verify_release(contract: ReleaseContract, artifacts: Sequence[Path]) -> list
     return errors
 
 
+def verify_bootstrap(contract: ReleaseContract, wheel: Path, checksum: Path) -> list[str]:
+    errors: list[str] = []
+    bootstrap = contract.repository / "install.sh"
+    if not bootstrap.is_file():
+        return ["bootstrap: install.sh is missing"]
+    if not bootstrap.stat().st_mode & stat.S_IXUSR:
+        errors.append("bootstrap: install.sh must be executable")
+    text = bootstrap.read_text(encoding="utf-8")
+    version_match = re.search(r"(?m)^VERSION=([^\n]+)$", text)
+    wheel_match = re.search(r"(?m)^WHEEL=([^\n]+)$", text)
+    expected_wheel = f"{contract.package}-{contract.version}-py3-none-any.whl"
+    if version_match is None or version_match.group(1) != contract.version:
+        errors.append("bootstrap: pinned version does not match release contract")
+    if wheel_match is None or wheel_match.group(1) != expected_wheel:
+        errors.append("bootstrap: pinned wheel does not match release contract")
+    expected_name = f"{wheel.name}.sha256"
+    if checksum.name != expected_name:
+        errors.append(f"bootstrap: checksum asset must be named {expected_name!r}")
+        return errors
+    try:
+        fields = checksum.read_text(encoding="ascii").split()
+    except (OSError, UnicodeDecodeError):
+        return [*errors, "bootstrap: checksum asset is unreadable"]
+    if (
+        len(fields) != 2
+        or fields[1] != wheel.name
+        or re.fullmatch(r"[0-9a-fA-F]{64}", fields[0]) is None
+    ):
+        errors.append("bootstrap: checksum asset must contain one SHA-256 and exact wheel name")
+        return errors
+    actual = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    if fields[0].lower() != actual:
+        errors.append("bootstrap: checksum does not match wheel bytes")
+    return errors
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("artifacts", nargs="+", type=Path)
@@ -302,6 +339,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--dependency", action="append", default=[])
     parser.add_argument("--entry-point", action="append", default=[])
     parser.add_argument("--resource", action="append", default=[])
+    parser.add_argument("--bootstrap-checksum", type=Path)
     return parser
 
 
@@ -321,6 +359,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         resources=frozenset(args.resource),
     )
     errors = verify_release(contract, args.artifacts)
+    if args.bootstrap_checksum is not None:
+        wheels = [path for path in args.artifacts if path.name.endswith(".whl")]
+        if len(wheels) == 1:
+            errors.extend(verify_bootstrap(contract, wheels[0], args.bootstrap_checksum))
     for error in errors:
         print(f"FAIL: {error}")
     if errors:

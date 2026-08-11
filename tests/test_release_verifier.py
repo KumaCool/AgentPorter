@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.verify_release import ReleaseContract, verify_release
+from scripts.verify_release import ReleaseContract, verify_bootstrap, verify_release
 
 
 def _metadata() -> bytes:
@@ -96,6 +96,38 @@ def test_accepts_complete_wheel_sdist_and_public_repository(tmp_path: Path) -> N
     wheel, sdist = _artifacts(repo)
 
     assert verify_release(_contract(repo), [wheel, sdist]) == []
+
+
+def test_bootstrap_contract_accepts_exact_wheel_checksum(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    wheel, _ = _artifacts(repo)
+    bootstrap = repo / "install.sh"
+    bootstrap.write_text(
+        "#!/bin/sh\nVERSION=0.1.0\nWHEEL=agentporter-0.1.0-py3-none-any.whl\n",
+        encoding="utf-8",
+    )
+    bootstrap.chmod(0o755)
+    checksum = wheel.with_name(f"{wheel.name}.sha256")
+    digest = __import__("hashlib").sha256(wheel.read_bytes()).hexdigest()
+    checksum.write_text(f"{digest}  {wheel.name}\n", encoding="ascii")
+
+    assert verify_bootstrap(_contract(repo), wheel, checksum) == []
+
+
+def test_bootstrap_contract_rejects_mismatch_and_wrong_asset_name(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    wheel, _ = _artifacts(repo)
+    bootstrap = repo / "install.sh"
+    bootstrap.write_text("#!/bin/sh\nVERSION=9.9.9\nWHEEL=wrong.whl\n", encoding="utf-8")
+    checksum = wheel.with_name("checksums.txt")
+    checksum.write_text(f"{'0' * 64}  {wheel.name}\n", encoding="ascii")
+
+    errors = verify_bootstrap(_contract(repo), wheel, checksum)
+
+    assert "bootstrap: install.sh must be executable" in errors
+    assert "bootstrap: pinned version does not match release contract" in errors
+    assert "bootstrap: pinned wheel does not match release contract" in errors
+    assert any("checksum asset must be named" in error for error in errors)
 
 
 def test_rejects_missing_resource_and_wrong_entry_point(tmp_path: Path) -> None:

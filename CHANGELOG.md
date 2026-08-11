@@ -11,6 +11,7 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Offline cross-platform CI and manually authorized real-Hermes acceptance CI.
 - Fail-closed wheel, sdist, metadata, link, privacy, and archive verifier.
 - English and Chinese installation, troubleshooting, and safe-release guidance.
+- Checksum-verifying `curl | sh` bootstrap for supported POSIX releases.
 
 ### Security
 

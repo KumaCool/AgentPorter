@@ -6,6 +6,19 @@ AgentPorter is a pre-release, open-source, one-shot installer for reusable [Herm
 
 > **Evidence status:** Phases 1–6 have passed local implementation, adversarial, packaging, artifact, and isolated Hermes v0.20.0 acceptance gates without model calls. Publication remains pending: remote CI, tag, GitHub Release, and hosted-artifact readback have not run, so no supported release has been published. Hermes v0.20.0 is an observed acceptance target, not a promised minimum.
 
+## One-line install (POSIX)
+
+After a supported release is published, Linux and macOS users can run:
+
+```bash
+curl --fail --location --proto '=https' --tlsv1.2 \
+  https://raw.githubusercontent.com/KumaCool/AgentPorter/v0.1.0/install.sh | sh
+```
+
+For higher assurance, download `install.sh` from the immutable release tag, inspect it, then run it with `sh`. The bootstrap requires Python 3.11+ and a real terminal, downloads the version-matched wheel and `.sha256` file from GitHub Releases, verifies the wheel before installing it into a private virtual environment, publishes only the independent `agentporter-uninstall` entry under `${XDG_BIN_HOME:-$HOME/.local/bin}`, and then starts AgentPorter's normal interactive plan through `/dev/tty`. It does not bypass confirmation or install Hermes itself.
+
+This command cannot succeed until the matching GitHub Release assets have been published. See the [installation guide](docs/04-installation-and-troubleshooting.md) for PATH and recovery details.
+
 ## What it installs
 
 One launch installs the repository's complete two-Profile Worker set:

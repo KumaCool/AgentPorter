@@ -4,6 +4,19 @@ English | [简体中文](04-installation-and-troubleshooting.zh-CN.md)
 
 AgentPorter is a pre-release, Hermes-first one-shot installer. The repository has offline contract tests and isolated real-Hermes evidence for v0.20.0; that observed version is **not** a promised minimum or universal compatibility range.
 
+## One-line POSIX install
+
+After the matching supported GitHub Release exists:
+
+```bash
+curl --fail --location --proto '=https' --tlsv1.2 \
+  https://raw.githubusercontent.com/KumaCool/AgentPorter/v0.1.0/install.sh | sh
+```
+
+The bootstrap downloads the fixed-version wheel and its `.sha256` sidecar, verifies the wheel, builds in a private sibling staging directory, reads back the installed package version, atomically publishes `${XDG_DATA_HOME:-$HOME/.local/share}/agentporter/0.1.0`, and links `agentporter-uninstall` into `${XDG_BIN_HOME:-$HOME/.local/bin}` before launching the normal interactive installer through `/dev/tty`. Existing install or link paths are refused rather than overwritten. If the product installation is cancelled or fails, the verified package and uninstaller remain available for diagnosis or cleanup. The uninstaller removes installed Hermes Profiles; it does not remove this private Python environment.
+
+The checksum protects against accidental corruption or mismatched hosting; it is not independent of the GitHub release account. The wheel still resolves its declared dependencies through pip, restricted to binary distributions, so the release checksum does not independently authenticate those dependency downloads. For stronger provenance, inspect the script and compare published release attestations/checksums before execution. Add `${XDG_BIN_HOME:-$HOME/.local/bin}` to `PATH` if necessary.
+
 ## Prerequisites
 
 - Python 3.11 or newer.
@@ -92,6 +105,7 @@ Never post raw config files, marker paths, credentials, sessions, memories, or p
      --entry-point 'agentporter=agentporter:main' \
      --entry-point 'agentporter-uninstall=agentporter.uninstall_entry:main' \
      --resource 'resources/workers.yaml' \
+     --bootstrap-checksum <wheel>.sha256 \
      <wheel> <sdist>
    ```
 
