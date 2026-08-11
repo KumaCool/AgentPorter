@@ -1,5 +1,7 @@
 # AgentPorter
 
+English | [简体中文](README.zh-CN.md)
+
 AgentPorter is a pre-release, open-source, one-shot installer for reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) Worker Profiles.
 
 > **Evidence status:** Phases 1–6 have passed local implementation, adversarial, packaging, artifact, and isolated Hermes v0.20.0 acceptance gates without model calls. Publication remains pending: remote CI, tag, GitHub Release, and hosted-artifact readback have not run, so no supported release has been published. Hermes v0.20.0 is an observed acceptance target, not a promised minimum.
