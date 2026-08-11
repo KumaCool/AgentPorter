@@ -29,10 +29,14 @@ jobs:
         shell: bash
         run: |
           ACCEPTANCE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
-          sudo mkdir -p /usr/local/lib/hermes-agent
-          sudo rm -rf /usr/local/lib/hermes-agent/venv
+          git clone https://github.com/NousResearch/hermes-agent.git hermes-acceptance-source
+          git -C hermes-acceptance-source checkout --detach "${HERMES_REF}"
+          test "$(git -C hermes-acceptance-source rev-parse HEAD)" = "${HERMES_REF}"
+          sudo rm -rf /usr/local/lib/hermes-agent
+          sudo mkdir -p /usr/local/lib
+          sudo mv hermes-acceptance-source /usr/local/lib/hermes-agent
           sudo "${ACCEPTANCE_PYTHON}" -m venv /usr/local/lib/hermes-agent/venv
-          sudo /usr/local/lib/hermes-agent/venv/bin/python -m pip install --disable-pip-version-check "hermes-agent @ git+https://github.com/NousResearch/hermes-agent.git@${HERMES_REF}"
+          sudo /usr/local/lib/hermes-agent/venv/bin/python -m pip install --disable-pip-version-check -e /usr/local/lib/hermes-agent
           /usr/local/lib/hermes-agent/venv/bin/python -c "import importlib.metadata; assert importlib.metadata.version('hermes-agent') == '0.20.0'"
           /usr/local/lib/hermes-agent/venv/bin/hermes --version
       - name: Run real Hermes acceptance without credentials or model calls

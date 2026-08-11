@@ -235,7 +235,11 @@ def test_release_workflow_docs_urls_and_pyright_contract() -> None:
     repository = Path(__file__).parents[1]
     workflow = (repository / ".github/workflows/real-hermes.yml").read_text(encoding="utf-8")
     assert re.search(r"HERMES_REF: [0-9a-f]{40}", workflow)
-    assert "git+https://github.com/NousResearch/hermes-agent.git@${HERMES_REF}" in workflow
+    assert "git clone https://github.com/NousResearch/hermes-agent.git" in workflow
+    assert 'checkout --detach "${HERMES_REF}"' in workflow
+    assert 'rev-parse HEAD)" = "${HERMES_REF}"' in workflow
+    assert "pip install --disable-pip-version-check -e /usr/local/lib/hermes-agent" in workflow
+    assert "git+https://github.com/NousResearch/hermes-agent.git@${HERMES_REF}" not in workflow
     assert "importlib.metadata.version('hermes-agent') == '0.20.0'" in workflow
     assert "hermes-agent==${HERMES_VERSION}" not in workflow
     assert "sudo python -m venv" not in workflow
