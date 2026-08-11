@@ -4,7 +4,7 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-08-12
 
 ### Added
 
@@ -20,7 +20,7 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Installation performs all preflight checks before writes and never copies credentials.
 - Compensation and uninstall are restricted to marker-proven AgentPorter profiles and use Hermes-native operations.
 
-First supported public release candidate.
+First supported public release.
 
 [Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/KumaCool/AgentPorter/releases/tag/v0.1.0

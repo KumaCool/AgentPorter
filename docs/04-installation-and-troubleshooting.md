@@ -2,11 +2,11 @@
 
 English | [简体中文](04-installation-and-troubleshooting.zh-CN.md)
 
-AgentPorter v0.1.0 is the first supported-release candidate for this Hermes-first one-shot installer. The repository has offline contract tests and isolated real-Hermes evidence for v0.20.0; that observed version is **not** a promised minimum or universal compatibility range.
+AgentPorter v0.1.0 is the first supported release of this Hermes-first one-shot installer. The repository has offline contract tests and isolated real-Hermes evidence for v0.20.0; that observed version is **not** a promised minimum or universal compatibility range.
 
 ## One-line POSIX install
 
-After publication, install the latest non-prerelease version without specifying a version:
+Install the latest non-prerelease version without specifying a version:
 
 ```bash
 curl --fail --location --proto '=https' --tlsv1.2 \

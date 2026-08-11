@@ -2,11 +2,11 @@
 
 [English](04-installation-and-troubleshooting.md) | 简体中文
 
-AgentPorter v0.1.0 是该 Hermes 优先一次性安装器的首个受支持版本候选。仓库已经具备离线契约测试，并在隔离环境中对 Hermes v0.20.0 做过真实验收；这个版本只是**已观察版本**，不是承诺的最低版本或通用兼容范围。
+AgentPorter v0.1.0 是该 Hermes 优先一次性安装器的首个受支持版本。仓库已经具备离线契约测试，并在隔离环境中对 Hermes v0.20.0 做过真实验收；这个版本只是**已观察版本**，不是承诺的最低版本或通用兼容范围。
 
 ## curl 一键安装（POSIX）
 
-发布完成后，无需指定版本即可安装最新非预发布版本：
+无需指定版本即可安装最新非预发布版本：
 
 ```bash
 curl --fail --location --proto '=https' --tlsv1.2 \

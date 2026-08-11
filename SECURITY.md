@@ -2,11 +2,11 @@
 
 ## Supported versions
 
-AgentPorter remains a release candidate. Security support begins only after v0.1.0 is published and its hosted assets pass readback.
+Security fixes are provided for the latest published release when reasonably possible.
 
 | Version | Supported |
 | --- | --- |
-| 0.1.x candidate | No formal support |
+| 0.1.x | Yes |
 | Unreleased source snapshots | No formal support |
 
 ## Reporting a vulnerability

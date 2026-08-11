@@ -5,7 +5,7 @@
 - **产品方向：** Hermes-first 已确认；
 - **设计与计划：** Plan 01、合并设计与独立 Plan 02 均已确认；
 - **代码与测试：** Phase 1–6 实现已完成：原生分发契约、集合预检与确认、正式安装/静态读回/有限补偿、名称无关独立卸载、临时根 Hermes v0.20 正式入口/资源/规模/故障验收及开源产品化均已通过本地门禁；
-- **真实 Hermes 验收与发布：** 已完成隔离临时根下正式安装、跨目录读回、批量 rename、正式卸载、冷/热资源基线和 120 次故障循环；Kanban 证据限于 parser 与只读 assignee 枚举，未运行 Worker/模型；v0.1.0 发布候选正在执行跨平台 CI、标签、GitHub Release 与托管制品下载回验；
+- **真实 Hermes 验收与发布：** 已完成隔离临时根下正式安装、跨目录读回、批量 rename、正式卸载、冷/热资源基线和 120 次故障循环；Kanban 证据限于 parser 与只读 assignee 枚举，未运行 Worker/模型；v0.1.0 已通过远程跨平台 CI，完成版本标签、GitHub Release、公开 `latest` 入口与托管制品下载回验；
 - **Codex CLI Adapter：** 仅保留未来边界，不在当前计划内；Hermes Profile `codex-5-3-small-worker` 仍属于第一版 Worker 集。
 
 实施只解释阶段顺序，不重新定义产品语义。文档职责和权威关系见 [合并设计的文档分工](../03-installation-and-uninstall-design.md#1-文档职责与当前状态)；本计划的 Phase 只提供或关闭对应验收证据，其中所有 GATE 仅由 Phase 6 最终关闭。
@@ -111,7 +111,7 @@
 
 ## 8. Phase 6：开源产品化
 
-**当前状态：** 打包资源、双 console 入口、版本/元数据、离线跨平台 CI、固定上游提交的真实 Hermes Linux workflow、fail-closed 发布验证器、中英文文档、sdist/wheel 构建及仓库外干净环境安装均已实现并通过集中 closure review；无版本 `latest` POSIX `curl | sh` 入口已实现，实际下载的发布版脚本仍固定精确版本与制品。`GATE-01`–`GATE-08` 已由本地候选证据关闭；用户已授权发布，`GATE-09` 正在执行远程 CI、版本标签、GitHub Release（包括 `install.sh`、wheel、sdist 与 `.sha256` sidecar）和托管产物下载回验。
+**当前状态：** 打包资源、双 console 入口、版本/元数据、离线跨平台 CI、固定上游提交的真实 Hermes Linux workflow、fail-closed 发布验证器、中英文文档、sdist/wheel 构建及仓库外干净环境安装均已实现并通过集中 closure review；无版本 `latest` POSIX `curl | sh` 入口已实现，实际下载的发布版脚本仍固定精确版本与制品。`GATE-01`–`GATE-09` 已关闭：远程 CI、版本标签、GitHub Release（包括 `install.sh`、wheel、sdist 与 `.sha256` sidecar）和托管产物下载回验均已通过。
 
 - `pyproject.toml`、版本策略、变更日志、主安装器入口和独立 `uninstall.py`；
 - Linux/macOS/Windows CI 与 Hermes 兼容矩阵；

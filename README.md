@@ -4,11 +4,11 @@ English | [简体中文](README.zh-CN.md)
 
 AgentPorter is an open-source, one-shot installer for reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) Worker Profiles.
 
-> **Release candidate status:** v0.1.0 has passed local, adversarial, packaging, artifact, and isolated Hermes v0.20.0 acceptance gates without model calls. Publication remains pending until the candidate passes remote cross-platform CI and the tag, GitHub Release, and hosted-asset readback are complete. Hermes v0.20.0 is an observed acceptance target, not a promised minimum.
+> **Release status:** v0.1.0 is the first supported release. It passed local, adversarial, packaging, artifact, remote cross-platform CI, hosted-asset readback, and isolated Hermes v0.20.0 acceptance gates without model calls. Hermes v0.20.0 is an observed acceptance target, not a promised minimum.
 
 ## One-line install (POSIX)
 
-After the first supported release is published, Linux and macOS users can install the latest release without specifying a version:
+Linux and macOS users can install the latest release without specifying a version:
 
 ```bash
 curl --fail --location --proto '=https' --tlsv1.2 \
@@ -17,7 +17,7 @@ curl --fail --location --proto '=https' --tlsv1.2 \
 
 The `latest` endpoint selects the newest non-prerelease GitHub Release; the downloaded bootstrap itself pins that release's exact version and artifacts. For higher assurance, download and inspect `install.sh` before running it. The bootstrap requires Python 3.11+ and a real terminal, verifies the wheel against its `.sha256` file, installs it into a private virtual environment, publishes the independent `agentporter-uninstall` entry under `${XDG_BIN_HOME:-$HOME/.local/bin}`, and starts AgentPorter's normal interactive plan through `/dev/tty`. It does not bypass confirmation or install Hermes itself.
 
-The endpoint returns 404 until publication is complete. See the [installation guide](docs/04-installation-and-troubleshooting.md) for the inspect-first flow, PATH, trust boundary, and recovery details.
+See the [installation guide](docs/04-installation-and-troubleshooting.md) for the inspect-first flow, PATH, trust boundary, and recovery details.
 
 ## What it installs
 
