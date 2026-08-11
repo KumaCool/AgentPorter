@@ -284,7 +284,7 @@ def verify_release(contract: ReleaseContract, artifacts: Sequence[Path]) -> list
         return errors
     try:
         errors.extend(_wheel_errors(wheels[0], contract))
-    except (OSError, KeyError, zipfile.BadZipFile) as exc:
+    except (OSError, KeyError, RuntimeError, zipfile.BadZipFile) as exc:
         errors.append(f"{wheels[0].name}: unreadable wheel ({type(exc).__name__})")
     try:
         errors.extend(_sdist_errors(sdists[0], contract))

@@ -9,6 +9,8 @@ import zipfile
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from scripts.verify_release import ReleaseContract, verify_release
 
 
@@ -207,6 +209,28 @@ def test_rejects_sdist_duplicate_link_escape_nonregular_and_secret(tmp_path: Pat
     assert any("secret-like value" in error and sdist.name in error for error in errors)
 
 
+def test_encrypted_wheel_read_failure_is_reported_not_raised(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repository(tmp_path)
+    wheel, sdist = _artifacts(repo)
+    original_read = zipfile.ZipFile.read
+
+    def encrypted_read(
+        self: zipfile.ZipFile, name: object, *args: object, **kwargs: object
+    ) -> bytes:
+        filename = name.filename if isinstance(name, zipfile.ZipInfo) else str(name)
+        if filename == "agentporter/core.py":
+            raise RuntimeError("File is encrypted, password required")
+        return original_read(self, name, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(zipfile.ZipFile, "read", encrypted_read)
+
+    errors = verify_release(_contract(repo), [wheel, sdist])
+
+    assert errors == [f"{wheel.name}: unreadable wheel (RuntimeError)"]
+
+
 def test_release_workflow_docs_urls_and_pyright_contract() -> None:
     repository = Path(__file__).parents[1]
     workflow = (repository / ".github/workflows/real-hermes.yml").read_text(encoding="utf-8")
@@ -214,6 +238,9 @@ def test_release_workflow_docs_urls_and_pyright_contract() -> None:
     assert "git+https://github.com/NousResearch/hermes-agent.git@${HERMES_REF}" in workflow
     assert "importlib.metadata.version('hermes-agent') == '0.20.0'" in workflow
     assert "hermes-agent==${HERMES_VERSION}" not in workflow
+    assert "sudo python -m venv" not in workflow
+    assert 'ACCEPTANCE_PYTHON="$(python -c' in workflow
+    assert '"${ACCEPTANCE_PYTHON}" -m venv hermes-acceptance-venv' in workflow
     assert "NousResearch/AgentPorter" not in "\n".join(
         path.read_text(encoding="utf-8")
         for path in repository.rglob("*.md")

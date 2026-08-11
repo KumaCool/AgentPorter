@@ -28,9 +28,12 @@ jobs:
       - name: Install isolated Hermes executable at acceptance path
         shell: bash
         run: |
+          ACCEPTANCE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
+          "${ACCEPTANCE_PYTHON}" -m venv hermes-acceptance-venv
+          hermes-acceptance-venv/bin/python -m pip install --disable-pip-version-check "hermes-agent @ git+https://github.com/NousResearch/hermes-agent.git@${HERMES_REF}"
           sudo mkdir -p /usr/local/lib/hermes-agent
-          sudo python -m venv /usr/local/lib/hermes-agent/venv
-          sudo /usr/local/lib/hermes-agent/venv/bin/python -m pip install --disable-pip-version-check "hermes-agent @ git+https://github.com/NousResearch/hermes-agent.git@${HERMES_REF}"
+          sudo rm -rf /usr/local/lib/hermes-agent/venv
+          sudo mv hermes-acceptance-venv /usr/local/lib/hermes-agent/venv
           /usr/local/lib/hermes-agent/venv/bin/python -c "import importlib.metadata; assert importlib.metadata.version('hermes-agent') == '0.20.0'"
           /usr/local/lib/hermes-agent/venv/bin/hermes --version
       - name: Run real Hermes acceptance without credentials or model calls
