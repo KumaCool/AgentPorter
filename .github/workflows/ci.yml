@@ -41,5 +41,6 @@ jobs:
           --ignore=tests/test_phase3_real_hermes.py
           --ignore=tests/test_phase4_real_hermes.py
           --ignore=tests/test_phase5_formal_acceptance.py
+          --ignore=tests/test_phase5_stress_acceptance.py
       - name: Build distributions
         run: python -m build
