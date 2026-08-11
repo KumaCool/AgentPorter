@@ -43,8 +43,5 @@ jobs:
           --ignore=tests/test_phase4_real_hermes.py
           --ignore=tests/test_phase5_formal_acceptance.py
           --ignore=tests/test_phase5_stress_acceptance.py
-      - name: Windows package contract
-        if: runner.os == 'Windows'
-        run: python -m pytest tests/test_packaging_contract.py tests/test_release_verifier.py
       - name: Build distributions
         run: python -m build

@@ -63,7 +63,7 @@ For wheel installation, result states, recovery, platform-evidence distinctions,
 
 ## Platform and compatibility evidence
 
-Offline CI runs the complete portable suite on Linux and macOS with Python 3.11–3.13. Windows checks formatting, lint, Linux-targeted strict typing, packaging contracts, and distribution builds; it does not claim native execution of the descriptor-bound POSIX lifecycle implementation. Real Hermes acceptance runs separately on Linux against an explicitly selected Hermes version because it needs a native executable and stronger isolation.
+Offline CI runs the complete portable suite and package/release contracts on Linux and macOS with Python 3.11–3.13. Windows checks formatting, lint, Linux-targeted strict typing, and distribution builds; it does not claim native execution of descriptor-bound POSIX lifecycle or archive-mode contracts. Real Hermes acceptance runs separately on Linux against an explicitly selected Hermes version because it needs a native executable and stronger isolation.
 
 ## Repository map
 

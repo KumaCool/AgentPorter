@@ -36,7 +36,7 @@ python -m pytest \
 python -m build
 ```
 
-The multiline `pytest` form above is for POSIX shells. The default GitHub Actions matrix runs the complete portable offline suite on Linux and macOS with Python 3.11–3.13. Windows runs format, lint, Linux-targeted strict typing, package/release contract tests, and distribution builds; it does not claim native execution of the descriptor-bound POSIX lifecycle implementation. The resource-backed Phase 5 stress suite is Linux-only and remains covered by the Linux release gate.
+The multiline `pytest` form above is for POSIX shells. The default GitHub Actions matrix runs the complete portable offline suite and package/release contracts on Linux and macOS with Python 3.11–3.13. Windows runs format, lint, Linux-targeted strict typing, and distribution builds; it does not claim native execution of descriptor-bound POSIX lifecycle or archive-mode contracts. The resource-backed Phase 5 stress suite is Linux-only and remains covered by the Linux release gate.
 
 Real-Hermes tests are deliberately separate because they need a known Hermes executable at `/usr/local/lib/hermes-agent/venv/bin/hermes`. A maintainer may run the manual **Real Hermes acceptance** workflow with the observed Hermes version. These tests make no model calls and require no provider credentials; do not add credentials to that workflow.
 
