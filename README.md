@@ -17,7 +17,19 @@ curl --fail --location --proto '=https' --tlsv1.2 \
 
 The `latest` endpoint selects the newest non-prerelease GitHub Release; the downloaded bootstrap itself pins that release's exact version and artifacts. For higher assurance, download and inspect `install.sh` before running it. The bootstrap requires Python 3.11+ and a real terminal, verifies the wheel against its `.sha256` file, installs it into a private virtual environment, publishes the independent `agentporter-uninstall` entry under `${XDG_BIN_HOME:-$HOME/.local/bin}`, and starts AgentPorter's normal interactive plan through `/dev/tty`. It does not bypass confirmation or install Hermes itself.
 
-See the [installation guide](docs/04-installation-and-troubleshooting.md) for the inspect-first flow, PATH, trust boundary, and recovery details.
+To uninstall after setup, run this directly in a real terminal:
+
+```bash
+agentporter-uninstall
+```
+
+If the command is not on `PATH`, run:
+
+```bash
+"${XDG_BIN_HOME:-$HOME/.local/bin}/agentporter-uninstall"
+```
+
+Uninstall deletes the Worker Profiles installed by AgentPorter, including their local data and later customization, so back them up before confirming. It does not remove AgentPorter's private Python environment. See the [installation guide](docs/04-installation-and-troubleshooting.md) for the inspect-first flow, PATH, trust boundary, and complete uninstall details.
 
 ## What it installs
 

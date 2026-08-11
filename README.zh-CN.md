@@ -17,7 +17,19 @@ curl --fail --location --proto '=https' --tlsv1.2 \
 
 `latest` 端点选择最新的非预发布 GitHub Release；下载到的引导脚本仍固定该版本及其精确制品。如需更高可信度，请先下载并检查 `install.sh` 再执行。引导脚本要求 Python 3.11+ 和真实终端，使用 `.sha256` 校验 wheel 后安装到独立虚拟环境，在 `${XDG_BIN_HOME:-$HOME/.local/bin}` 发布独立卸载入口 `agentporter-uninstall`，并通过 `/dev/tty` 启动原有交互式安装计划。它不会绕过确认，也不会代装 Hermes。
 
-检查后执行方式、PATH、信任边界与恢复方法见[安装指南](docs/04-installation-and-troubleshooting.zh-CN.md)。
+安装完成后，如需卸载，直接在真实终端运行：
+
+```bash
+agentporter-uninstall
+```
+
+如果终端提示找不到命令，请运行完整路径：
+
+```bash
+"${XDG_BIN_HOME:-$HOME/.local/bin}/agentporter-uninstall"
+```
+
+卸载会删除 AgentPorter 安装的 Worker Profile 及其中的本地数据和后续自定义；确认前请先备份。该命令不会删除 AgentPorter 自身的独立 Python 环境。检查后执行方式、PATH、信任边界与完整卸载说明见[安装指南](docs/04-installation-and-troubleshooting.zh-CN.md)。
 
 ## 安装内容
 
