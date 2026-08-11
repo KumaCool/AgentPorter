@@ -1,48 +1,50 @@
 # Contributing to AgentPorter
 
-Thanks for considering a contribution. AgentPorter is currently in its design stage; executable implementation has not started, so proposals should preserve its safety-first, fail-closed Profile installation and uninstall model.
+AgentPorter is implemented but pre-release. Contributions must preserve its one-shot, fail-closed Hermes Profile installation and independent uninstall model.
 
 ## Before you start
 
-- Check existing issues and discussions before starting substantial work.
-- Open an issue before making architectural changes or adding a platform adapter.
-- Keep each change focused on one clearly stated problem.
-- Do not include credentials, tokens, cookies, private hostnames, personal paths, private configuration, or generated runtime data.
+- Open an issue before changing architecture, the marker protocol, or platform scope.
+- Keep changes focused and use test-driven development for behavior changes.
+- Never commit credentials, tokens, cookies, private hostnames or paths, runtime state, model output, caches, or generated profile data.
+- Other platform adapters require separately approved design and native evidence.
 
-## Development workflow
+## Development setup
 
-1. Fork the repository and create a focused branch.
-2. Add or update tests for behavioral changes.
-3. Keep Hermes-specific behavior inside `HermesAdapter`; other platforms require separate evidence and approval.
-4. Use temporary configuration roots in tests; never modify a developer's real Agent configuration.
-5. Run the repository's documented checks. Until executable code lands, verify at minimum:
+Python 3.11 or newer is required.
 
-   ```bash
-   git diff --check
-   ```
+```bash
+python -m venv .venv
+# POSIX: source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install -e . pytest pyright ruff build
+```
 
-6. Update user and design documentation when behavior or interfaces change.
-7. Submit a pull request describing the motivation, scope, verification performed, and any compatibility or security impact.
+## Required local gates
 
-## Hermes implementation requirements
+Run exactly these checks before opening a pull request:
 
-Hermes changes must preserve the consolidated [install/uninstall design](docs/03-installation-and-uninstall-design.md):
+```bash
+python -m ruff format --check .
+python -m ruff check .
+python -m pyright
+python -m pytest \
+  --ignore=tests/test_phase3_real_hermes.py \
+  --ignore=tests/test_phase4_real_hermes.py \
+  --ignore=tests/test_phase5_formal_acceptance.py
+python -m build
+```
 
-- complete preflight and one readable plan before writes;
-- no overwrite of existing/default Profiles;
-- compensation limited to Profiles proven to be created by the current installation transaction;
-- name-independent product/component/install identity;
-- uninstall warning, confirmation, fail-closed discovery, native deletion, and readback;
-- tests proving unrelated configuration remains unchanged.
+The multiline `pytest` form above is for POSIX shells; pass the same three `--ignore` arguments on one line in PowerShell. The default GitHub Actions matrix runs these offline gates on Linux, macOS, and Windows with Python 3.11–3.13.
 
-Do not claim model, platform, or security parity without real evidence. Other platform adapters require a separately approved design and native validation path.
+Real-Hermes tests are deliberately separate because they need a known Hermes executable at `/usr/local/lib/hermes-agent/venv/bin/hermes`. A maintainer may run the manual **Real Hermes acceptance** workflow with the observed Hermes version. These tests make no model calls and require no provider credentials; do not add credentials to that workflow.
 
-Worker behavior and performance evaluation follows the independent [validation and benchmark plan](docs/plan/02-agent-validation-and-benchmark.md). It must remain isolated from installer success, use disposable environments and sanitized fixtures, and never commit raw model output or credential-bearing reports.
+After packaging is reconciled, build into an empty temporary directory and run `scripts/verify_release.py` with the exact package version, dependency, entry-point, and resource contract documented by the release commit. Do not weaken the verifier to make an unexpected artifact pass.
 
-## Reporting security issues
+## Safety invariants
 
-Do not open a public issue for suspected vulnerabilities or accidental disclosure. Follow [SECURITY.md](SECURITY.md).
+Changes must preserve the [install/uninstall design](docs/03-installation-and-uninstall-design.md): complete preflight and preview before writes; no overwrite; current-transaction-only compensation; name-independent marker identity; explicit uninstall warning and confirmation; collection and per-target revalidation; native deletion; unrelated configuration preservation.
 
-## License
+Update user, security, design, and changelog documentation when behavior or release contracts change. Pull requests must state scope, test evidence, compatibility impact, security impact, and whether real-Hermes acceptance was performed.
 
-By contributing, you agree that your contributions will be licensed under the repository's [MIT License](LICENSE).
+Report vulnerabilities privately according to [SECURITY.md](SECURITY.md). Contributions are licensed under the [MIT License](LICENSE).

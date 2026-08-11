@@ -1,0 +1,98 @@
+# 安装、故障排查与安全发布
+
+[English](04-installation-and-troubleshooting.md) | 简体中文
+
+AgentPorter 是预发布、Hermes 优先的一次性安装器。仓库已经具备离线契约测试，并在隔离环境中对 Hermes v0.20.0 做过真实验收；这个版本只是**已观察版本**，不是承诺的最低版本或通用兼容范围。
+
+## 前置条件
+
+- Python 3.11 或更高版本；
+- 已安装 Hermes Agent，并能发现预期的 `hermes` 可执行文件；
+- 标准输入连接真实终端，因为安装和卸载都必须交互确认；
+- 对重要 Hermes 配置先做干净备份。
+
+Linux 的真实 Hermes 验收证据最强。macOS 和 Windows 纳入离线 CI 矩阵；这能证明可移植契约，不代表已在这些主机上完成 Hermes 原生验收。
+
+## 从发布制品安装
+
+在 v0.1.0 正式发布前，只使用同时提供提交身份与校验和的候选制品，并建立隔离环境：
+
+```bash
+python -m venv .venv
+# POSIX: source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install agentporter-0.1.0-py3-none-any.whl
+agentporter
+```
+
+`agentporter` 没有面向用户的参数或子命令。它会检测 Hermes、完整校验清单和目标集合、建立私有暂存区、一次性展示精确计划，并要求输入屏幕显示的确认短语。请逐项审核目标；取消或短语错误不会开始原生安装写入。
+
+## 从源码运行
+
+```bash
+git clone <已验证的仓库地址>
+cd AgentPorter
+python -m venv .venv
+# 按上文激活环境
+python -m pip install -e .
+python install.py
+```
+
+源码和制品都必须来自可信提交。不要运行脏工作树或下载不完整的代码。
+
+## 结果与边界
+
+终端状态会区分：成功、取消、预检失败、安装失败且补偿完成、补偿不完整、回读失败。只有明确成功结果才表示安装成功；不能根据部分 Profile 目录存在就推断成功。
+
+AgentPorter 安装两个专用 Worker Profile。它不会覆盖现有 Profile、复制供应商凭据、调用模型、安装常驻服务或保存任务数据库。Profile 内凭据和其他运行数据仍由 Hermes 与用户管理。
+
+## 独立卸载
+
+从同一可信发布源运行独立制品：
+
+```bash
+python uninstall.py
+```
+
+卸载器没有静默参数。它先只读扫描一套完整、标记绑定的安装，展示当前名称（即使已经重命名）与路径，并明确警告：所有 Profile 本地数据及后续自定义都将删除；随后要求输入绑定安装 ID 的精确短语。确认后，它会重新验证完整集合，并在每次 Hermes 原生删除前再次验证目标。
+
+如果发现缺失、不完整、重复、冲突、标记损坏、确认后变化、符号链接或路径逃逸，卸载器会停止且不会扩大范围。单项删除失败可能造成部分完成；不要手工递归删除未知目录。确认前先备份需要的 Profile 本地数据。
+
+## 故障排查
+
+| 现象 | 含义与恢复 |
+| --- | --- |
+| 找不到 Hermes 或命令面不兼容 | 安装/修复 Hermes，确保预期可执行文件位于 `PATH`，再启动 AgentPorter。不要手工创建目标目录。 |
+| 目标 Profile 已存在 | AgentPorter 不会覆盖。确认所有权后通过 Hermes 保留、重命名或删除，也可取消。 |
+| 非交互输入被拒绝 | 在真实终端运行；系统有意不提供 `--yes` 或自动化绕过。 |
+| 预检/暂存失败 | 原生安装通常尚未开始。修复权限、空间或源码/清单完整性后重试。 |
+| 安装失败且补偿完成 | 本次事务创建的 Profile 已移除；修复报告原因后可重试。 |
+| 补偿不完整或回读失败 | 立即停止，保存脱敏输出，并使用 Hermes 原生列表检查。不要盲目重跑或递归删目录。 |
+| 卸载报告 absent | 未找到完整 AgentPorter 标记集合；核对 Hermes 配置根与发布源。 |
+| 卸载报告 ambiguous/conflicting/changed | 不继续删除最安全。仅在来源确定时从备份恢复标记，否则私下报告。 |
+| 原生删除或验证失败 | 可能残留部分 Profile。用 Hermes 原生列表/回读确认，保留数据，查明原因后再重试。 |
+
+不要在公开 issue 中粘贴原始配置、标记路径、凭据、会话、记忆或私有主机名。请遵守 [SECURITY.md](../SECURITY.md)。
+
+## 维护者安全发布流程
+
+1. 从干净且已审查的提交开始，使用空的临时构建目录。
+2. 运行 [CONTRIBUTING.md](../CONTRIBUTING.md) 中精确的离线门禁。
+3. 对明确选择的已观察 Hermes 版本运行手动真实 Hermes workflow；不得注入供应商密钥。
+4. 使用 `python -m build --outdir <空目录>` 构建且只生成一个 wheel 和一个 sdist。
+5. 对齐最终打包契约后，运行 fail-closed 验证器：
+
+   ```bash
+   python scripts/verify_release.py \
+     --version 0.1.0 \
+     --dependency 'pydantic>=2,<3' \
+     --dependency 'PyYAML>=6,<7' \
+     --entry-point 'agentporter=agentporter:main' \
+     --resource 'resources/workers.yaml' \
+     <wheel> <sdist>
+   ```
+
+6. 上传前检查校验和、提交身份、标签、变更日志、许可证、README 与验证器输出；只发布已经验证的同一字节序列。
+7. 下载托管制品，重新计算校验和并重跑验证。仅有标签或上传成功不构成验收。
+
+示例资源路径是预期发布契约，发布前必须与最终打包实现对齐。当前 Phase 6 分支只是候选，不代表 v0.1.0 已发布或已获得安全支持。

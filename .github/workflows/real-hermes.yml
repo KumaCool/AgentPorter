@@ -1,0 +1,44 @@
+name: Real Hermes acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      hermes-version:
+        description: Hermes Agent version already observed by the acceptance suite
+        required: true
+        default: '0.20.0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: real-hermes-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HERMES_VERSION: ${{ inputs.hermes-version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install AgentPorter and test tools
+        run: python -m pip install --disable-pip-version-check -e . pytest
+      - name: Install isolated Hermes executable at acceptance path
+        shell: bash
+        run: |
+          sudo mkdir -p /usr/local/lib/hermes-agent
+          sudo python -m venv /usr/local/lib/hermes-agent/venv
+          sudo /usr/local/lib/hermes-agent/venv/bin/python -m pip install --disable-pip-version-check "hermes-agent==${HERMES_VERSION}"
+          /usr/local/lib/hermes-agent/venv/bin/hermes --version
+      - name: Run real Hermes acceptance without credentials or model calls
+        run: >-
+          python -m pytest -q
+          tests/test_phase3_real_hermes.py
+          tests/test_phase4_real_hermes.py
+          tests/test_phase5_formal_acceptance.py

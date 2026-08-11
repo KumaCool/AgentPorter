@@ -2,44 +2,37 @@
 
 ## Supported versions
 
-AgentPorter is currently in a pre-release design stage; executable implementation has not started. No production-ready or security-supported release exists yet. Once releases are published, this section will list the supported version range.
+AgentPorter is implemented but remains pre-release. **No published version currently receives security support.** This table will be updated only after a release is published and its artifacts pass the release contract.
+
+| Version | Supported |
+| --- | --- |
+| Unreleased source candidates | No formal support |
 
 ## Reporting a vulnerability
 
-Please report suspected vulnerabilities privately through GitHub's **Security → Report a vulnerability** feature for this repository. If private vulnerability reporting is not enabled, contact the maintainers through a private channel listed in the repository hosting profile rather than opening a public issue.
+Use GitHub's **Security → Report a vulnerability** feature if private vulnerability reporting is enabled for this repository. If it is unavailable, contact a maintainer through a private channel listed on the repository hosting profile. Do not open a public issue containing exploit details or sensitive data.
 
-Include only the information needed to reproduce and assess the issue:
+Include the affected commit/artifact, sanitized reproduction, expected and observed behavior, and potential impact. Never attach real API keys, tokens, cookies, credentials, private configuration, personal paths, private hostnames, profile runtime data, or third-party data. Revoke exposed credentials immediately; removing them in a later commit does not remove them from history.
 
-- affected version or commit;
-- affected Adapter or installer/uninstaller entry;
-- reproduction steps using sanitized data;
-- expected and observed behavior;
-- potential impact.
+## Implemented boundaries
 
-Do **not** attach real API keys, tokens, cookies, private configuration files, personal paths, private hostnames, or third-party data. Revoke exposed credentials immediately; deleting them from a later commit is not sufficient.
+AgentPorter:
 
-## Security boundaries
+- completes preflight and presents one plan before writes;
+- refuses to overwrite existing/default Profiles;
+- compensates only Profiles proven to have been created by the current transaction;
+- never copies credentials and makes no model call during install or uninstall;
+- discovers uninstall targets by fixed product/component identity and a random per-installation ID, never by editable names;
+- requires an installation-bound confirmation and warns that Profile-local credentials, memories, sessions, logs, skills, and later customizations will be deleted;
+- fails closed on malformed, incomplete, duplicated, conflicting, symlinked, escaped, or changed candidates;
+- uses Hermes-native deletion and verifies both native absence and path absence; it has no recursive-delete fallback.
 
-AgentPorter is intended to create and remove dedicated Hermes Profiles. Implementations and contributions must therefore preserve these boundaries:
+The local `agentporter-profile.json` marker is an ownership claim, not a signature or authentication credential. Copying or editing it can block automated uninstall; it cannot authorize broader deletion.
 
-- complete installation preflight and preview before any write;
-- refuse to overwrite pre-existing or default Profiles;
-- compensate only current-transaction Profiles with complete creation and identity evidence;
-- discover uninstall targets from protocol-fixed product/component fields and a per-installation ID, never user-editable names;
-- require installation-bound confirmation and warn that uninstall deletes all Profile-local data;
-- fail closed on ambiguous markers, paths, symlinks, or concurrent identity changes;
-- use Hermes native deletion without an AgentPorter-owned recursive-directory fallback;
-- preserve unrelated Profiles and avoid copying authentication material;
-- redact secret-like values from plans, logs, and reports.
+## Safe release boundary
 
-The optional post-install Worker benchmark is not part of installation. It must run only after explicit cost authorization in disposable Hermes/Profile and repository environments, discover targets by the AgentPorter marker protocol, reject ambiguous sets before model calls, and keep raw responses and usage artifacts out of Git by default.
+Release candidates must pass offline format, lint, type, test, build, Markdown-link, privacy, and artifact-content checks. Real-Hermes acceptance is a separate Linux test against an explicitly selected version and uses isolated homes with blank provider credentials and no model commands. Passing either gate does not prove compatibility with every Hermes version, platform, provider, or model.
 
-The local marker is a non-secret ownership claim, not a signature or user-authentication credential. A malformed, copied, conflicting, or changed marker must make discovery fail closed rather than be treated as cryptographic provenance.
+Release artifacts must contain only the expected package modules/resources and distribution metadata. Tests, caches, private directories, credentials, sessions, memories, bytecode, and secret-like content are forbidden. A mismatch blocks publication; it must not be waived by deleting the expected item from the release contract.
 
-`agentporter-profile.json` is an AgentPorter-reserved protocol filename. Unrelated tools should not create it inside Hermes Profiles; any malformed or conflicting use intentionally blocks automated uninstall rather than being ignored.
-
-A successful syntax check does not prove that a model is authorized, that a remote service is trusted, or that a generated Worker is safe for arbitrary tasks.
-
-## Disclosure process
-
-Maintainers will acknowledge a valid private report, investigate impact, prepare a fix and tests, and coordinate disclosure appropriate to the severity. Timelines cannot be guaranteed while the project remains pre-release.
+Maintainers will acknowledge valid private reports when possible, investigate, add regression coverage, and coordinate disclosure. Response timelines are not guaranteed before the first supported release.

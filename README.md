@@ -1,73 +1,77 @@
 # AgentPorter
 
-AgentPorter is an open-source installer for reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) Worker profiles.
+AgentPorter is a pre-release, open-source, one-shot installer for reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) Worker Profiles.
 
-> **Project status:** Hermes-first Phases 1–5 are complete: runnable one-shot install and independent uninstall entries, automated tests, isolated Hermes v0.20 install/readback/rename/compensation/uninstall cycles, resource baselines, scale scans, and fault stress. Release packaging and final publication gates (Phase 6) remain unfinished.
+> **Evidence status:** Phases 1–5 implemented install, independent uninstall, adversarial tests, and isolated Hermes v0.20.0 acceptance without model calls. Phase 6 CI, documentation, and release verification are candidate work; no supported release has been published. Hermes v0.20.0 is an observed acceptance target, not a promised minimum.
 
-## First product goal
+## What it installs
 
-AgentPorter is launched once to install the repository's complete Worker set into Hermes. It is not a command suite and exposes no subcommands, platform selectors, upgrade commands, or verification commands. A separate `uninstall.py` script is planned solely to remove the two dedicated Profiles later.
+One launch installs the repository's complete two-Profile Worker set:
 
-The first release will install two independent Hermes Profiles:
+- `luna_worker` — bounded implementation and analysis after the parent fixes goal, scope, constraints, and acceptance;
+- `codex-5-3-small-worker` — narrower, strictly mechanical delegation.
 
-- `luna_worker` — bounded implementation and analysis after the parent has fixed the goal, scope, constraints, and acceptance checks;
-- `codex-5-3-small-worker` — strictly mechanical work that is simpler and narrower than `luna_worker` work.
+Each Profile contains Hermes-native configuration, instructions, routing description, and a non-secret ownership marker. AgentPorter orchestrates Hermes Profile primitives; it does not replace Hermes storage, queues, worktrees, or provider configuration.
 
-Each installed Profile contains Hermes-native `config.yaml`, `SOUL.md`, a routing description, and a non-secret name-independent AgentPorter marker. It can be called directly with `hermes -p <profile>`, assigned through Hermes Kanban, and used from any project directory sharing the same Hermes configuration root.
+## Safety boundary
 
-## Why Hermes-first?
+Installation preflights the entire set, presents one exact plan, requires interactive confirmation, installs through Hermes, reads back results, and performs bounded compensation on failure. It never overwrites existing/default Profiles, copies credentials, calls a model, installs a daemon, or keeps a task database.
 
-Hermes already provides the mature primitives AgentPorter needs:
+The separate `uninstall.py` discovers AgentPorter Profiles even after rename by fixed marker identity, warns that Profile-local data and later customization will be deleted, requires installation-bound confirmation, revalidates against races, and uses Hermes-native deletion. Ambiguous or changed sets fail closed.
 
-- isolated Profiles and profile descriptions;
-- Profile distributions installed from Git or local directories;
-- per-Profile models, providers, instructions, skills, memory, and sessions;
-- Kanban assignment and worktree-backed execution;
-- distribution installation that excludes credentials and user runtime state.
+## Quick start from source
 
-AgentPorter orchestrates these primitives rather than reimplementing Profile storage, Git distribution, task queues, or worktree management.
+Requirements: Python 3.11+, an installed/discoverable Hermes executable, and an interactive terminal.
 
-## Product boundary
+```bash
+git clone <verified-repository-url>
+cd AgentPorter
+python -m venv .venv
+# POSIX: source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install -e .
+python install.py
+```
 
-One AgentPorter launch preflights, previews, confirms, installs, statically reads back, performs bounded failure compensation, and exits. It does **not** install a resident service, retain a task database, provide ongoing lifecycle management, replace existing Profiles, copy credentials, or call a model.
+There are no user-facing flags or subcommands. Read the plan, then enter the exact confirmation displayed. To remove one complete installation later, run the separate trusted artifact:
 
-The standalone uninstaller is a guarded cleanup escape hatch, not a management interface. It discovers renamed Profiles from protocol-fixed product/component IDs plus a per-installation ID; user-editable names never establish identity. The complete transaction and deletion rules live only in the [consolidated design](docs/03-installation-and-uninstall-design.md).
+```bash
+python uninstall.py
+```
 
-## Current repository contents
+Back up any Profile-local credentials, memories, sessions, skills, logs, or customization before confirming uninstall.
+
+For wheel installation, result states, recovery, platform-evidence distinctions, and safe release checks, read the complete guides:
+
+- [Installation and troubleshooting — English](docs/04-installation-and-troubleshooting.md)
+- [安装与故障排查 — 简体中文](docs/04-installation-and-troubleshooting.zh-CN.md)
+
+## Platform and compatibility evidence
+
+Offline CI is intended for Linux, macOS, and Windows on Python 3.11–3.13. Real Hermes acceptance runs separately on Linux against an explicitly selected Hermes version because it needs a native executable and stronger isolation. Offline matrix success does not claim native Hermes compatibility on every platform or version.
+
+## Repository map
 
 - `workers.yaml` — portable Worker definitions and requested model preferences;
-- `install.py` and the `agentporter` entry point — the runnable one-shot installer;
-- `src/agentporter/` — validation, staging, confirmation, native installation, static readback, and bounded compensation implementation;
-- `tests/` — unit, adversarial filesystem, transaction, and isolated real-Hermes tests;
-- `docs/` — architecture, Worker format, Adapter mapping, install/uninstall design, acceptance matrix, and implementation plans.
+- `install.py`, `uninstall.py`, and `src/agentporter/` — one-shot install and guarded independent uninstall;
+- `tests/` — unit, filesystem, transaction, stress, and isolated real-Hermes acceptance;
+- `scripts/verify_release.py` — fail-closed source/wheel/sdist contract verifier;
+- `docs/` — architecture, Worker format, adapter mapping, lifecycle design, plans, and user guides.
 
-The independent uninstaller is implemented; the project is not yet a release candidate because Phase 5 acceptance and Phase 6 packaging remain open.
-
-## Codex scope
-
-“Codex” in this scope means a **Codex CLI/platform adapter**, not the model ID requested by the Hermes Profile named `codex-5-3-small-worker`. That Worker remains part of the Hermes-first set. A Codex CLI adapter is not part of the first implementation: the project will not generate Codex configuration, install Codex agents, or claim Codex CLI compatibility until a real supported version and native validation path are available.
-
-## Documentation
+Design and evidence:
 
 - [Solution overview](docs/00-solution-overview.md)
 - [Portable Worker specification](docs/01-portable-worker-spec.md)
 - [Hermes adapter design](docs/02-platform-adapters.md)
-- [Installation, uninstall, and acceptance design](docs/03-installation-and-uninstall-design.md)
+- [Install/uninstall design and acceptance matrix](docs/03-installation-and-uninstall-design.md)
 - [Implementation plan](docs/plan/01-implementation-plan.md)
-- [Worker validation and benchmark plan](docs/plan/02-agent-validation-and-benchmark.md)
+- [Post-install Worker validation plan](docs/plan/02-agent-validation-and-benchmark.md)
+- [Changelog](CHANGELOG.md)
 
-The detailed design documents are currently written in Chinese.
+The detailed design and plan documents are engineering history and contracts, not universal production-readiness claims. “Codex” platform support is outside the first release; the Worker name does not imply a Codex CLI adapter.
 
-## Security and privacy
+## Development and security
 
-AgentPorter never publishes or copies credentials or private runtime state, never overwrites existing Profiles, and never calls a model during installation. Uninstall requires an installation-bound confirmation and warns that all Profile-local data will be deleted. Local markers are ownership claims, not cryptographic authentication; the [consolidated design](docs/03-installation-and-uninstall-design.md) is authoritative.
-
-Report vulnerabilities according to [SECURITY.md](SECURITY.md).
-
-## Contributing
-
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. The first implementation must remain Hermes-first; other platforms require separate evidence and approval.
-
-## License
+See [CONTRIBUTING.md](CONTRIBUTING.md) for exact offline gates and the separate real-Hermes workflow. Never commit credentials, private runtime state, caches, model output, or personal paths. Report suspected vulnerabilities privately according to [SECURITY.md](SECURITY.md).
 
 AgentPorter is licensed under the [MIT License](LICENSE).

@@ -111,6 +111,8 @@
 
 ## 8. Phase 6：开源产品化
 
+**当前状态：** 离线跨平台 CI、手动触发的真实 Hermes Linux 验收 workflow、fail-closed 发布验证器及中英文安装/排障/安全发布文档已形成候选。打包资源落点仍需与打包轨最终实现对齐；干净环境制品安装、托管 Release 下载回验、标签与发布尚未执行，因此本阶段及最终 GATE 保持开放。
+
 - `pyproject.toml`、版本策略、变更日志、主安装器入口和独立 `uninstall.py`；
 - Linux/macOS/Windows CI 与 Hermes 兼容矩阵；
 - 中英文安装、卸载和故障排查文档；

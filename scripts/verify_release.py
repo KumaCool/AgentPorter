@@ -1,0 +1,256 @@
+#!/usr/bin/env python3
+"""Fail-closed inspection of AgentPorter source and distribution artifacts."""
+
+from __future__ import annotations
+
+import argparse
+import configparser
+import email
+import re
+import tarfile
+import zipfile
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from email.message import Message
+from pathlib import Path, PurePosixPath
+
+_METADATA_ALLOWLIST = {
+    "METADATA",
+    "WHEEL",
+    "RECORD",
+    "entry_points.txt",
+    "licenses/LICENSE",
+    "top_level.txt",
+}
+_FORBIDDEN_PARTS = {
+    ".git",
+    ".hermes",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+    "__pycache__",
+    "tests",
+    ".env",
+    "private",
+    "credentials",
+    "sessions",
+    "memories",
+}
+_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)(?:api[_-]?key|password|secret)\s*[:=]\s*[\"']?[A-Za-z0-9_./+\-=]{16,}"
+)
+_TOKEN_LITERAL = re.compile(r"(?i)token\s*[:=]\s*[\"'][A-Za-z0-9_./+\-=]{16,}[\"']")
+_LINK = re.compile(r"(?<!!)\[[^]]*]\(([^) #]+)(?:#[^)]+)?\)")
+
+
+@dataclass(frozen=True)
+class ReleaseContract:
+    repository: Path
+    package: str
+    version: str
+    dependencies: frozenset[str]
+    entry_points: Mapping[str, str]
+    resources: frozenset[str]
+
+
+def _canonical_requirement(value: str) -> str:
+    return re.sub(r"\s+", "", value)
+
+
+def _metadata_errors(metadata: Message, contract: ReleaseContract, label: str) -> list[str]:
+    errors: list[str] = []
+    expected = {
+        "Name": contract.package,
+        "Version": contract.version,
+        "License-Expression": "MIT",
+        "Description-Content-Type": "text/markdown",
+    }
+    for key, value in expected.items():
+        if metadata.get(key) != value:
+            errors.append(f"{label}: metadata {key!r} must equal {value!r}")
+    if metadata.get("Requires-Python") != ">=3.11":
+        errors.append(f"{label}: metadata 'Requires-Python' must equal '>=3.11'")
+    actual_dependencies = {
+        _canonical_requirement(value) for value in metadata.get_all("Requires-Dist", [])
+    }
+    expected_dependencies = {_canonical_requirement(value) for value in contract.dependencies}
+    if actual_dependencies != expected_dependencies:
+        errors.append(f"{label}: dependency metadata mismatch")
+    return errors
+
+
+def _path_errors(names: set[str], label: str) -> list[str]:
+    errors: list[str] = []
+    for name in names:
+        path = PurePosixPath(name)
+        if path.is_absolute() or ".." in path.parts:
+            errors.append(f"{label}: unsafe archive path {name!r}")
+        if set(path.parts) & _FORBIDDEN_PARTS or any(part.endswith(".pyc") for part in path.parts):
+            errors.append(f"{label}: forbidden archive path {name!r}")
+    return errors
+
+
+def _wheel_errors(path: Path, contract: ReleaseContract) -> list[str]:
+    errors: list[str] = []
+    with zipfile.ZipFile(path) as archive:
+        names = {name.rstrip("/") for name in archive.namelist() if not name.endswith("/")}
+        errors.extend(_path_errors(names, path.name))
+        dist_info = f"{contract.package}-{contract.version}.dist-info"
+        metadata_name = f"{dist_info}/METADATA"
+        entry_name = f"{dist_info}/entry_points.txt"
+        required = {metadata_name, entry_name, f"{dist_info}/licenses/LICENSE"}
+        missing = required - names
+        if missing:
+            errors.append(f"{path.name}: missing required files: {sorted(missing)}")
+            return errors
+        package_files = {
+            name.removeprefix(f"{contract.package}/")
+            for name in names
+            if name.startswith(f"{contract.package}/")
+        }
+        expected_modules = {
+            item.relative_to(contract.repository / "src" / contract.package).as_posix()
+            for item in (contract.repository / "src" / contract.package).rglob("*.py")
+        }
+        expected_package = expected_modules | set(contract.resources)
+        if package_files != expected_package:
+            errors.append(f"{path.name}: package content mismatch")
+        unexpected_metadata = {
+            name.removeprefix(f"{dist_info}/") for name in names if name.startswith(f"{dist_info}/")
+        } - _METADATA_ALLOWLIST
+        if unexpected_metadata:
+            errors.append(f"{path.name}: unexpected distribution metadata files")
+        metadata = email.message_from_bytes(archive.read(metadata_name))
+        errors.extend(_metadata_errors(metadata, contract, path.name))
+        parser = configparser.ConfigParser()
+        parser.read_string(archive.read(entry_name).decode("utf-8"))
+        actual_entries = (
+            dict(parser.items("console_scripts")) if parser.has_section("console_scripts") else {}
+        )
+        if actual_entries != dict(contract.entry_points):
+            errors.append(f"{path.name}: console entry points mismatch")
+    return errors
+
+
+def _sdist_errors(path: Path, contract: ReleaseContract) -> list[str]:
+    errors: list[str] = []
+    with tarfile.open(path, "r:gz") as archive:
+        members = [member for member in archive.getmembers() if member.isfile()]
+        names = {member.name for member in members}
+        errors.extend(_path_errors(names, path.name))
+        roots = {PurePosixPath(name).parts[0] for name in names}
+        expected_root = f"{contract.package}-{contract.version}"
+        if roots != {expected_root}:
+            return [*errors, f"{path.name}: archive must have exactly root {expected_root!r}"]
+        relative_names = {str(PurePosixPath(name).relative_to(expected_root)) for name in names}
+        required = {"PKG-INFO", "README.md", "LICENSE", "pyproject.toml"}
+        if not required <= relative_names:
+            errors.append(f"{path.name}: missing required source metadata")
+        package_root = contract.repository / "src" / contract.package
+        expected_modules = {
+            f"src/{contract.package}/{item.relative_to(package_root).as_posix()}"
+            for item in package_root.rglob("*.py")
+        }
+        expected_resources = {f"src/{contract.package}/{item}" for item in contract.resources}
+        expected_package = expected_modules | expected_resources
+        actual_package = {
+            name for name in relative_names if name.startswith(f"src/{contract.package}/")
+        }
+        if actual_package != expected_package:
+            errors.append(f"{path.name}: source package content mismatch")
+        pkg_info = archive.extractfile(f"{expected_root}/PKG-INFO")
+        if pkg_info is not None:
+            errors.extend(
+                _metadata_errors(email.message_from_binary_file(pkg_info), contract, path.name)
+            )
+    return errors
+
+
+def _repository_errors(repository: Path) -> list[str]:
+    errors: list[str] = []
+    for markdown in repository.rglob("*.md"):
+        if set(markdown.relative_to(repository).parts) & {"dist", ".git", ".venv"}:
+            continue
+        text = markdown.read_text(encoding="utf-8")
+        if _SECRET_ASSIGNMENT.search(text) or _TOKEN_LITERAL.search(text):
+            errors.append(f"repository: secret-like value in {markdown.relative_to(repository)}")
+        for target in _LINK.findall(text):
+            if "://" in target or target.startswith("mailto:"):
+                continue
+            if not (markdown.parent / target).resolve().exists():
+                errors.append(
+                    f"repository: broken link {target!r} in {markdown.relative_to(repository)}"
+                )
+    public_roots = [repository / name for name in ("src", "scripts")]
+    public_files = [repository / name for name in ("README.md", "SECURITY.md", "pyproject.toml")]
+    for root in public_roots:
+        if root.exists():
+            public_files.extend(path for path in root.rglob("*") if path.is_file())
+    for path in public_files:
+        if not path.is_file() or set(path.relative_to(repository).parts) & _FORBIDDEN_PARTS:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        if _SECRET_ASSIGNMENT.search(text) or _TOKEN_LITERAL.search(text):
+            errors.append(f"repository: secret-like value in {path.relative_to(repository)}")
+    return errors
+
+
+def verify_release(contract: ReleaseContract, artifacts: Sequence[Path]) -> list[str]:
+    errors = _repository_errors(contract.repository)
+    wheels = [path for path in artifacts if path.name.endswith(".whl")]
+    sdists = [path for path in artifacts if path.name.endswith(".tar.gz")]
+    if len(wheels) != 1 or len(sdists) != 1 or len(artifacts) != 2:
+        errors.append("artifacts: require exactly one wheel and one .tar.gz sdist")
+        return errors
+    try:
+        errors.extend(_wheel_errors(wheels[0], contract))
+    except (OSError, KeyError, zipfile.BadZipFile) as exc:
+        errors.append(f"{wheels[0].name}: unreadable wheel ({type(exc).__name__})")
+    try:
+        errors.extend(_sdist_errors(sdists[0], contract))
+    except (OSError, KeyError, tarfile.TarError) as exc:
+        errors.append(f"{sdists[0].name}: unreadable sdist ({type(exc).__name__})")
+    return errors
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("artifacts", nargs="+", type=Path)
+    parser.add_argument("--repository", type=Path, default=Path.cwd())
+    parser.add_argument("--package", default="agentporter")
+    parser.add_argument("--version", required=True)
+    parser.add_argument("--dependency", action="append", default=[])
+    parser.add_argument("--entry-point", action="append", default=[])
+    parser.add_argument("--resource", action="append", default=[])
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    try:
+        entries = dict(item.split("=", 1) for item in args.entry_point)
+    except ValueError:
+        print("FAIL: each --entry-point must be NAME=MODULE:CALLABLE")
+        return 2
+    contract = ReleaseContract(
+        repository=args.repository.resolve(),
+        package=args.package,
+        version=args.version,
+        dependencies=frozenset(args.dependency),
+        entry_points=entries,
+        resources=frozenset(args.resource),
+    )
+    errors = verify_release(contract, args.artifacts)
+    for error in errors:
+        print(f"FAIL: {error}")
+    if errors:
+        return 1
+    print("PASS: release contract verified")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
