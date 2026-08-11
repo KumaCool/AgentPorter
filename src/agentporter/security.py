@@ -129,6 +129,18 @@ def _open_flags() -> int:
     return os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
 
 
+def _descriptor_scan_supported() -> bool:
+    return (
+        _OPEN_SUPPORTS_DIR_FD
+        and _STAT_SUPPORTS_DIR_FD
+        and _LISTDIR_SUPPORTS_FD
+        and isinstance(getattr(os, "O_DIRECTORY", None), int)
+        and getattr(os, "O_DIRECTORY", 0) != 0
+        and isinstance(getattr(os, "O_NOFOLLOW", None), int)
+        and getattr(os, "O_NOFOLLOW", 0) != 0
+    )
+
+
 def _open_verified_directory(path: Path, expected: os.stat_result) -> int | None:
     if not _LISTDIR_SUPPORTS_FD or not hasattr(os, "O_DIRECTORY"):
         if not _same_file(expected, path.lstat()):
@@ -239,6 +251,8 @@ def _validate_config(data: object) -> None:
 
 
 def scan_staging(staging_root: Path) -> tuple[()]:
+    if not _descriptor_scan_supported():
+        _fail("unsafe-path", Path("."))
     expected_profiles = set(INITIAL_PROFILE_NAMES.values())
     actual_profiles: set[str] = set()
     installation_ids: set[str] = set()

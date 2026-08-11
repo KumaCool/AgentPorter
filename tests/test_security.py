@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from pathlib import Path
 from uuid import UUID
 
 import pytest
 
+from agentporter import security
 from agentporter.manifest import load_manifest
 from agentporter.render import render_staging
 from agentporter.security import StagingViolation, scan_staging
@@ -20,6 +22,85 @@ def _valid_staging(tmp_path: Path) -> Path:
 
 def test_scan_accepts_explicitly_allowlisted_staging(tmp_path: Path) -> None:
     assert scan_staging(_valid_staging(tmp_path)) == ()
+
+
+@pytest.mark.parametrize(
+    "missing_capability",
+    ["open-dir-fd", "stat-dir-fd", "listdir-fd", "directory-flag", "nofollow-flag"],
+)
+def test_scan_fails_closed_before_filesystem_access_without_descriptor_capability(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, missing_capability: str
+) -> None:
+    root = _valid_staging(tmp_path)
+    if missing_capability == "open-dir-fd":
+        monkeypatch.setattr(security, "_OPEN_SUPPORTS_DIR_FD", False)
+    elif missing_capability == "stat-dir-fd":
+        monkeypatch.setattr(security, "_STAT_SUPPORTS_DIR_FD", False)
+    elif missing_capability == "listdir-fd":
+        monkeypatch.setattr(security, "_LISTDIR_SUPPORTS_FD", False)
+    elif missing_capability == "directory-flag":
+        monkeypatch.delattr(os, "O_DIRECTORY")
+    else:
+        monkeypatch.delattr(os, "O_NOFOLLOW")
+
+    def unexpected_access(*args: object, **kwargs: object) -> None:
+        pytest.fail("staging filesystem was accessed without descriptor safety")
+
+    monkeypatch.setattr(Path, "lstat", unexpected_access)
+    monkeypatch.setattr(Path, "read_text", unexpected_access)
+    monkeypatch.setattr(os, "listdir", unexpected_access)
+    monkeypatch.setattr(os, "open", unexpected_access)
+    monkeypatch.setattr(os, "read", unexpected_access)
+
+    with pytest.raises(StagingViolation, match=r"^unsafe-path: \.$"):
+        scan_staging(root)
+
+
+def test_scan_fallback_does_not_consume_replaced_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _valid_staging(tmp_path)
+    profile = root / "luna_worker"
+    original = root.parent / "original-profile"
+    replacement = root.parent / "replacement-profile"
+    shutil.copytree(profile, replacement)
+    (replacement / "SOUL.md").write_text("Replacement Worker SOUL\n")
+    original_lstat = Path.lstat
+    original_open = os.open
+    profile_identity_checks = 0
+    replaced = False
+    replacement_consumed = False
+
+    monkeypatch.setattr(security, "_OPEN_SUPPORTS_DIR_FD", False)
+    monkeypatch.setattr(security, "_STAT_SUPPORTS_DIR_FD", False)
+    monkeypatch.setattr(security, "_LISTDIR_SUPPORTS_FD", False)
+
+    def replace_after_profile_identity_check(path: Path) -> os.stat_result:
+        nonlocal profile_identity_checks, replaced
+        result = original_lstat(path)
+        if path == profile:
+            profile_identity_checks += 1
+            if profile_identity_checks == 3:
+                replaced = True
+                profile.rename(original)
+                replacement.rename(profile)
+        return result
+
+    def observe_open(
+        path: str | bytes | os.PathLike[str], flags: int, *args: object, **kwargs: object
+    ) -> int:
+        nonlocal replacement_consumed
+        if Path(path).parent == profile:
+            replacement_consumed = True
+        return original_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", replace_after_profile_identity_check)
+    monkeypatch.setattr(os, "open", observe_open)
+
+    with pytest.raises(StagingViolation, match=r"^unsafe-path: \.$"):
+        scan_staging(root)
+    assert not replaced
+    assert not replacement_consumed
 
 
 def test_scan_rejects_unexpected_artifact(tmp_path: Path) -> None:
