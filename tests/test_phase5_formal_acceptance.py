@@ -7,7 +7,9 @@ import os
 import resource
 import shutil
 import subprocess
+import tempfile
 import time
+from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from io import StringIO
 from pathlib import Path
@@ -33,12 +35,73 @@ assert _UNINSTALL_SPEC is not None and _UNINSTALL_SPEC.loader is not None
 uninstall_entry = importlib.util.module_from_spec(_UNINSTALL_SPEC)
 _UNINSTALL_SPEC.loader.exec_module(uninstall_entry)
 RENAMED = ("phase5-renamed-luna", "phase5-renamed-codex")
-FORBIDDEN_COMMANDS = frozenset({"chat", "run", "model"})
 REAL_RUN_INSTALLER = install_application.run_installer
 REAL_RUN_UNINSTALLER = uninstall_entry.run_uninstaller
-CREDENTIAL_KEYS = frozenset(
-    {"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "NOUS_API_KEY"}
-)
+GNU_TIME = Path("/usr/bin/time")
+
+
+def _expected_families() -> tuple[str, ...]:
+    install_worker = (
+        "profile-install",
+        "profile-describe-text",
+        "profile-info",
+        "profile-describe",
+    )
+    return (
+        *install_worker,
+        *install_worker,
+        "profile-list",
+        "profile-info",
+        "profile-show",
+        "profile-describe",
+        "profile-info",
+        "profile-show",
+        "profile-describe",
+        "kanban-create-help",
+        "profile-rename",
+        "profile-rename",
+        "profile-list",
+        "kanban-assignees-json",
+        "profile-delete",
+        "profile-delete",
+        "profile-list",
+    )
+
+
+def _command_family(argv: tuple[str, ...], staging_roots: set[Path]) -> str:
+    """Return the one closed-grammar command family, or fail before execution."""
+    assert argv and argv[0] == str(HERMES.resolve(strict=True))
+    tail = argv[1:]
+    if tail == ("profile", "list"):
+        return "profile-list"
+    if tail == ("kanban", "assignees", "--json"):
+        return "kanban-assignees-json"
+    if tail == ("kanban", "create", "--help"):
+        return "kanban-create-help"
+    if len(tail) == 3 and tail[:2] in {
+        ("profile", "info"),
+        ("profile", "show"),
+        ("profile", "describe"),
+    }:
+        assert tail[2] in {*INITIAL_PROFILE_NAMES.values(), *RENAMED}
+        return "-".join(tail[:2])
+    if len(tail) == 5 and tail[:2] == ("profile", "describe") and tail[3] == "--text":
+        assert tail[2] in INITIAL_PROFILE_NAMES.values()
+        assert tail[4] in {worker.description for worker in _manifest().workers.values()}
+        return "profile-describe-text"
+    if len(tail) == 4 and tail[:2] == ("profile", "rename"):
+        assert (tail[2], tail[3]) in set(zip(INITIAL_PROFILE_NAMES.values(), RENAMED, strict=True))
+        return "profile-rename"
+    if len(tail) == 4 and tail[:2] == ("profile", "delete") and tail[3] == "--yes":
+        assert tail[2] in RENAMED
+        return "profile-delete"
+    if len(tail) == 4 and tail[:2] == ("profile", "install") and tail[3] == "--yes":
+        source = Path(tail[2])
+        assert source.is_absolute()
+        assert source.name in INITIAL_PROFILE_NAMES.values()
+        assert any(source.is_relative_to(root) for root in staging_roots)
+        return "profile-install"
+    raise AssertionError(f"argv is outside the closed Phase 5 grammar: {tail!r}")
 
 
 @pytest.fixture
@@ -56,8 +119,12 @@ def isolated_root(
 
 
 class MetricsRunner:
-    def __init__(self) -> None:
+    def __init__(self, expected_env: Mapping[str, str]) -> None:
+        assert GNU_TIME.is_file()
+        self.expected_env = dict(expected_env)
         self.calls: list[tuple[str, ...]] = []
+        self.families: list[str] = []
+        self.per_child_peak_rss_kib: list[int] = []
         self.profile_install_seconds: list[float] = []
         self.staging_peak_bytes = 0
         self.staging_roots: set[Path] = set()
@@ -84,27 +151,36 @@ class MetricsRunner:
         timeout: float | None = None,
     ) -> subprocess.CompletedProcess[str]:
         normalized = tuple(argv)
-        self.calls.append(normalized)
         assert shell is False
         assert check is False
         assert capture_output is True
         assert text is True
-        assert normalized[0] == str(HERMES.resolve(strict=True))
-        assert not (set(normalized[1:]) & FORBIDDEN_COMMANDS)
-        assert "--auto" not in normalized
-        assert not any(env.get(key) for key in CREDENTIAL_KEYS)
+        assert dict(env) == self.expected_env
+        family = _command_family(normalized, self.staging_roots)
+        self.calls.append(normalized)
+        self.families.append(family)
         for root in self.staging_roots:
             self.watch_staging(root)
         started = time.perf_counter()
-        completed = subprocess.run(
-            normalized,
-            shell=False,
-            env=env,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
+        metric_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(prefix="phase5-rss-", delete=False) as metric_file:
+                metric_path = Path(metric_file.name)
+            completed = subprocess.run(
+                (str(GNU_TIME), "--format=%M", f"--output={metric_path}", "--", *normalized),
+                shell=False,
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            peak_rss_kib = int(metric_path.read_text(encoding="ascii").strip())
+            assert peak_rss_kib > 0
+            self.per_child_peak_rss_kib.append(peak_rss_kib)
+        finally:
+            if metric_path is not None:
+                metric_path.unlink(missing_ok=True)
         elapsed = time.perf_counter() - started
         if normalized[1:3] == ("profile", "install"):
             self.profile_install_seconds.append(elapsed)
@@ -283,7 +359,7 @@ def test_formal_entries_real_hermes_cold_hot_acceptance_and_resource_baseline(
             cycle_root = isolated_root / label
             cycle_root.mkdir()
             env = _environment(cycle_root)
-            runner = MetricsRunner()
+            runner = MetricsRunner(env)
             monkeypatch.setattr(os, "environ", env)
             monkeypatch.setattr(builtins, "input", unexpected_input)
             before_usage = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -341,10 +417,16 @@ def test_formal_entries_real_hermes_cold_hot_acceptance_and_resource_baseline(
             assert all(not (profiles_root / name).exists() for name in RENAMED)
             assert REAL_RUN_UNINSTALLER(env).status is UninstallerStatus.ALREADY_ABSENT
 
+            assert tuple(runner.families) == _expected_families()
+            assert Counter(runner.families) == Counter(_expected_families())
+            assert len(runner.per_child_peak_rss_kib) == len(runner.calls)
+
             after_usage = resource.getrusage(resource.RUSAGE_CHILDREN)
             install_profile_seconds = tuple(runner.profile_install_seconds)
             hermes_subprocess_count = len(runner.calls)
-            peak_rss_kib = after_usage.ru_maxrss
+            # GNU time reports an independent maximum resident set for each exact inner
+            # Hermes command.  The cycle metric is the maximum of this cycle's calls only.
+            peak_rss_kib = max(runner.per_child_peak_rss_kib)
             child_cpu_seconds = (
                 after_usage.ru_utime
                 + after_usage.ru_stime
@@ -371,6 +453,7 @@ def test_formal_entries_real_hermes_cold_hot_acceptance_and_resource_baseline(
                 "uninstall_total_seconds": uninstall_seconds,
                 "hermes_subprocess_count": hermes_subprocess_count,
                 "peak_rss_kib": peak_rss_kib,
+                "peak_rss_definition": "max independent GNU-time %M across Hermes calls in cycle",
                 "child_cpu_seconds": child_cpu_seconds,
                 "staging_peak_bytes": runner.staging_peak_bytes,
                 "staging_final_bytes": staging_final_bytes,
@@ -386,9 +469,90 @@ def test_formal_entries_real_hermes_cold_hot_acceptance_and_resource_baseline(
         os.environ.update(original_environment)
 
     assert [cycle["cycle"] for cycle in cycles] == ["cold", "hot"]
+    assert all(cycle["peak_rss_kib"] > 0 for cycle in cycles)
     encoded_evidence = "PHASE5_FORMAL_BASELINE=" + json.dumps(cycles, sort_keys=True)
     print(encoded_evidence)
     evidence = capsys.readouterr().out
     assert encoded_evidence in evidence
     with capsys.disabled():
         print(encoded_evidence)
+
+
+@pytest.mark.parametrize(
+    "tail",
+    [
+        ("auth", "login"),
+        ("setup",),
+        ("config", "set", "model", "unsafe"),
+        ("provider", "list"),
+        ("profile", "unknown"),
+        ("profile", "list", "--json"),
+    ],
+)
+def test_metrics_runner_rejects_every_command_outside_closed_grammar_before_subprocess(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tail: tuple[str, ...]
+) -> None:
+    env = _environment(tmp_path)
+    runner = MetricsRunner(env)
+    invoked = False
+
+    def forbidden_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal invoked
+        invoked = True
+        raise AssertionError("subprocess must not be reached")
+
+    monkeypatch.setattr(subprocess, "run", forbidden_run)
+    with pytest.raises(AssertionError, match="closed Phase 5 grammar"):
+        runner((str(HERMES), *tail), shell=False, env=env)
+    assert not invoked
+    assert runner.calls == []
+
+
+def test_metrics_runner_rejects_extra_environment_before_subprocess(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env = _environment(tmp_path)
+    runner = MetricsRunner(env)
+    invoked = False
+
+    def forbidden_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal invoked
+        invoked = True
+        raise AssertionError("subprocess must not be reached")
+
+    monkeypatch.setattr(subprocess, "run", forbidden_run)
+    with pytest.raises(AssertionError):
+        runner(
+            (str(HERMES), "profile", "list"),
+            shell=False,
+            env={**env, "EXTRA": "not-sealed"},
+        )
+    assert not invoked
+    assert runner.calls == []
+
+
+def test_metrics_runner_peak_is_independent_of_lifetime_child_rusage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env = _environment(tmp_path)
+    original_run = subprocess.run
+    # Deliberately raise the process-lifetime RUSAGE_CHILDREN high-water mark first.
+    original_run(
+        ("/usr/bin/python3", "-c", "x = bytearray(64 * 1024 * 1024); print(len(x))"),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    historical_peak = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+    assert historical_peak > 123
+
+    def measured_run(argv: Sequence[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        metric_argument = next(item for item in argv if item.startswith("--output="))
+        Path(metric_argument.removeprefix("--output=")).write_text("123\n", encoding="ascii")
+        return subprocess.CompletedProcess(argv, 0, stdout="profiles", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", measured_run)
+    runner = MetricsRunner(env)
+    runner((str(HERMES), "profile", "list"), shell=False, env=env, timeout=30)
+    assert runner.per_child_peak_rss_kib == [123]
+    assert runner.per_child_peak_rss_kib[0] < historical_peak

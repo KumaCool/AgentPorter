@@ -11,6 +11,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from io import StringIO
 from pathlib import Path
+from typing import Any, cast
 from uuid import NAMESPACE_URL, uuid5
 
 import pytest
@@ -237,6 +238,36 @@ def _protected_snapshot(paths: Sequence[Path]) -> dict[Path, tuple[TreeEntry, ..
     return {path: _tree_snapshot(path) for path in paths}
 
 
+def _owned_remnant_labels(
+    scope: Path,
+    *,
+    installation_id: str,
+    component_ids: frozenset[str],
+    sealed_profile_identities: frozenset[tuple[int, int]],
+) -> tuple[str, ...]:
+    """Find marker-owned or sealed-identity profile dirs across current/moved roots."""
+    remnants: set[str] = set()
+    for candidate in scope.rglob("*"):
+        if not candidate.is_dir() or candidate.is_symlink():
+            continue
+        info = candidate.stat()
+        sealed_identity = (info.st_dev, info.st_ino) in sealed_profile_identities
+        marker_path = candidate / MARKER_NAME
+        try:
+            marker = cast(dict[str, Any], json.loads(marker_path.read_text(encoding="utf-8")))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            marker_owned = False
+        else:
+            marker_owned = (
+                marker.get("product_id") == PRODUCT_ID
+                and marker.get("installation_id") == installation_id
+                and marker.get("component_id") in component_ids
+            )
+        if sealed_identity or marker_owned:
+            remnants.add(candidate.relative_to(scope).as_posix())
+    return tuple(sorted(remnants))
+
+
 class FaultExecutor:
     def __init__(self, plan_root: Path, fault: str, authorized: frozenset[Path]) -> None:
         self.plan_root = plan_root
@@ -291,25 +322,28 @@ def test_phase5_fault_cycle_never_deletes_unrelated_profiles(tmp_path: Path, cyc
     authorized = frozenset(target.path for target in plan.targets)
     protected_paths = [path for path in profiles.iterdir() if path not in authorized]
     protected_before = _protected_snapshot(protected_paths)
-    remnants: list[Path] = []
+    sealed_profile_identities = frozenset(
+        (item.profile_device, item.profile_inode) for item in discovery.targets
+    )
+    installation_ids = {item.installation_id for item in discovery.targets}
+    assert len(installation_ids) == 1
+    installation_id = installation_ids.pop()
+    component_ids = frozenset(item.component_id for item in plan.targets)
 
     target = plan.targets[0]
     marker = target.path / MARKER_NAME
     if fault == "rename":
         survivor = profiles / "renamed-owned-survivor"
         target.path.rename(survivor)
-        remnants.append(survivor)
     elif fault == "replace-marker":
         replacement = tmp_path / "replacement-marker"
         replacement.write_bytes(marker.read_bytes())
         os.replace(replacement, marker)
-        remnants.append(target.path)
     elif fault == "occupy":
         survivor = profiles / "occupied-owned-survivor"
         target.path.rename(survivor)
         target.path.mkdir()
         (target.path / "occupant-sentinel").write_text("must survive", encoding="utf-8")
-        remnants.extend((survivor, target.path))
     elif fault == "symlink":
         survivor = profiles / "symlink-owned-survivor"
         target.path.rename(survivor)
@@ -317,12 +351,10 @@ def test_phase5_fault_cycle_never_deletes_unrelated_profiles(tmp_path: Path, cyc
             target.path.symlink_to(survivor, target_is_directory=True)
         except (OSError, NotImplementedError) as error:
             pytest.skip(f"symlink unavailable: {type(error).__name__}")
-        remnants.extend((survivor, target.path))
     elif fault == "profile-inode-replacement":
         survivor = profiles / "inode-owned-survivor"
         target.path.rename(survivor)
         shutil.copytree(survivor, target.path)
-        remnants.extend((survivor, target.path))
     elif fault == "root-switch":
         original = profiles.with_name("profiles-original")
         profiles.rename(original)
@@ -330,10 +362,8 @@ def test_phase5_fault_cycle_never_deletes_unrelated_profiles(tmp_path: Path, cyc
         (profiles / "root-switch-occupant").mkdir()
         protected_paths = [original / path.name for path in protected_paths]
         protected_before = _protected_snapshot(protected_paths)
-        remnants.extend((original / target.current_name, profiles / "root-switch-occupant"))
     elif fault == "marker-change":
         marker.write_bytes(marker.read_bytes() + b"\n")
-        remnants.append(target.path)
 
     executor = FaultExecutor(profiles, fault, authorized)
     execution: UninstallExecutionResult | None = None
@@ -378,10 +408,24 @@ def test_phase5_fault_cycle_never_deletes_unrelated_profiles(tmp_path: Path, cyc
     )
     assert unsafe_deletions == 0
     assert all(path.exists() or path.is_symlink() for path in protected_paths)
-    assert all(path.exists() or path.is_symlink() for path in remnants)
     assert executor.model_calls == 0
     assert executor.credential_calls == 0
     assert all((profiles / call[3]) in authorized for call in executor.calls)
+
+    actual_remnants = _owned_remnant_labels(
+        tmp_path,
+        installation_id=installation_id,
+        component_ids=component_ids,
+        sealed_profile_identities=sealed_profile_identities,
+    )
+    expected_remnant_count = {
+        "profile-inode-replacement": 3,
+        "baseexception-after-effect": 1,
+    }.get(fault, 2)
+    assert len(actual_remnants) == expected_remnant_count
+    assert all(
+        not label.startswith("/") and ".." not in Path(label).parts for label in actual_remnants
+    )
 
     evidence = CycleEvidence(
         cycle=cycle,
@@ -391,12 +435,19 @@ def test_phase5_fault_cycle_never_deletes_unrelated_profiles(tmp_path: Path, cyc
         command_count=len(executor.calls),
         unsafe_deletions=unsafe_deletions,
         protected_profiles=len(protected_paths),
-        safe_remnants=tuple(sorted(path.name for path in remnants)),
+        safe_remnants=actual_remnants,
         model_calls=executor.model_calls,
         credential_calls=executor.credential_calls,
     )
     assert evidence.cycle < CYCLES
     assert evidence.fault in FAULTS
+    assert evidence.safe_remnants == _owned_remnant_labels(
+        tmp_path,
+        installation_id=installation_id,
+        component_ids=component_ids,
+        sealed_profile_identities=sealed_profile_identities,
+    )
+    assert evidence.safe_remnants
     print(json.dumps({"phase5_cycle_evidence": asdict(evidence)}, sort_keys=True))
 
 
