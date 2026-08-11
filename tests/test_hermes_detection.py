@@ -247,9 +247,7 @@ def test_detect_canonicalizes_relative_which_and_home_paths_before_cwd_changes(
     )
     monkeypatch.chdir(origin)
 
-    result = detect_hermes(
-        env={"PATH": "bin", "HERMES_HOME": "state/../state"}, runner=runner
-    )
+    result = detect_hermes(env={"PATH": "bin", "HERMES_HOME": "state/../state"}, runner=runner)
     monkeypatch.chdir(tmp_path)
 
     assert result.executable == canonical_executable
@@ -257,8 +255,7 @@ def test_detect_canonicalizes_relative_which_and_home_paths_before_cwd_changes(
     assert result.profiles_root == canonical_home / "profiles"
     assert result.profile_entries[0].path == canonical_home / "profiles" / "existing"
     assert all(
-        path.is_absolute()
-        for path in (result.executable, result.hermes_home, result.profiles_root)
+        path.is_absolute() for path in (result.executable, result.hermes_home, result.profiles_root)
     )
     assert [call[0][0] for call in runner.calls] == [str(canonical_executable)] * 2
 

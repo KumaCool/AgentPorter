@@ -339,10 +339,7 @@ def _cleanup_bound(path: Path, identity: StagingIdentity) -> CleanupOutcome:
         ):
             staging_fd = os.open(
                 identity.basename,
-                os.O_RDONLY
-                | os.O_DIRECTORY
-                | os.O_NOFOLLOW
-                | getattr(os, "O_CLOEXEC", 0),
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0),
                 dir_fd=parent_fd,
             )
             opened = os.fstat(staging_fd)
@@ -381,9 +378,7 @@ def _cleanup_bound(path: Path, identity: StagingIdentity) -> CleanupOutcome:
         pass
     except OSError:
         residual = (
-            identity.canonical_parent / quarantine_name
-            if quarantine_name is not None
-            else path
+            identity.canonical_parent / quarantine_name if quarantine_name is not None else path
         )
         if not residual.exists() and not residual.is_symlink():
             residual = None

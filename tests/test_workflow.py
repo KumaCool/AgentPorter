@@ -457,17 +457,13 @@ def test_fresh_conflict_before_prompt_blocks_input_and_continuation(tmp_path: Pa
 
 
 @pytest.mark.parametrize("answer", ["cancel", ""])
-def test_preflight_cancel_does_not_modify_real_hermes_home(
-    tmp_path: Path, answer: str
-) -> None:
+def test_preflight_cancel_does_not_modify_real_hermes_home(tmp_path: Path, answer: str) -> None:
     hermes_home = tmp_path / "actual-hermes-home"
     profiles = hermes_home / "profiles"
     profiles.mkdir(parents=True)
     (profiles / "existing-profile").mkdir()
     (profiles / "existing-profile" / "config.yaml").write_text("preserve: true\n")
-    detection = replace(
-        _detection(tmp_path), hermes_home=hermes_home, profiles_root=profiles
-    )
+    detection = replace(_detection(tmp_path), hermes_home=hermes_home, profiles_root=profiles)
     before = _tree_hash(hermes_home)
     staging_parent = tmp_path / "external-staging"
     assert not staging_parent.is_relative_to(hermes_home)
