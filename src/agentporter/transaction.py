@@ -52,6 +52,7 @@ def execute_install_transaction(
     validate_collection: CollectionValidator | None = None,
 ) -> InstallTransactionResult:
     """Run the install portion of a previously confirmed, live plan."""
+
     def compensate(install: InstallWorkflowResult) -> CompensationResult:
         return compensate_profiles(
             install.verified_compensable,
