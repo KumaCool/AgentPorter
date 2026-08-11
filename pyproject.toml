@@ -6,8 +6,24 @@ build-backend = "setuptools.build_meta"
 name = "agentporter"
 dynamic = ["version"]
 description = "Hermes-first portable Worker profile installer"
+readme = "README.md"
+license = "MIT"
+authors = [{name = "AgentPorter contributors"}]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
 requires-python = ">=3.11"
 dependencies = ["pydantic>=2,<3", "PyYAML>=6,<7"]
+
+[project.urls]
+Homepage = "https://github.com/KumaCool/AgentPorter"
+Repository = "https://github.com/KumaCool/AgentPorter"
+Issues = "https://github.com/KumaCool/AgentPorter/issues"
 
 [dependency-groups]
 dev = ["pytest>=9,<10", "pyright>=1.1.411,<2", "ruff>=0.12,<1"]

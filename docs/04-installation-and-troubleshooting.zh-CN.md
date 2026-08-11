@@ -85,9 +85,10 @@ python uninstall.py
    ```bash
    python scripts/verify_release.py \
      --version 0.1.0 \
-     --dependency 'pydantic>=2,<3' \
-     --dependency 'PyYAML>=6,<7' \
+     --dependency 'pydantic<3,>=2' \
+     --dependency 'PyYAML<7,>=6' \
      --entry-point 'agentporter=agentporter:main' \
+     --entry-point 'agentporter-uninstall=agentporter.uninstall_entry:main' \
      --resource 'resources/workers.yaml' \
      <wheel> <sdist>
    ```

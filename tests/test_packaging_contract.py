@@ -63,9 +63,10 @@ def test_installer_uses_packaged_manifest(monkeypatch: pytest.MonkeyPatch) -> No
         agentporter.run_product_installer()
 
     assert captured
-    assert captured[0].read_bytes() == importlib.resources.files("agentporter.resources").joinpath(
-        "workers.yaml"
-    ).read_bytes()
+    assert (
+        captured[0].read_bytes()
+        == importlib.resources.files("agentporter.resources").joinpath("workers.yaml").read_bytes()
+    )
 
 
 def test_project_declares_install_and_uninstall_console_scripts() -> None:
@@ -79,7 +80,7 @@ def test_project_declares_install_and_uninstall_console_scripts() -> None:
 def test_built_wheel_contains_resource_and_both_console_entries(tmp_path: Path) -> None:
     wheel_dir = tmp_path / "wheelhouse"
     subprocess.run(
-        [sys.executable, "-m", "pip", "wheel", ".", "--no-deps", "-w", str(wheel_dir)],
+        [sys.executable, "-m", "build", "--wheel", "--outdir", str(wheel_dir)],
         cwd=ROOT,
         check=True,
         capture_output=True,

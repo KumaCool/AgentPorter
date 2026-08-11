@@ -13,7 +13,7 @@
 文档分工：
 
 - [方案总览](00-solution-overview.md)：产品定位、架构和非目标；
-- [Worker 规范](01-portable-worker-spec.md)：`workers.yaml` 与派生文件格式；
+- [Worker 规范](01-portable-worker-spec.md)：打包内 `workers.yaml` 与派生文件格式；
 - [Hermes Adapter](02-platform-adapters.md)：Hermes v0.20 原生能力映射；
 - **本文：** 安装、补偿、卸载、验证及安全边界；
 - [实施计划](plan/01-implementation-plan.md)：安装器、卸载器、测试和发布阶段；

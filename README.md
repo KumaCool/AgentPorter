@@ -52,7 +52,7 @@ Offline CI is intended for Linux, macOS, and Windows on Python 3.11–3.13. Real
 
 ## Repository map
 
-- `workers.yaml` — portable Worker definitions and requested model preferences;
+- `src/agentporter/resources/workers.yaml` — packaged authoritative Worker definitions and requested model preferences;
 - `install.py`, `uninstall.py`, and `src/agentporter/` — one-shot install and guarded independent uninstall;
 - `tests/` — unit, filesystem, transaction, stress, and isolated real-Hermes acceptance;
 - `scripts/verify_release.py` — fail-closed source/wheel/sdist contract verifier;

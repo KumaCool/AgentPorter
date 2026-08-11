@@ -17,7 +17,7 @@ AgentPorter 当前产品是 **Hermes Worker Profile 一次性安装器**，另�
 ## 2. 架构
 
 ```text
-workers.yaml
+src/agentporter/resources/workers.yaml
     ↓ schema / 语义 / 能力预检
 AgentPorter Hermes Adapter
     ↓ 两个临时 Profile distributions
@@ -34,7 +34,7 @@ AgentPorter 组合 Hermes 原生 Profile、distribution、description、Kanban �
 
 ## 3. 权威输入与产物
 
-`workers.yaml` 是 Worker 语义的权威输入，并由 Hermes Adapter 派生为两个 Profile。字段 schema 和 artifact 规则见 [Worker 规范](01-portable-worker-spec.md)，Hermes 映射与读回见 [Hermes Adapter](02-platform-adapters.md)。模型/provider 字段只表达请求，不证明账号授权；第一版不发起模型请求。
+`src/agentporter/resources/workers.yaml` 是 Worker 语义的权威输入，并由 Hermes Adapter 派生为两个 Profile。字段 schema 和 artifact 规则见 [Worker 规范](01-portable-worker-spec.md)，Hermes 映射与读回见 [Hermes Adapter](02-platform-adapters.md)。模型/provider 字段只表达请求，不证明账号授权；第一版不发起模型请求。
 
 ## 4. 核心决策
 
@@ -54,7 +54,7 @@ Plan 01 的安装与卸载交付始终零模型调用；安装后的真实 Worke
 
 ## 6. 文档导航
 
-- [可移植 Worker 规范](01-portable-worker-spec.md)：`workers.yaml` 与派生文件格式；
+- [可移植 Worker 规范](01-portable-worker-spec.md)：打包内 `workers.yaml` 与派生文件格式；
 - [Hermes Adapter 方案](02-platform-adapters.md)：Hermes 原生能力映射和调用边界；
 - [安装、卸载与验收设计](03-installation-and-uninstall-design.md)：安装事务、身份、卸载和验收的唯一权威设计；
 - [实施计划](plan/01-implementation-plan.md)：安装器、卸载器、测试和发布的阶段顺序；
