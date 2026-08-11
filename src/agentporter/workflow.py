@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import TextIO
+from pathlib import Path
+from typing import TextIO, TypeVar
 
-from .interaction import ConfirmationDecision, ConfirmationRequest, confirm_then
-from .planning import InstallPlan, cleanup_staging, confirm_install_plan
+from . import planning
+from .hermes import HermesDetection
+from .interaction import ConfirmationDecision, ConfirmationRequest, confirm_once
+from .planning import InstallPlan
+
+_T = TypeVar("_T")
 
 
 class WorkflowStatus(StrEnum):
@@ -25,6 +30,7 @@ class WorkflowOutcome:
 
 
 def render_plan_text(plan: InstallPlan) -> str:
+    """Project a sealed plan through an explicit, non-free-text display allowlist."""
     hermes_lines = [
         "Hermes executable: unavailable",
         "Hermes version: unavailable",
@@ -50,11 +56,12 @@ def render_plan_text(plan: InstallPlan) -> str:
                 f"  Provider: {worker.provider or 'not selected'}",
                 f"  Reasoning effort: {worker.reasoning_effort}",
                 f"  Status: {worker.status}",
-                f"  Reason: {worker.reason}",
             )
         )
     if plan.status == "configuration-required":
-        lines.append("Next step: complete non-secret provider selection, then regenerate the plan.")
+        lines.append(
+            "Run configuration remains required after installation (no secrets collected)."
+        )
     lines.extend(
         (
             f"Distribution owned: {', '.join(plan.distribution_owned)}",
@@ -64,7 +71,6 @@ def render_plan_text(plan: InstallPlan) -> str:
             "Runtime validated: false",
             f"Compensation boundary: {plan.compensation_boundary}",
             f"Collection status: {plan.status}",
-            f"Collection reason: {plan.reason}",
             f"Fingerprint: {plan.fingerprint}",
         )
     )
@@ -72,64 +78,129 @@ def render_plan_text(plan: InstallPlan) -> str:
 
 
 def request_for_plan(plan: InstallPlan) -> ConfirmationRequest | None:
-    if not confirm_install_plan(plan, plan.confirmation_token):
+    """Build the only application-level confirmation request from a sealed plan."""
+    if not planning.confirm_install_plan(plan, plan.confirmation_token):
         return None
     return ConfirmationRequest(plan_text=render_plan_text(plan), fingerprint=plan.fingerprint)
+
+
+def _cleanup_verified(outcome: object) -> bool:
+    verified = getattr(outcome, "cleanup_verified", None)
+    if isinstance(verified, bool):
+        return verified
+    status = getattr(outcome, "status", None)
+    if status in {"cleaned", "already-absent"}:
+        return True
+    return outcome is True
+
+
+def _revalidate(plan: InstallPlan, detection: HermesDetection) -> bool:
+    revalidate = getattr(planning, "revalidate_install_plan", None)
+    if revalidate is None:
+        return False
+    return bool(revalidate(plan, detection))
 
 
 def confirm_preflight_plan(
     plan: InstallPlan,
     *,
+    current_detection_provider: Callable[[], HermesDetection],
+    continuation: Callable[[InstallPlan], _T],
     input_fn: Callable[[str], str] = input,
     output: TextIO = sys.stdout,
-    cleanup_fn: Callable[[InstallPlan], bool] = cleanup_staging,
+    cleanup_fn: Callable[[InstallPlan], object] = planning.cleanup_staging,
 ) -> WorkflowOutcome:
-    cleanup_plan = replace(plan)
+    """Confirm a live plan, invoke its sole write continuation, then clean staging."""
     result = WorkflowOutcome(
         status=WorkflowStatus.REJECTED,
-        reason="plan is not ready or its integrity cannot be verified",
+        reason="plan is not installable or is stale",
         cleanup_verified=False,
     )
     pending_error: BaseException | None = None
+    cleanup_error: BaseException | None = None
+    cleanup_verified = False
     try:
-        request = request_for_plan(plan)
-        if request is not None:
-            confirmation = confirm_then(
-                request,
-                lambda: confirm_install_plan(plan, request.fingerprint),
-                input_fn=input_fn,
-                output=output,
-            )
-            if confirmation.decision is ConfirmationDecision.CANCELLED:
-                result = WorkflowOutcome(
-                    status=WorkflowStatus.CANCELLED,
-                    reason="confirmation cancelled",
-                    cleanup_verified=False,
-                )
-            elif confirmation.continuation_result is True:
-                result = WorkflowOutcome(
-                    status=WorkflowStatus.CONFIRMED,
-                    reason="plan confirmed; installation deferred to Phase 3",
-                    cleanup_verified=False,
-                )
+        if _revalidate(plan, current_detection_provider()):
+            request = request_for_plan(plan)
+            if request is not None:
+                decision = confirm_once(request, input_fn=input_fn, output=output)
+                if decision is ConfirmationDecision.CANCELLED:
+                    result = WorkflowOutcome(
+                        status=WorkflowStatus.CANCELLED,
+                        reason="confirmation cancelled",
+                        cleanup_verified=False,
+                    )
+                elif _revalidate(plan, current_detection_provider()):
+                    continuation(plan)
+                    result = WorkflowOutcome(
+                        status=WorkflowStatus.CONFIRMED,
+                        reason="confirmed continuation completed",
+                        cleanup_verified=False,
+                    )
     except BaseException as error:
         pending_error = error
     finally:
         try:
-            cleanup_verified = cleanup_fn(cleanup_plan)
-        except BaseException:
-            cleanup_verified = False
+            cleanup_verified = _cleanup_verified(cleanup_fn(plan))
+        except BaseException as error:
+            cleanup_error = error
 
+    if pending_error is not None:
+        if not cleanup_verified:
+            pending_error.add_note("AgentPorter staging cleanup was not verified")
+            if cleanup_error is not None:
+                pending_error.add_note(f"cleanup failure type: {type(cleanup_error).__name__}")
+        raise pending_error
     if not cleanup_verified:
         return WorkflowOutcome(
             status=WorkflowStatus.CLEANUP_FAILED,
-            reason="staging cleanup could not be verified",
+            reason="staging cleanup was refused or could not be verified",
             cleanup_verified=False,
         )
-    if pending_error is not None:
-        raise pending_error
     return WorkflowOutcome(
         status=result.status,
         reason=result.reason,
         cleanup_verified=True,
+    )
+
+
+def preflight_and_confirm(
+    detector: Callable[[], HermesDetection],
+    manifest_path: Path,
+    *,
+    staging_parent: Path,
+    continuation: Callable[[InstallPlan], _T],
+    input_fn: Callable[[str], str] = input,
+    output: TextIO = sys.stdout,
+    **preflight_kwargs: object,
+) -> WorkflowOutcome:
+    """Production Phase-2 composition from preflight through the sole continuation."""
+    detections: list[HermesDetection] = []
+
+    def recording_detector() -> HermesDetection:
+        detection = detector()
+        detections.append(detection)
+        return detection
+
+    plan = planning.preflight_installation(
+        recording_detector,
+        manifest_path,
+        staging_parent=staging_parent,
+        **preflight_kwargs,
+    )
+    first = True
+
+    def current_detection() -> HermesDetection:
+        nonlocal first
+        if first and detections:
+            first = False
+            return detections[-1]
+        return detector()
+
+    return confirm_preflight_plan(
+        plan,
+        current_detection_provider=current_detection,
+        continuation=continuation,
+        input_fn=input_fn,
+        output=output,
     )
