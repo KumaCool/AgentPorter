@@ -58,4 +58,5 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.pyright]
 include = ["src", "scripts", "install.py", "uninstall.py"]
 pythonVersion = "3.11"
+pythonPlatform = "Linux"
 typeCheckingMode = "strict"

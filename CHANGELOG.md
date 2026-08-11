@@ -4,6 +4,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [0.1.0] - Unreleased
+
 ### Added
 
 - One-shot, confirmation-gated Hermes Worker Profile installation.
@@ -18,9 +20,7 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Installation performs all preflight checks before writes and never copies credentials.
 - Compensation and uninstall are restricted to marker-proven AgentPorter profiles and use Hermes-native operations.
 
-## [0.1.0] - Unreleased
-
-First public release candidate. No supported release has been published yet.
+First supported public release candidate.
 
 [Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/KumaCool/AgentPorter/releases/tag/v0.1.0

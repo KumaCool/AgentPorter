@@ -35,6 +35,8 @@ def test_product_entry_forwards_only_minimal_noncredential_environment(
 
     captured: dict[str, str] = {}
     sentinel = "sentinel-secret-value"
+    for key in ("LC_ALL", "LC_CTYPE", "TMP", "TEMP", "TMPDIR"):
+        monkeypatch.delenv(key, raising=False)
     monkeypatch.delenv("PYTHONIOENCODING", raising=False)
     monkeypatch.setenv("AUDIT_PROVIDER_API_KEY", sentinel)
     monkeypatch.setenv("PATH", "/safe/bin")
@@ -85,6 +87,8 @@ def test_uninstall_entry_forwards_only_minimal_noncredential_environment(
 
     captured: dict[str, str] = {}
     sentinel = "uninstall-sentinel-secret"
+    for key in ("LC_ALL", "LC_CTYPE", "TMP", "TEMP", "TMPDIR"):
+        monkeypatch.delenv(key, raising=False)
     monkeypatch.delenv("PYTHONIOENCODING", raising=False)
     monkeypatch.setenv("AUDIT_PROVIDER_API_KEY", sentinel)
     monkeypatch.setenv("PATH", "/safe/bin")

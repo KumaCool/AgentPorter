@@ -2,18 +2,18 @@
 
 [English](04-installation-and-troubleshooting.md) | 简体中文
 
-AgentPorter 是预发布、Hermes 优先的一次性安装器。仓库已经具备离线契约测试，并在隔离环境中对 Hermes v0.20.0 做过真实验收；这个版本只是**已观察版本**，不是承诺的最低版本或通用兼容范围。
+AgentPorter v0.1.0 是该 Hermes 优先一次性安装器的首个受支持版本候选。仓库已经具备离线契约测试，并在隔离环境中对 Hermes v0.20.0 做过真实验收；这个版本只是**已观察版本**，不是承诺的最低版本或通用兼容范围。
 
 ## curl 一键安装（POSIX）
 
-匹配的受支持 GitHub Release 发布后，可运行：
+发布完成后，无需指定版本即可安装最新非预发布版本：
 
 ```bash
 curl --fail --location --proto '=https' --tlsv1.2 \
-  https://raw.githubusercontent.com/KumaCool/AgentPorter/v0.1.0/install.sh | sh
+  https://github.com/KumaCool/AgentPorter/releases/latest/download/install.sh | sh
 ```
 
-引导脚本会下载固定版本 wheel 与对应 `.sha256` 文件，在私有同级暂存目录中完成校验和安装，回读软件包版本后原子发布 `${XDG_DATA_HOME:-$HOME/.local/share}/agentporter/0.1.0`，在 `${XDG_BIN_HOME:-$HOME/.local/bin}` 建立 `agentporter-uninstall` 链接，再通过 `/dev/tty` 启动原有交互式安装器。已有安装目录或卸载入口时会拒绝覆盖。若用户取消或产品安装失败，已校验的软件包和卸载入口会保留，便于诊断或清理。该卸载器删除 Hermes Profile，不删除此独立 Python 环境。
+GitHub 的 `latest` 端点选择发布版引导脚本；该脚本再固定并下载自身版本的 wheel 与 `.sha256` 文件，在私有同级暂存目录中完成校验和安装，回读软件包版本后原子发布版本化安装目录，在 `${XDG_BIN_HOME:-$HOME/.local/bin}` 建立 `agentporter-uninstall` 链接，再通过 `/dev/tty` 启动原有交互式安装器。已有安装目录或卸载入口时会拒绝覆盖。若用户取消或产品安装失败，已校验的软件包和卸载入口会保留，便于诊断或清理。该卸载器删除 Hermes Profile，不删除此独立 Python 环境。
 
 校验和能防止意外损坏或托管错配，但它与 GitHub Release 账户并非独立信任源。wheel 声明的依赖仍由 pip 解析下载（仅允许二进制分发），Release 校验和不会独立认证这些依赖下载。如需更强来源保证，请先检查脚本，并核对发布证明与校验和。必要时将 `${XDG_BIN_HOME:-$HOME/.local/bin}` 加入 `PATH`。
 
@@ -28,7 +28,7 @@ Linux 的真实 Hermes 验收证据最强。macOS 和 Windows 纳入离线 CI �
 
 ## 从发布制品安装
 
-在 v0.1.0 正式发布前，只使用同时提供提交身份与校验和的候选制品，并建立隔离环境：
+如需手动安装已下载的 v0.1.0 wheel，请先验证发布校验和并建立隔离环境：
 
 ```bash
 python -m venv .venv
@@ -112,4 +112,4 @@ agentporter-uninstall
 6. 上传前检查校验和、提交身份、标签、变更日志、许可证、README 与验证器输出；只发布已经验证的同一字节序列。
 7. 下载托管制品，重新计算校验和并重跑验证。仅有标签或上传成功不构成验收。
 
-示例资源路径是预期发布契约，发布前必须与最终打包实现对齐。当前 Phase 6 分支只是候选，不代表 v0.1.0 已发布或已获得安全支持。
+示例资源路径是 v0.1.0 发布契约。托管发布验收还会下载全部公开制品、重新计算校验和、重跑验证器，并检查公开的 `latest/download/install.sh` 端点。

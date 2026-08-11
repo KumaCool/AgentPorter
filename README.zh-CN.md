@@ -2,22 +2,22 @@
 
 [English](README.md) | 简体中文
 
-AgentPorter 是一个预发布、开源、一次性运行的安装器，用于安装可复用的 [Hermes Agent](https://hermes-agent.nousresearch.com/) Worker Profile。
+AgentPorter 是一个开源、一次性运行的安装器，用于安装可复用的 [Hermes Agent](https://hermes-agent.nousresearch.com/) Worker Profile。
 
-> **证据状态：** Phase 1–6 已通过本地实现、对抗性测试、打包、制品检查及隔离 Hermes v0.20.0 验收，全程未调用模型。发布流程仍未完成：远程 CI、版本标签、GitHub Release 与托管制品下载回验尚未全部关闭，因此目前没有受支持的正式版本。Hermes v0.20.0 是已经实际验收的目标，不代表承诺的最低版本。
+> **发布候选状态：** v0.1.0 已通过本地、对抗性、打包、制品及隔离 Hermes v0.20.0 验收，全程未调用模型。发布仍需等待候选通过远程跨平台 CI，并完成标签、GitHub Release 与托管制品回验。Hermes v0.20.0 是已经实际验收的目标，不代表承诺的最低版本。
 
 ## curl 一键安装（POSIX）
 
-受支持版本正式发布后，Linux 和 macOS 用户可运行：
+首个受支持版本发布后，Linux 和 macOS 用户无需指定版本即可安装最新正式版本：
 
 ```bash
 curl --fail --location --proto '=https' --tlsv1.2 \
-  https://raw.githubusercontent.com/KumaCool/AgentPorter/v0.1.0/install.sh | sh
+  https://github.com/KumaCool/AgentPorter/releases/latest/download/install.sh | sh
 ```
 
-如需更高可信度，请先从不可变版本标签下载并检查 `install.sh`，再用 `sh` 执行。该引导脚本要求 Python 3.11+ 和真实终端，从 GitHub Releases 下载同版本 wheel 与 `.sha256` 文件，校验 wheel 后安装到独立虚拟环境，只在 `${XDG_BIN_HOME:-$HOME/.local/bin}` 发布独立卸载入口 `agentporter-uninstall`，最后通过 `/dev/tty` 启动 AgentPorter 原有的交互式安装计划。它不会绕过确认，也不会代装 Hermes。
+`latest` 端点选择最新的非预发布 GitHub Release；下载到的引导脚本仍固定该版本及其精确制品。如需更高可信度，请先下载并检查 `install.sh` 再执行。引导脚本要求 Python 3.11+ 和真实终端，使用 `.sha256` 校验 wheel 后安装到独立虚拟环境，在 `${XDG_BIN_HOME:-$HOME/.local/bin}` 发布独立卸载入口 `agentporter-uninstall`，并通过 `/dev/tty` 启动原有交互式安装计划。它不会绕过确认，也不会代装 Hermes。
 
-匹配的 GitHub Release 制品发布前，这条命令不会成功。PATH 与恢复方法见[安装指南](docs/04-installation-and-troubleshooting.zh-CN.md)。
+发布完成前该端点返回 404。检查后执行方式、PATH、信任边界与恢复方法见[安装指南](docs/04-installation-and-troubleshooting.zh-CN.md)。
 
 ## 安装内容
 

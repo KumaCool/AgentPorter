@@ -2,11 +2,12 @@
 
 ## Supported versions
 
-AgentPorter is implemented but remains pre-release. **No published version currently receives security support.** This table will be updated only after a release is published and its artifacts pass the release contract.
+AgentPorter remains a release candidate. Security support begins only after v0.1.0 is published and its hosted assets pass readback.
 
 | Version | Supported |
 | --- | --- |
-| Unreleased source candidates | No formal support |
+| 0.1.x candidate | No formal support |
+| Unreleased source snapshots | No formal support |
 
 ## Reporting a vulnerability
 
@@ -35,4 +36,4 @@ Release candidates must pass offline format, lint, type, test, build, Markdown-l
 
 Release artifacts must contain only the expected package modules/resources and distribution metadata. Tests, caches, private directories, credentials, sessions, memories, bytecode, and secret-like content are forbidden. A mismatch blocks publication; it must not be waived by deleting the expected item from the release contract.
 
-Maintainers will acknowledge valid private reports when possible, investigate, add regression coverage, and coordinate disclosure. Response timelines are not guaranteed before the first supported release.
+Maintainers will acknowledge valid private reports when possible, investigate, add regression coverage, and coordinate disclosure. No fixed response timeline is guaranteed.

@@ -1,6 +1,6 @@
 # Contributing to AgentPorter
 
-AgentPorter is implemented but pre-release. Contributions must preserve its one-shot, fail-closed Hermes Profile installation and independent uninstall model.
+AgentPorter is implemented; source snapshots remain unsupported, and release support begins only after hosted-artifact acceptance. Contributions must preserve its one-shot, fail-closed Hermes Profile installation and independent uninstall model.
 
 ## Before you start
 

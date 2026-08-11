@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "install.sh"
+LATEST_BOOTSTRAP_URL = "https://github.com/KumaCool/AgentPorter/releases/latest/download/install.sh"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -133,6 +134,18 @@ def test_bootstrap_downloads_verifies_installs_and_runs(tmp_path: Path) -> None:
     )
     assert "-m pip install --disable-pip-version-check" in calls
     assert "agentporter \n" in calls
+
+
+def test_documentation_uses_unversioned_latest_bootstrap_url() -> None:
+    for name in (
+        "README.md",
+        "README.zh-CN.md",
+        "docs/04-installation-and-troubleshooting.md",
+        "docs/04-installation-and-troubleshooting.zh-CN.md",
+    ):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        assert LATEST_BOOTSTRAP_URL in text
+        assert "raw.githubusercontent.com/KumaCool/AgentPorter/v0.1.0/install.sh" not in text
 
 
 def test_bootstrap_rejects_bad_checksum_before_creating_venv(tmp_path: Path) -> None:
