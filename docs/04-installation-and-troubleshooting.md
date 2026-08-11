@@ -48,13 +48,15 @@ AgentPorter installs two dedicated Worker Profiles. It does not overwrite existi
 
 ## Independent uninstall
 
-Run the standalone artifact from the same trusted release source:
+After installing the wheel, run its dedicated uninstall console entry:
 
 ```bash
-python uninstall.py
+agentporter-uninstall
 ```
 
 There are no silent flags. The uninstaller scans read-only for one complete marker-bound installation, shows the current (possibly renamed) profiles and paths, warns that all local profile data and later customization will be deleted, and requires the exact installation-bound phrase shown. It then revalidates the complete set and each target immediately before Hermes-native deletion.
+
+When deliberately running from a trusted source checkout instead, use `python uninstall.py`.
 
 If discovery is absent, incomplete, duplicated, conflicting, malformed, changed, symlinked, or path-escaped, uninstall stops without widening scope. If one deletion fails, the result may be partial; do not manually delete unknown paths. Back up needed profile-local data before confirmation.
 

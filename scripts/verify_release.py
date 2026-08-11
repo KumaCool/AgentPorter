@@ -7,8 +7,11 @@ import argparse
 import configparser
 import email
 import re
+import stat
 import tarfile
+import unicodedata
 import zipfile
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from email.message import Message
@@ -41,6 +44,8 @@ _SECRET_ASSIGNMENT = re.compile(
 )
 _TOKEN_LITERAL = re.compile(r"(?i)token\s*[:=]\s*[\"'][A-Za-z0-9_./+\-=]{16,}[\"']")
 _LINK = re.compile(r"(?<!!)\[[^]]*]\(([^) #]+)(?:#[^)]+)?\)")
+_MAX_MEMBER_SIZE = 1024 * 1024
+_MAX_ARCHIVE_SIZE = 5 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -79,22 +84,74 @@ def _metadata_errors(metadata: Message, contract: ReleaseContract, label: str) -
     return errors
 
 
-def _path_errors(names: set[str], label: str) -> list[str]:
+def _normalized_archive_name(name: str) -> str:
+    return unicodedata.normalize("NFC", name.rstrip("/")).casefold()
+
+
+def _path_errors(names: Sequence[str] | set[str], label: str) -> list[str]:
     errors: list[str] = []
     for name in names:
         path = PurePosixPath(name)
-        if path.is_absolute() or ".." in path.parts:
+        if (
+            path.is_absolute()
+            or ".." in path.parts
+            or "\\" in name
+            or re.match(r"^[A-Za-z]:", name) is not None
+        ):
             errors.append(f"{label}: unsafe archive path {name!r}")
         if set(path.parts) & _FORBIDDEN_PARTS or any(part.endswith(".pyc") for part in path.parts):
             errors.append(f"{label}: forbidden archive path {name!r}")
     return errors
 
 
+def _duplicate_errors(names: Sequence[str], label: str) -> list[str]:
+    raw = Counter(name.rstrip("/") for name in names)
+    normalized = Counter(_normalized_archive_name(name) for name in names)
+    errors = [
+        f"{label}: duplicate archive member {name!r}" for name, count in raw.items() if count > 1
+    ]
+    errors.extend(
+        f"{label}: duplicate normalized archive member {name!r}"
+        for name, count in normalized.items()
+        if count > 1
+    )
+    return errors
+
+
+def _content_errors(data: bytes, name: str, label: str) -> list[str]:
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return []
+    if _SECRET_ASSIGNMENT.search(text) or _TOKEN_LITERAL.search(text):
+        return [f"{label}: secret-like value in {name!r}"]
+    return []
+
+
 def _wheel_errors(path: Path, contract: ReleaseContract) -> list[str]:
     errors: list[str] = []
     with zipfile.ZipFile(path) as archive:
-        names = {name.rstrip("/") for name in archive.namelist() if not name.endswith("/")}
-        errors.extend(_path_errors(names, path.name))
+        infos = archive.infolist()
+        errors.extend(_duplicate_errors([info.filename for info in infos], path.name))
+        names = {info.filename.rstrip("/") for info in infos if not info.is_dir()}
+        errors.extend(_path_errors([info.filename for info in infos], path.name))
+        total_size = 0
+        for info in infos:
+            if info.is_dir():
+                continue
+            total_size += info.file_size
+            if info.flag_bits & 1:
+                errors.append(f"{path.name}: encrypted archive member {info.filename!r}")
+            mode_type = stat.S_IFMT(info.external_attr >> 16) if info.create_system == 3 else 0
+            if mode_type not in (0, stat.S_IFREG):
+                errors.append(f"{path.name}: non-regular archive member {info.filename!r}")
+            if info.file_size > _MAX_MEMBER_SIZE:
+                errors.append(f"{path.name}: archive member too large {info.filename!r}")
+                continue
+            if total_size <= _MAX_ARCHIVE_SIZE and not info.filename.endswith("/RECORD"):
+                errors.extend(_content_errors(archive.read(info), info.filename, path.name))
+        if total_size > _MAX_ARCHIVE_SIZE:
+            errors.append(f"{path.name}: archive expanded size exceeds limit")
         dist_info = f"{contract.package}-{contract.version}.dist-info"
         metadata_name = f"{dist_info}/METADATA"
         entry_name = f"{dist_info}/entry_points.txt"
@@ -135,9 +192,29 @@ def _wheel_errors(path: Path, contract: ReleaseContract) -> list[str]:
 def _sdist_errors(path: Path, contract: ReleaseContract) -> list[str]:
     errors: list[str] = []
     with tarfile.open(path, "r:gz") as archive:
-        members = [member for member in archive.getmembers() if member.isfile()]
+        all_members = archive.getmembers()
+        errors.extend(_duplicate_errors([member.name for member in all_members], path.name))
+        errors.extend(_path_errors([member.name for member in all_members], path.name))
+        total_size = 0
+        for member in all_members:
+            if not (member.isfile() or member.isdir()):
+                errors.append(f"{path.name}: non-regular archive member {member.name!r}")
+                if member.issym() or member.islnk():
+                    target = PurePosixPath(member.name).parent / member.linkname
+                    if member.linkname.startswith(("/", "\\")) or ".." in target.parts:
+                        errors.append(f"{path.name}: unsafe link target {member.linkname!r}")
+            if member.isfile():
+                total_size += member.size
+                if member.size > _MAX_MEMBER_SIZE:
+                    errors.append(f"{path.name}: archive member too large {member.name!r}")
+                    continue
+                extracted = archive.extractfile(member)
+                if extracted is not None and total_size <= _MAX_ARCHIVE_SIZE:
+                    errors.extend(_content_errors(extracted.read(), member.name, path.name))
+        if total_size > _MAX_ARCHIVE_SIZE:
+            errors.append(f"{path.name}: archive expanded size exceeds limit")
+        members = [member for member in all_members if member.isfile()]
         names = {member.name for member in members}
-        errors.extend(_path_errors(names, path.name))
         roots = {PurePosixPath(name).parts[0] for name in names}
         expected_root = f"{contract.package}-{contract.version}"
         if roots != {expected_root}:

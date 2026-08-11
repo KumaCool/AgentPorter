@@ -2,11 +2,6 @@ name: Real Hermes acceptance
 
 on:
   workflow_dispatch:
-    inputs:
-      hermes-version:
-        description: Hermes Agent version already observed by the acceptance suite
-        required: true
-        default: '0.20.0'
 
 permissions:
   contents: read
@@ -20,7 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      HERMES_VERSION: ${{ inputs.hermes-version }}
+      # Immutable upstream commit whose pyproject.toml declares version 0.20.0.
+      HERMES_REF: 3c27eb6234bf91b8ceee9e9071591b31e9b148cb
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -34,7 +30,8 @@ jobs:
         run: |
           sudo mkdir -p /usr/local/lib/hermes-agent
           sudo python -m venv /usr/local/lib/hermes-agent/venv
-          sudo /usr/local/lib/hermes-agent/venv/bin/python -m pip install --disable-pip-version-check "hermes-agent==${HERMES_VERSION}"
+          sudo /usr/local/lib/hermes-agent/venv/bin/python -m pip install --disable-pip-version-check "hermes-agent @ git+https://github.com/NousResearch/hermes-agent.git@${HERMES_REF}"
+          /usr/local/lib/hermes-agent/venv/bin/python -c "import importlib.metadata; assert importlib.metadata.version('hermes-agent') == '0.20.0'"
           /usr/local/lib/hermes-agent/venv/bin/hermes --version
       - name: Run real Hermes acceptance without credentials or model calls
         run: >-

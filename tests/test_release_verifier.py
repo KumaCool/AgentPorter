@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import email.message
 import io
+import re
+import stat
 import tarfile
 import zipfile
 from dataclasses import replace
@@ -137,3 +139,88 @@ def test_rejects_wrong_metadata_and_extra_artifact(tmp_path: Path) -> None:
     errors = verify_release(contract, [wheel, sdist, extra])
 
     assert errors == ["artifacts: require exactly one wheel and one .tar.gz sdist"]
+
+
+def _rewrite_sdist(sdist: Path, additions: list[tuple[tarfile.TarInfo, bytes]]) -> None:
+    originals: list[tuple[tarfile.TarInfo, bytes]] = []
+    with tarfile.open(sdist, "r:gz") as archive:
+        for member in archive.getmembers():
+            extracted = archive.extractfile(member) if member.isfile() else None
+            originals.append((member, extracted.read() if extracted is not None else b""))
+    with tarfile.open(sdist, "w:gz") as archive:
+        for member, data in [*originals, *additions]:
+            archive.addfile(member, io.BytesIO(data) if member.isfile() else None)
+
+
+def test_rejects_duplicate_ambiguous_encrypted_and_symlink_wheel_members(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    wheel, sdist = _artifacts(repo)
+    with zipfile.ZipFile(wheel, "a") as archive:
+        archive.writestr("agentporter/core.py", b"duplicate\n")
+        archive.writestr("agentporter\\ambiguous.py", b"bad\n")
+        link = zipfile.ZipInfo("agentporter/link.py")
+        link.create_system = 3
+        link.external_attr = (stat.S_IFLNK | 0o777) << 16
+        archive.writestr(link, b"../../outside")
+        encrypted = zipfile.ZipInfo("agentporter/encrypted.py")
+        encrypted.flag_bits |= 1
+        archive.writestr(encrypted, b"bad\n")
+
+    errors = verify_release(_contract(repo), [wheel, sdist])
+
+    assert any("duplicate archive member" in error for error in errors)
+    assert any("unsafe archive path" in error for error in errors)
+    assert any("non-regular archive member" in error for error in errors)
+    # zipfile clears unsupported encryption flags on write; the verifier still checks flag_bits.
+
+
+def test_rejects_secret_and_oversized_wheel_authored_content(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    wheel, sdist = _artifacts(repo)
+    with zipfile.ZipFile(wheel, "a") as archive:
+        archive.writestr("agentporter/core.py", b"password = 'abcdefghijklmnop'\n")
+        archive.writestr("agentporter/large.txt", b"x" * (1024 * 1024 + 1))
+
+    errors = verify_release(_contract(repo), [wheel, sdist])
+
+    assert any("secret-like value" in error and wheel.name in error for error in errors)
+    assert any("archive member too large" in error for error in errors)
+
+
+def test_rejects_sdist_duplicate_link_escape_nonregular_and_secret(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    wheel, sdist = _artifacts(repo)
+    duplicate = tarfile.TarInfo("agentporter-0.1.0/src/agentporter/core.py")
+    duplicate.size = len(b"secret = 'abcdefghijklmnop'\n")
+    link = tarfile.TarInfo("agentporter-0.1.0/src/agentporter/link.py")
+    link.type = tarfile.SYMTYPE
+    link.linkname = "../../../../outside"
+    fifo = tarfile.TarInfo("agentporter-0.1.0/src/agentporter/fifo")
+    fifo.type = tarfile.FIFOTYPE
+    _rewrite_sdist(sdist, [(duplicate, b"secret = 'abcdefghijklmnop'\n"), (link, b""), (fifo, b"")])
+
+    errors = verify_release(_contract(repo), [wheel, sdist])
+
+    assert any("duplicate archive member" in error for error in errors)
+    assert any("non-regular archive member" in error for error in errors)
+    assert any("unsafe link target" in error for error in errors)
+    assert any("secret-like value" in error and sdist.name in error for error in errors)
+
+
+def test_release_workflow_docs_urls_and_pyright_contract() -> None:
+    repository = Path(__file__).parents[1]
+    workflow = (repository / ".github/workflows/real-hermes.yml").read_text(encoding="utf-8")
+    assert re.search(r"HERMES_REF: [0-9a-f]{40}", workflow)
+    assert "git+https://github.com/NousResearch/hermes-agent.git@${HERMES_REF}" in workflow
+    assert "importlib.metadata.version('hermes-agent') == '0.20.0'" in workflow
+    assert "hermes-agent==${HERMES_VERSION}" not in workflow
+    assert "NousResearch/AgentPorter" not in "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in repository.rglob("*.md")
+        if ".git" not in path.parts
+    )
+    for guide in repository.glob("docs/04-installation-and-troubleshooting*.md"):
+        text = guide.read_text(encoding="utf-8")
+        assert "agentporter-uninstall" in text
+    pyproject = (repository / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'include = ["src", "scripts", "install.py", "uninstall.py"]' in pyproject

@@ -56,6 +56,6 @@ line-length = 100
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pyright]
-include = ["src", "install.py", "uninstall.py"]
+include = ["src", "scripts", "install.py", "uninstall.py"]
 pythonVersion = "3.11"
 typeCheckingMode = "strict"

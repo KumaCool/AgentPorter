@@ -21,5 +21,5 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 First public release candidate. No supported release has been published yet.
 
-[Unreleased]: https://github.com/NousResearch/AgentPorter/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/NousResearch/AgentPorter/releases/tag/v0.1.0
+[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/KumaCool/AgentPorter/releases/tag/v0.1.0
