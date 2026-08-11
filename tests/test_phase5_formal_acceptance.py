@@ -68,6 +68,14 @@ def _expected_families() -> tuple[str, ...]:
     )
 
 
+def _profile_description_pairs() -> set[tuple[str, str]]:
+    manifest = _manifest()
+    return {
+        (INITIAL_PROFILE_NAMES[portable_id], worker.description)
+        for portable_id, worker in manifest.workers.items()
+    }
+
+
 def _command_family(argv: tuple[str, ...], staging_roots: set[Path]) -> str:
     """Return the one closed-grammar command family, or fail before execution."""
     assert argv and argv[0] == str(HERMES.resolve(strict=True))
@@ -86,8 +94,7 @@ def _command_family(argv: tuple[str, ...], staging_roots: set[Path]) -> str:
         assert tail[2] in {*INITIAL_PROFILE_NAMES.values(), *RENAMED}
         return "-".join(tail[:2])
     if len(tail) == 5 and tail[:2] == ("profile", "describe") and tail[3] == "--text":
-        assert tail[2] in INITIAL_PROFILE_NAMES.values()
-        assert tail[4] in {worker.description for worker in _manifest().workers.values()}
+        assert (tail[2], tail[4]) in _profile_description_pairs()
         return "profile-describe-text"
     if len(tail) == 4 and tail[:2] == ("profile", "rename"):
         assert (tail[2], tail[3]) in set(zip(INITIAL_PROFILE_NAMES.values(), RENAMED, strict=True))
@@ -99,7 +106,8 @@ def _command_family(argv: tuple[str, ...], staging_roots: set[Path]) -> str:
         source = Path(tail[2])
         assert source.is_absolute()
         assert source.name in INITIAL_PROFILE_NAMES.values()
-        assert any(source.is_relative_to(root) for root in staging_roots)
+        assert source.parent.parent in staging_roots
+        assert source.parent.name.startswith("agentporter-")
         return "profile-install"
     raise AssertionError(f"argv is outside the closed Phase 5 grammar: {tail!r}")
 
@@ -529,6 +537,38 @@ def test_metrics_runner_rejects_extra_environment_before_subprocess(
         )
     assert not invoked
     assert runner.calls == []
+
+
+def test_closed_grammar_rejects_mismatched_description_and_nested_staging_source(
+    tmp_path: Path,
+) -> None:
+    env = _environment(tmp_path)
+    runner = MetricsRunner(env)
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    runner.watch_staging(staging)
+    pairs = sorted(_profile_description_pairs())
+    assert len(pairs) == 2
+
+    with pytest.raises(AssertionError):
+        _command_family(
+            (
+                str(HERMES.resolve(strict=True)),
+                "profile",
+                "describe",
+                pairs[0][0],
+                "--text",
+                pairs[1][1],
+            ),
+            runner.staging_roots,
+        )
+
+    nested = staging / "agentporter-valid-looking" / "extra" / pairs[0][0]
+    with pytest.raises(AssertionError):
+        _command_family(
+            (str(HERMES.resolve(strict=True)), "profile", "install", str(nested), "--yes"),
+            runner.staging_roots,
+        )
 
 
 def test_metrics_runner_peak_is_independent_of_lifetime_child_rusage(
