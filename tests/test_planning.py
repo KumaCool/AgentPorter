@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import FrozenInstanceError, asdict, replace
 from pathlib import Path
 from typing import Never
@@ -17,11 +18,13 @@ from agentporter.hermes import (
     ProfileEntryKind,
 )
 from agentporter.planning import (
+    CleanupOutcome,
     InstallPlan,
     cleanup_staging,
     confirm_install_plan,
     plan_installation,
     preflight_installation,
+    revalidate_install_plan,
 )
 
 INSTALLATION_ID = UUID("12345678-1234-4abc-8def-1234567890ab")
@@ -51,10 +54,6 @@ def _detection(tmp_path: Path, *entries: ProfileEntry) -> HermesDetection:
     )
 
 
-def _forbidden(*_args: object, **_kwargs: object) -> Never:
-    pytest.fail("forbidden collaborator was called")
-
-
 def test_plan_aggregates_authoritative_order_shared_id_and_scanned_staging(tmp_path: Path) -> None:
     detection = _detection(tmp_path)
     plan = plan_installation(
@@ -62,9 +61,6 @@ def test_plan_aggregates_authoritative_order_shared_id_and_scanned_staging(tmp_p
         _manifest(tmp_path),
         staging_parent=tmp_path / "temporary-staging",
         installation_id_factory=lambda: INSTALLATION_ID,
-        credential_reader=_forbidden,
-        model_caller=_forbidden,
-        installer=_forbidden,
     )
 
     assert isinstance(plan, InstallPlan)
@@ -105,11 +101,11 @@ def test_plan_aggregates_authoritative_order_shared_id_and_scanned_staging(tmp_p
     assert plan.compensation_boundary == "no-install-attempted"
     with pytest.raises(FrozenInstanceError):
         plan.status = "invalid"  # type: ignore[misc]
-    assert cleanup_staging(plan) is True
+    assert cleanup_staging(plan).status == "cleaned"
     assert plan.staging_dir is not None and not plan.staging_dir.exists()
 
 
-def test_missing_provider_blocks_the_collection_without_credentials_models_or_staging(
+def test_missing_provider_is_installable_and_staged_but_requires_runtime_configuration(
     tmp_path: Path,
 ) -> None:
     staging_parent = tmp_path / "temporary-staging"
@@ -117,17 +113,16 @@ def test_missing_provider_blocks_the_collection_without_credentials_models_or_st
         _detection(tmp_path),
         _manifest(tmp_path, providers=False),
         staging_parent=staging_parent,
-        credential_reader=_forbidden,
-        model_caller=_forbidden,
-        installer=_forbidden,
     )
 
     assert plan.status == "configuration-required"
+    assert plan.installable is True
     assert {worker.status for worker in plan.workers} == {"configuration-required"}
     assert all(worker.provider is None for worker in plan.workers)
-    assert plan.staging_dir is None
-    assert not staging_parent.exists()
+    assert plan.staging_dir is not None and plan.staging_dir.is_dir()
+    assert confirm_install_plan(plan, plan.confirmation_token)
     assert plan.runtime_validated is False
+    assert cleanup_staging(plan).status == "cleaned"
 
 
 def test_missing_required_profile_command_is_unsupported_before_staging(tmp_path: Path) -> None:
@@ -227,7 +222,7 @@ def test_confirmation_binds_complete_current_plan_and_rejects_tampering(tmp_path
     worker = replace(plan.workers[0], model="tampered-model")
     tampered = replace(plan, workers=(worker, *plan.workers[1:]))
     assert not confirm_install_plan(tampered, plan.confirmation_token)
-    assert cleanup_staging(plan)
+    assert cleanup_staging(plan).status == "cleaned"
 
 
 def test_plan_projection_excludes_secrets_endpoints_and_default_profile_state(
@@ -242,7 +237,7 @@ def test_plan_projection_excludes_secrets_endpoints_and_default_profile_state(
     assert "base_url" not in payload
     assert '"default"' not in payload
     assert "instructions" not in payload
-    assert cleanup_staging(plan)
+    assert cleanup_staging(plan).status == "cleaned"
 
 
 def test_preflight_rejects_staging_inside_actual_hermes_home_without_writing(
@@ -273,6 +268,144 @@ def test_cleanup_rejects_tampered_plan_path(tmp_path: Path) -> None:
     protected.mkdir()
     tampered = replace(plan, staging_dir=protected)
 
-    assert cleanup_staging(tampered) is False
+    assert cleanup_staging(tampered).status == "refused"
     assert protected.is_dir()
-    assert cleanup_staging(plan)
+    assert cleanup_staging(plan).status == "cleaned"
+
+
+def test_provider_overrides_are_trimmed_closed_and_isolated_per_worker(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path, providers=False)
+    plan = plan_installation(
+        _detection(tmp_path),
+        manifest,
+        staging_parent=tmp_path / "staging",
+        provider_selection={"luna_worker": "  selected-provider  "},
+    )
+
+    assert plan.status == "configuration-required"
+    assert plan.installable is True
+    assert plan.workers[0].provider == "selected-provider"
+    assert plan.workers[0].runtime_configuration == "selected-but-runtime-unvalidated"
+    assert plan.workers[1].provider is None
+    assert plan.workers[1].runtime_configuration == "configuration-required"
+    assert cleanup_staging(plan).status == "cleaned"
+
+    for invalid in ({"unknown": "provider"}, {"luna_worker": "   "}):
+        rejected = plan_installation(
+            _detection(tmp_path),
+            manifest,
+            staging_parent=tmp_path / "other-staging",
+            provider_selection=invalid,
+        )
+        assert rejected.status == "invalid"
+        assert rejected.staging_dir is None
+
+
+def test_artifact_change_makes_revalidation_and_confirmation_stale(tmp_path: Path) -> None:
+    plan = plan_installation(
+        _detection(tmp_path), _manifest(tmp_path), staging_parent=tmp_path / "staging"
+    )
+    assert revalidate_install_plan(plan)
+    assert plan.staging_dir is not None
+    config = plan.staging_dir / plan.workers[0].profile_name / "config.yaml"
+    config.write_bytes(config.read_bytes() + b"\n")
+
+    assert not revalidate_install_plan(plan)
+    assert not confirm_install_plan(plan, plan.confirmation_token)
+    assert cleanup_staging(plan).status == "cleaned"
+
+
+def test_revalidation_rejects_changed_detection_and_plan_repr_hides_staging_path(
+    tmp_path: Path,
+) -> None:
+    plan = plan_installation(
+        _detection(tmp_path), _manifest(tmp_path), staging_parent=tmp_path / "private-staging"
+    )
+    assert plan.staging_dir is not None
+    assert str(plan.staging_dir) not in repr(plan)
+    conflicting = _detection(
+        tmp_path,
+        ProfileEntry(
+            name=plan.workers[0].profile_name,
+            path=tmp_path / "actual-hermes-home" / "profiles" / plan.workers[0].profile_name,
+            kind=ProfileEntryKind.PROFILE,
+        ),
+    )
+    assert not revalidate_install_plan(plan, conflicting)
+    assert cleanup_staging(plan).status == "cleaned"
+
+
+def test_cleanup_refuses_replacement_symlink_and_renamed_original(tmp_path: Path) -> None:
+    plan = plan_installation(
+        _detection(tmp_path), _manifest(tmp_path), staging_parent=tmp_path / "staging"
+    )
+    assert plan.staging_dir is not None
+    original = plan.staging_dir
+    renamed = original.with_name("renamed-original")
+    original.rename(renamed)
+    original.mkdir()
+
+    outcome = cleanup_staging(plan)
+    assert outcome.status == "refused"
+    assert original.is_dir()
+    assert renamed.is_dir()
+    original.rmdir()
+    original.symlink_to(renamed, target_is_directory=True)
+    outcome = cleanup_staging(plan)
+    assert outcome.status == "refused"
+    assert original.is_symlink()
+    original.unlink()
+    shutil.rmtree(renamed)
+
+
+def test_unexpected_runtime_error_propagates_after_identity_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    staging_parent = tmp_path / "staging"
+
+    def explode(*_args: object, **_kwargs: object) -> Never:
+        raise RuntimeError("programming defect")
+
+    monkeypatch.setattr("agentporter.planning.render_staging", explode)
+    with pytest.raises(RuntimeError, match="programming defect"):
+        plan_installation(_detection(tmp_path), _manifest(tmp_path), staging_parent=staging_parent)
+    assert list(staging_parent.iterdir()) == []
+
+
+def test_keyboard_interrupt_cleans_identity_then_reraises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    staging_parent = tmp_path / "staging"
+
+    def interrupt(*_args: object, **_kwargs: object) -> Never:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("agentporter.planning.render_staging", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        plan_installation(_detection(tmp_path), _manifest(tmp_path), staging_parent=staging_parent)
+    assert list(staging_parent.iterdir()) == []
+
+
+def test_staging_cleanup_failure_is_visible_with_residual_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def reject(_path: Path) -> Never:
+        raise ValueError("known invalid staging")
+
+    def fail_cleanup(*_args: object, **_kwargs: object) -> Never:
+        raise OSError("cannot remove")
+
+    monkeypatch.setattr("agentporter.planning.shutil.rmtree", fail_cleanup)
+    plan = plan_installation(
+        _detection(tmp_path),
+        _manifest(tmp_path),
+        staging_parent=tmp_path / "staging",
+        staging_scanner=reject,
+    )
+
+    assert plan.status == "invalid"
+    assert isinstance(plan.cleanup_outcome, CleanupOutcome)
+    assert plan.cleanup_outcome.status == "failed"
+    assert plan.cleanup_outcome.residual_path is not None
+    assert plan.cleanup_outcome.residual_path.exists()
+    assert "cannot remove" not in repr(plan)

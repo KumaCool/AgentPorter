@@ -2,22 +2,33 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
+import stat
 import tempfile
-from collections.abc import Callable
-from dataclasses import asdict, dataclass, replace
+from collections.abc import Callable, Mapping
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Literal, Protocol
 from uuid import UUID, uuid4
+
+import yaml
+from pydantic import ValidationError
 
 from .hermes import DetectionError, HermesDetection, ProfileEntryKind
 from .identity import COMPONENT_IDS, INITIAL_PROFILE_NAMES
 from .manifest import load_manifest
 from .models import WorkersManifest
 from .render import DISTRIBUTION_OWNED, render_staging
-from .security import scan_staging
+from .security import StagingViolation, scan_staging
 
 PlanStatus = Literal["ready", "configuration-required", "unsupported", "conflict", "invalid"]
+RuntimeConfiguration = Literal[
+    "configured-but-runtime-unvalidated",
+    "selected-but-runtime-unvalidated",
+    "configuration-required",
+]
+CleanupStatus = Literal["cleaned", "already-absent", "refused", "failed"]
 
 
 class Detector(Protocol):
@@ -42,8 +53,33 @@ class WorkerInstallPlan:
     provider: str | None
     reasoning_effort: str
     description: str
+    installable: bool
+    runtime_configuration: RuntimeConfiguration
     status: PlanStatus
     reason: str
+
+
+@dataclass(frozen=True)
+class StagingIdentity:
+    canonical_parent: Path
+    basename: str
+    device: int
+    inode: int
+    file_type: int
+
+
+@dataclass(frozen=True)
+class ArtifactSeal:
+    relative_path: str
+    sha256: str
+    size: int
+
+
+@dataclass(frozen=True)
+class CleanupOutcome:
+    status: CleanupStatus
+    reason: str
+    residual_path: Path | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -51,10 +87,14 @@ class InstallPlan:
     hermes: HermesPlanTarget | None
     installation_id: str | None
     workers: tuple[WorkerInstallPlan, ...]
-    staging_dir: Path | None
+    staging_dir: Path | None = field(repr=False)
+    staging_identity: StagingIdentity | None = field(repr=False)
+    artifacts: tuple[ArtifactSeal, ...]
     distribution_owned: tuple[str, ...]
+    installable: bool
     status: PlanStatus
     reason: str
+    cleanup_outcome: CleanupOutcome | None
     copied_data: tuple[()]
     modified_data: tuple[()]
     model_calls: Literal[False]
@@ -64,14 +104,43 @@ class InstallPlan:
     confirmation_token: str
 
 
-def _worker_plans(manifest: WorkersManifest) -> tuple[WorkerInstallPlan, ...]:
+def _apply_provider_selection(
+    manifest: WorkersManifest, selection: Mapping[str, str] | None
+) -> tuple[WorkersManifest, frozenset[str]]:
+    if selection is None:
+        return manifest, frozenset()
+    if not set(selection) <= set(manifest.workers):
+        raise ValueError("provider selection is not closed")
+    normalized: dict[str, str] = {}
+    for portable_id, provider in selection.items():
+        if not (trimmed := provider.strip()):
+            raise ValueError("provider selection is empty")
+        normalized[portable_id] = trimmed
+    workers = {
+        portable_id: worker.model_copy(
+            update={"provider": normalized[portable_id]} if portable_id in normalized else {}
+        )
+        for portable_id, worker in manifest.workers.items()
+    }
+    return manifest.model_copy(update={"workers": workers}), frozenset(normalized)
+
+
+def _worker_plans(
+    manifest: WorkersManifest, selected: frozenset[str] = frozenset()
+) -> tuple[WorkerInstallPlan, ...]:
     plans: list[WorkerInstallPlan] = []
     for portable_id, worker in manifest.workers.items():
         if worker.provider is None:
             status: PlanStatus = "configuration-required"
+            runtime: RuntimeConfiguration = "configuration-required"
             reason = "explicit provider configuration is required"
+        elif portable_id in selected:
+            status = "ready"
+            runtime = "selected-but-runtime-unvalidated"
+            reason = "selected provider is static-only and runtime-unvalidated"
         else:
             status = "ready"
+            runtime = "configured-but-runtime-unvalidated"
             reason = "static provider and model fields are complete; runtime not validated"
         plans.append(
             WorkerInstallPlan(
@@ -83,6 +152,8 @@ def _worker_plans(manifest: WorkersManifest) -> tuple[WorkerInstallPlan, ...]:
                 provider=worker.provider,
                 reasoning_effort=worker.reasoning_effort,
                 description=worker.description,
+                installable=True,
+                runtime_configuration=runtime,
                 status=status,
                 reason=reason,
             )
@@ -109,6 +180,10 @@ def _base_plan(
     workers: tuple[WorkerInstallPlan, ...] = (),
     installation_id: str | None = None,
     staging_dir: Path | None = None,
+    staging_identity: StagingIdentity | None = None,
+    artifacts: tuple[ArtifactSeal, ...] = (),
+    installable: bool = False,
+    cleanup_outcome: CleanupOutcome | None = None,
     status: PlanStatus,
     reason: str,
 ) -> InstallPlan:
@@ -126,9 +201,13 @@ def _base_plan(
             installation_id=installation_id,
             workers=workers,
             staging_dir=staging_dir,
+            staging_identity=staging_identity,
+            artifacts=artifacts,
             distribution_owned=tuple(DISTRIBUTION_OWNED),
+            installable=installable,
             status=status,
             reason=reason,
+            cleanup_outcome=cleanup_outcome,
             copied_data=(),
             modified_data=(),
             model_calls=False,
@@ -140,23 +219,127 @@ def _base_plan(
     )
 
 
+def _capture_identity(path: Path) -> StagingIdentity:
+    info = path.lstat()
+    if not stat.S_ISDIR(info.st_mode):
+        raise OSError("staging root is not a directory")
+    return StagingIdentity(
+        canonical_parent=path.parent.resolve(strict=True),
+        basename=path.name,
+        device=info.st_dev,
+        inode=info.st_ino,
+        file_type=stat.S_IFMT(info.st_mode),
+    )
+
+
+def _identity_matches(path: Path, identity: StagingIdentity) -> bool:
+    try:
+        info = path.lstat()
+        parent = path.parent.resolve(strict=True)
+    except OSError:
+        return False
+    return (
+        parent == identity.canonical_parent
+        and path.name == identity.basename
+        and info.st_dev == identity.device
+        and info.st_ino == identity.inode
+        and stat.S_IFMT(info.st_mode) == identity.file_type
+        and stat.S_ISDIR(info.st_mode)
+    )
+
+
+def _read_artifact(root_fd: int, relative_path: str) -> bytes:
+    parts = Path(relative_path).parts
+    current_fd = os.dup(root_fd)
+    try:
+        for part in parts[:-1]:
+            next_fd = os.open(
+                part,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0),
+                dir_fd=current_fd,
+            )
+            os.close(current_fd)
+            current_fd = next_fd
+        descriptor = os.open(
+            parts[-1],
+            os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0),
+            dir_fd=current_fd,
+        )
+        try:
+            info = os.fstat(descriptor)
+            if not stat.S_ISREG(info.st_mode):
+                raise OSError("artifact is not regular")
+            chunks: list[bytes] = []
+            while chunk := os.read(descriptor, 65536):
+                chunks.append(chunk)
+            return b"".join(chunks)
+        finally:
+            os.close(descriptor)
+    finally:
+        os.close(current_fd)
+
+
+def _capture_artifacts(
+    path: Path, workers: tuple[WorkerInstallPlan, ...]
+) -> tuple[ArtifactSeal, ...]:
+    expected = sorted(
+        f"{worker.profile_name}/{name}"
+        for worker in workers
+        for name in ("SOUL.md", "agentporter-profile.json", "config.yaml", "distribution.yaml")
+    )
+    root_fd = os.open(
+        path,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0),
+    )
+    try:
+        seals: list[ArtifactSeal] = []
+        for relative in expected:
+            content = _read_artifact(root_fd, relative)
+            seals.append(ArtifactSeal(relative, hashlib.sha256(content).hexdigest(), len(content)))
+        return tuple(seals)
+    finally:
+        os.close(root_fd)
+
+
+def _cleanup_bound(path: Path, identity: StagingIdentity) -> CleanupOutcome:
+    if _identity_matches(path, identity):
+        try:
+            shutil.rmtree(path)
+        except OSError:
+            residual = path if path.exists() else None
+            return CleanupOutcome("failed", "staging cleanup failed", residual)
+        return CleanupOutcome("cleaned", "staging removed")
+    try:
+        entries = tuple(identity.canonical_parent.iterdir())
+    except OSError:
+        entries = ()
+    for entry in entries:
+        try:
+            info = entry.lstat()
+        except OSError:
+            continue
+        if info.st_dev == identity.device and info.st_ino == identity.inode:
+            return CleanupOutcome("refused", "staging identity moved or changed", entry)
+    if path.exists() or path.is_symlink():
+        return CleanupOutcome("refused", "staging identity changed", path)
+    return CleanupOutcome("already-absent", "staging already absent")
+
+
 def plan_installation(
     detection: HermesDetection,
     manifest_path: Path,
     *,
     staging_parent: Path,
     installation_id_factory: Callable[[], UUID] = uuid4,
-    credential_reader: Callable[..., object] | None = None,
-    model_caller: Callable[..., object] | None = None,
-    installer: Callable[..., object] | None = None,
     staging_scanner: Callable[[Path], object] = scan_staging,
+    provider_selection: Mapping[str, str] | None = None,
 ) -> InstallPlan:
-    del credential_reader, model_caller, installer
     try:
         manifest = load_manifest(manifest_path)
-    except Exception:
+        manifest, selected = _apply_provider_selection(manifest, provider_selection)
+    except (OSError, UnicodeError, yaml.YAMLError, ValidationError, ValueError):
         return _base_plan(detection, status="invalid", reason="manifest is invalid")
-    workers = _worker_plans(manifest)
+    workers = _worker_plans(manifest, selected)
     if not detection.capabilities.supports_required_profile_commands:
         return _base_plan(
             detection,
@@ -177,13 +360,6 @@ def plan_installation(
             status="conflict",
             reason="a target initial profile name already exists",
         )
-    if any(worker.status != "ready" for worker in workers):
-        return _base_plan(
-            detection,
-            workers=workers,
-            status="configuration-required",
-            reason="one or more workers require explicit provider configuration",
-        )
     try:
         staging_parent.resolve().relative_to(detection.hermes_home.resolve())
     except ValueError:
@@ -197,29 +373,55 @@ def plan_installation(
         )
 
     staging_dir: Path | None = None
+    staging_identity: StagingIdentity | None = None
     installation_id = str(installation_id_factory())
     try:
         staging_parent.mkdir(parents=True, exist_ok=True)
         staging_dir = Path(tempfile.mkdtemp(prefix="agentporter-", dir=staging_parent))
+        staging_identity = _capture_identity(staging_dir)
         render_staging(manifest, staging_dir, UUID(installation_id))
         staging_scanner(staging_dir)
-    except Exception:
-        if staging_dir is not None:
-            shutil.rmtree(staging_dir, ignore_errors=True)
+        artifacts = _capture_artifacts(staging_dir, workers)
+    except (OSError, UnicodeError, yaml.YAMLError, StagingViolation, ValidationError, ValueError):
+        cleanup = (
+            _cleanup_bound(staging_dir, staging_identity)
+            if staging_dir is not None and staging_identity is not None
+            else None
+        )
         return _base_plan(
             detection,
             workers=workers,
             installation_id=installation_id,
+            cleanup_outcome=cleanup,
             status="invalid",
             reason="staging validation failed",
         )
+    except BaseException as error:
+        if staging_dir is not None and staging_identity is not None:
+            cleanup = _cleanup_bound(staging_dir, staging_identity)
+            if cleanup.status == "failed":
+                error.add_note("staging cleanup failed; a residual staging path remains")
+        raise
+    aggregate_status: PlanStatus = (
+        "configuration-required"
+        if any(worker.runtime_configuration == "configuration-required" for worker in workers)
+        else "ready"
+    )
+    reason = (
+        "one or more workers require explicit provider configuration"
+        if aggregate_status == "configuration-required"
+        else "static collection preflight completed"
+    )
     return _base_plan(
         detection,
         workers=workers,
         installation_id=installation_id,
         staging_dir=staging_dir,
-        status="ready",
-        reason="static collection preflight completed",
+        staging_identity=staging_identity,
+        artifacts=artifacts,
+        installable=True,
+        status=aggregate_status,
+        reason=reason,
     )
 
 
@@ -237,23 +439,48 @@ def preflight_installation(
     return plan_installation(detection, manifest_path, staging_parent=staging_parent, **kwargs)  # type: ignore[arg-type]
 
 
-def confirm_install_plan(plan: InstallPlan, token: str) -> bool:
-    return (
-        plan.status == "ready"
-        and token == plan.confirmation_token
-        and plan.fingerprint == _fingerprint(plan)
-    )
+def _same_detection(plan: InstallPlan, detection: HermesDetection) -> bool:
+    if plan.hermes is None:
+        return False
+    if (
+        plan.hermes.home.resolve() != detection.hermes_home.resolve()
+        or plan.hermes.profiles_root.resolve() != detection.profiles_root.resolve()
+        or plan.hermes.executable.resolve() != detection.executable.resolve()
+        or plan.hermes.version != detection.version
+        or not detection.capabilities.supports_required_profile_commands
+    ):
+        return False
+    targets = {worker.profile_name for worker in plan.workers}
+    return not any(entry.name in targets for entry in detection.profile_entries)
 
 
-def cleanup_staging(plan: InstallPlan) -> bool:
-    if plan.staging_dir is None:
-        return True
-    if plan.fingerprint != _fingerprint(plan):
+def revalidate_install_plan(
+    plan: InstallPlan, current_detection: HermesDetection | None = None
+) -> bool:
+    if plan.fingerprint != _fingerprint(plan) or not plan.installable:
+        return False
+    if plan.staging_dir is None or plan.staging_identity is None:
+        return False
+    if not _identity_matches(plan.staging_dir, plan.staging_identity):
         return False
     try:
-        shutil.rmtree(plan.staging_dir)
-    except FileNotFoundError:
-        return True
-    except OSError:
+        scan_staging(plan.staging_dir)
+        artifacts = _capture_artifacts(plan.staging_dir, plan.workers)
+    except (OSError, UnicodeError, StagingViolation, ValidationError, ValueError):
         return False
-    return not plan.staging_dir.exists()
+    if artifacts != plan.artifacts:
+        return False
+    return current_detection is None or _same_detection(plan, current_detection)
+
+
+def confirm_install_plan(plan: InstallPlan, token: str) -> bool:
+    return token == plan.confirmation_token and revalidate_install_plan(plan)
+
+
+def cleanup_staging(plan: InstallPlan) -> CleanupOutcome:
+    if plan.staging_dir is None or plan.staging_identity is None:
+        return CleanupOutcome("already-absent", "no staging was created")
+    if plan.fingerprint != _fingerprint(plan):
+        residual = plan.staging_dir if plan.staging_dir.exists() else None
+        return CleanupOutcome("refused", "plan integrity verification failed", residual)
+    return _cleanup_bound(plan.staging_dir, plan.staging_identity)
