@@ -70,12 +70,55 @@ class Target:
     marker_identity: FileIdentity
     marker_hash: str
 
+    @property
+    def product_id(self) -> str:
+        return self.marker.product_id
+
+    @property
+    def component_id(self) -> str:
+        return self.marker.component_id
+
+    @property
+    def installation_id(self) -> str:
+        return self.marker.installation_id
+
+    @property
+    def profile_device(self) -> int:
+        return self.profile_identity.device
+
+    @property
+    def profile_inode(self) -> int:
+        return self.profile_identity.inode
+
+    @property
+    def profile_type(self) -> int:
+        return self.profile_identity.mode_type
+
+    @property
+    def marker_device(self) -> int:
+        return self.marker_identity.device
+
+    @property
+    def marker_inode(self) -> int:
+        return self.marker_identity.inode
+
+    @property
+    def marker_type(self) -> int:
+        return self.marker_identity.mode_type
+
+    @property
+    def marker_sha256(self) -> str:
+        return self.marker_hash
+
 
 @dataclass(frozen=True)
 class DiscoveryResult:
     status: DiscoveryStatus
     targets: tuple[Target, ...]
     findings: tuple[Finding, ...]
+    hermes_home: Path | None = None
+    profiles_root: Path | None = None
+    root_identity: FileIdentity | None = None
 
     @property
     def primary_finding(self) -> Finding | None:
@@ -181,6 +224,7 @@ def discover_installation(profiles_root: Path) -> DiscoveryResult:
         )
     if (
         not profiles_root.is_absolute()
+        or profiles_root.name != "profiles"
         or not stat.S_ISDIR(root_before.st_mode)
         or stat.S_ISLNK(root_before.st_mode)
     ):
@@ -365,4 +409,11 @@ def discover_installation(profiles_root: Path) -> DiscoveryResult:
     ready_targets = tuple(
         sorted(by_installation[complete[0]], key=lambda target: target.current_name)
     )
-    return DiscoveryResult(DiscoveryStatus.READY, ready_targets, ())
+    return DiscoveryResult(
+        DiscoveryStatus.READY,
+        ready_targets,
+        (),
+        profiles_root.parent,
+        profiles_root,
+        _identity(root_before),
+    )

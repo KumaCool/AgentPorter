@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import stat
 import sys
@@ -9,11 +10,17 @@ from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
-from typing import Generic, Protocol, TextIO, TypeVar
+from typing import Generic, Protocol, TextIO, TypeVar, cast
 from uuid import UUID
 
 from .identity import COMPONENT_IDS, PRODUCT_ID
-from .models import HermesProfileName
+from .models import HermesProfileName, MarkerV1
+from .uninstall_discovery import (
+    MARKER_NAME,
+    MAX_MARKER_BYTES,
+    DiscoveryResult,
+    DiscoveryStatus,
+)
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _T = TypeVar("_T")
@@ -98,6 +105,9 @@ class UninstallPlan:
     profiles_root: Path | None
     installation_id: str | None
     targets: tuple[TargetSnapshot, ...]
+    root_device: int | None
+    root_inode: int | None
+    root_type: int | None
     fingerprint: str = field(repr=False)
     confirmation_phrase: str | None = field(repr=False)
 
@@ -127,6 +137,9 @@ def _invalid_plan() -> UninstallPlan:
         profiles_root=None,
         installation_id=None,
         targets=(),
+        root_device=None,
+        root_inode=None,
+        root_type=None,
         fingerprint="",
         confirmation_phrase=None,
     )
@@ -157,8 +170,34 @@ def _fingerprint(plan: UninstallPlan) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def build_uninstall_plan(candidates: Sequence[UninstallCandidate]) -> UninstallPlan:
+def build_uninstall_plan(
+    source: Sequence[UninstallCandidate] | DiscoveryResult,
+) -> UninstallPlan:
     """Seal an already-discovered, exact AgentPorter installation collection."""
+    root_device: int | None = None
+    root_inode: int | None = None
+    root_type: int | None = None
+    if isinstance(source, DiscoveryResult):
+        if (
+            source.status is not DiscoveryStatus.READY
+            or source.findings
+            or source.hermes_home is None
+            or source.profiles_root is None
+            or source.root_identity is None
+        ):
+            return _invalid_plan()
+        candidates = cast(Sequence[UninstallCandidate], source.targets)
+        home = source.hermes_home
+        root = source.profiles_root
+        root_device = source.root_identity.device
+        root_inode = source.root_identity.inode
+        root_type = source.root_identity.mode_type
+    else:
+        candidates = source
+        if not candidates:
+            return _invalid_plan()
+        home = candidates[0].hermes_home
+        root = candidates[0].profiles_root
     if len(candidates) != len(COMPONENT_IDS):
         return _invalid_plan()
 
@@ -173,8 +212,6 @@ def build_uninstall_plan(candidates: Sequence[UninstallCandidate]) -> UninstallP
 
     ordered = tuple(by_component[component_id] for component_id in expected)
     first = ordered[0]
-    home = first.hermes_home
-    root = first.profiles_root
     installation_id = first.installation_id
     if (
         not _is_canonical(home)
@@ -190,8 +227,8 @@ def build_uninstall_plan(candidates: Sequence[UninstallCandidate]) -> UninstallP
         except (TypeError, ValueError):
             return _invalid_plan()
         if (
-            candidate.hermes_home != home
-            or candidate.profiles_root != root
+            (not isinstance(source, DiscoveryResult) and candidate.hermes_home != home)
+            or (not isinstance(source, DiscoveryResult) and candidate.profiles_root != root)
             or candidate.path != root / candidate.current_name
             or candidate.path.parent != root
             or not _is_canonical(candidate.path)
@@ -211,10 +248,148 @@ def build_uninstall_plan(candidates: Sequence[UninstallCandidate]) -> UninstallP
         profiles_root=root,
         installation_id=installation_id,
         targets=tuple(_snapshot(candidate) for candidate in ordered),
+        root_device=root_device,
+        root_inode=root_inode,
+        root_type=root_type,
         fingerprint="",
         confirmation_phrase=f"DELETE AGENTPORTER {installation_id[:8]}",
     )
     return replace(plan, fingerprint=_fingerprint(plan))
+
+
+def _revalidation_supported() -> bool:
+    return (
+        os.open in os.supports_dir_fd
+        and os.stat in os.supports_dir_fd
+        and os.stat in os.supports_follow_symlinks
+        and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+    )
+
+
+def _stat_identity(value: os.stat_result) -> tuple[int, int, int]:
+    return value.st_dev, value.st_ino, stat.S_IFMT(value.st_mode)
+
+
+def _read_bounded_marker(marker_fd: int) -> bytes | None:
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = os.read(marker_fd, min(65536, MAX_MARKER_BYTES + 1 - total))
+        if not chunk:
+            return b"".join(chunks)
+        chunks.append(chunk)
+        total += len(chunk)
+        if total > MAX_MARKER_BYTES:
+            return None
+
+
+def revalidate_uninstall_collection(plan: UninstallPlan) -> bool:
+    """Revalidate every sealed target without searching, renaming, or writing."""
+    if (
+        plan.status is not PlanStatus.READY
+        or plan.hermes_home is None
+        or plan.profiles_root is None
+        or plan.root_device is None
+        or plan.root_inode is None
+        or plan.root_type != stat.S_IFDIR
+        or plan.fingerprint != _fingerprint(replace(plan, fingerprint=""))
+        or not _revalidation_supported()
+        or not _is_canonical(plan.hermes_home)
+        or not _is_canonical(plan.profiles_root)
+        or plan.profiles_root != plan.hermes_home / "profiles"
+        or plan.profiles_root.name != "profiles"
+    ):
+        return False
+
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        home_fd = os.open(plan.hermes_home, directory_flags)
+    except OSError:
+        return False
+    try:
+        root_before = os.stat("profiles", dir_fd=home_fd, follow_symlinks=False)
+        if _stat_identity(root_before) != (
+            plan.root_device,
+            plan.root_inode,
+            plan.root_type,
+        ):
+            return False
+        root_fd = os.open("profiles", directory_flags, dir_fd=home_fd)
+        try:
+            if _stat_identity(os.fstat(root_fd)) != _stat_identity(root_before):
+                return False
+            for target in plan.targets:
+                try:
+                    HermesProfileName(target.current_name)
+                except (TypeError, ValueError):
+                    return False
+                if target.path != plan.profiles_root / target.current_name:
+                    return False
+                profile_before = os.stat(
+                    target.current_name, dir_fd=root_fd, follow_symlinks=False
+                )
+                if _stat_identity(profile_before) != (
+                    target.profile_device,
+                    target.profile_inode,
+                    target.profile_type,
+                ):
+                    return False
+                profile_fd = os.open(target.current_name, directory_flags, dir_fd=root_fd)
+                try:
+                    if _stat_identity(os.fstat(profile_fd)) != _stat_identity(profile_before):
+                        return False
+                    marker_before = os.stat(
+                        MARKER_NAME, dir_fd=profile_fd, follow_symlinks=False
+                    )
+                    if _stat_identity(marker_before) != (
+                        target.marker_device,
+                        target.marker_inode,
+                        target.marker_type,
+                    ):
+                        return False
+                    marker_fd = os.open(
+                        MARKER_NAME, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=profile_fd
+                    )
+                    try:
+                        marker_opened = os.fstat(marker_fd)
+                        if _stat_identity(marker_opened) != _stat_identity(marker_before):
+                            return False
+                        payload = _read_bounded_marker(marker_fd)
+                        if (
+                            payload is None
+                            or hashlib.sha256(payload).hexdigest() != target.marker_sha256
+                        ):
+                            return False
+                        marker = MarkerV1.model_validate_json(payload)
+                        if (
+                            marker.product_id != target.product_id
+                            or marker.component_id != target.component_id
+                            or marker.installation_id != target.installation_id
+                        ):
+                            return False
+                        marker_after = os.stat(
+                            MARKER_NAME, dir_fd=profile_fd, follow_symlinks=False
+                        )
+                        if _stat_identity(marker_after) != _stat_identity(marker_opened):
+                            return False
+                    finally:
+                        os.close(marker_fd)
+                    profile_after = os.stat(
+                        target.current_name, dir_fd=root_fd, follow_symlinks=False
+                    )
+                    if _stat_identity(profile_after) != _stat_identity(profile_before):
+                        return False
+                finally:
+                    os.close(profile_fd)
+            root_after = os.stat("profiles", dir_fd=home_fd, follow_symlinks=False)
+            return _stat_identity(root_after) == _stat_identity(root_before)
+        finally:
+            os.close(root_fd)
+    except (OSError, ValueError):
+        return False
+    finally:
+        os.close(home_fd)
 
 
 def render_uninstall_plan(plan: UninstallPlan) -> str:
