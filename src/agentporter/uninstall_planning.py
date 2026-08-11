@@ -187,7 +187,7 @@ def _fingerprint(plan: UninstallPlan) -> str:
 def build_uninstall_plan(
     source: Sequence[UninstallCandidate] | DiscoveryResult,
     *,
-    executable: Path | None = None,
+    executable: Path,
 ) -> UninstallPlan:
     """Seal an already-discovered, exact AgentPorter installation collection."""
     root_device: int | None = None
@@ -217,17 +217,15 @@ def build_uninstall_plan(
     if len(candidates) != len(COMPONENT_IDS):
         return _invalid_plan()
 
-    executable_identity: tuple[int, int, int] | None = None
-    if executable is not None:
-        try:
-            if not executable.is_absolute() or executable.resolve(strict=True) != executable:
-                return _invalid_plan()
-            executable_stat = executable.lstat()
-        except (OSError, RuntimeError):
+    try:
+        if not executable.is_absolute() or executable.resolve(strict=True) != executable:
             return _invalid_plan()
-        executable_identity = _stat_identity(executable_stat)
-        if executable_identity[2] != stat.S_IFREG:
-            return _invalid_plan()
+        executable_stat = executable.lstat()
+    except (OSError, RuntimeError):
+        return _invalid_plan()
+    executable_identity = _stat_identity(executable_stat)
+    if executable_identity[2] != stat.S_IFREG:
+        return _invalid_plan()
 
     expected = tuple(COMPONENT_IDS.values())
     by_component: dict[str, UninstallCandidate] = {}
@@ -280,9 +278,9 @@ def build_uninstall_plan(
         root_inode=root_inode,
         root_type=root_type,
         executable=executable,
-        executable_device=None if executable_identity is None else executable_identity[0],
-        executable_inode=None if executable_identity is None else executable_identity[1],
-        executable_type=None if executable_identity is None else executable_identity[2],
+        executable_device=executable_identity[0],
+        executable_inode=executable_identity[1],
+        executable_type=executable_identity[2],
         fingerprint="",
         confirmation_phrase=f"DELETE AGENTPORTER {installation_id[:8]}",
     )
@@ -333,11 +331,10 @@ def _valid_revalidation_plan(plan: UninstallPlan) -> bool:
     )
 
 
-def _executable_matches(plan: UninstallPlan) -> bool:
-    if plan.executable is None:
-        return True
+def executable_identity_matches(plan: UninstallPlan) -> bool:
     if (
-        plan.executable_device is None
+        plan.executable is None
+        or plan.executable_device is None
         or plan.executable_inode is None
         or plan.executable_type != stat.S_IFREG
     ):
@@ -359,7 +356,7 @@ def revalidate_uninstall_target(plan: UninstallPlan, target: TargetSnapshot) -> 
     """Revalidate one sealed target independently immediately before deletion."""
     if (
         not _valid_revalidation_plan(plan)
-        or not _executable_matches(plan)
+        or not executable_identity_matches(plan)
         or target not in plan.targets
     ):
         return RevalidationStatus.UNSAFE_PATH
@@ -443,7 +440,7 @@ def revalidate_uninstall_target(plan: UninstallPlan, target: TargetSnapshot) -> 
 
 def revalidate_uninstall_collection(plan: UninstallPlan) -> bool:
     """Revalidate every sealed target without searching, renaming, or writing."""
-    if not _valid_revalidation_plan(plan) or not _executable_matches(plan):
+    if not _valid_revalidation_plan(plan) or not executable_identity_matches(plan):
         return False
     assert plan.hermes_home is not None
     assert plan.profiles_root is not None

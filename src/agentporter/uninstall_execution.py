@@ -5,7 +5,6 @@ import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from enum import StrEnum
-from pathlib import Path
 from typing import Protocol
 
 from .execution import CommandExecutor, CommandOutcome, CommandStatus
@@ -16,6 +15,7 @@ from .uninstall_planning import (
     RevalidationStatus,
     TargetSnapshot,
     UninstallPlan,
+    executable_identity_matches,
 )
 
 
@@ -80,20 +80,22 @@ def _valid_plan(plan: UninstallPlan) -> bool:
 def execute_uninstall_plan(
     plan: UninstallPlan,
     *,
-    executable: Path,
     executor: CommandExecutor,
     env: Mapping[str, str],
     per_target_revalidate: Callable[[UninstallPlan, TargetSnapshot], RevalidationStatus],
     enumerate_profiles: ProfileEnumerator,
 ) -> UninstallExecutionResult:
-    if not _valid_plan(plan):
-        raise ValueError("uninstall plan is not ready and sealed")
+    if not _valid_plan(plan) or plan.executable is None:
+        raise ValueError("uninstall plan is not ready, sealed, and executable-bound")
     try:
-        canonical_executable = executable.resolve(strict=True)
+        canonical_executable = plan.executable.resolve(strict=True)
     except (OSError, RuntimeError):
         canonical_executable = None
-    if not executable.is_absolute() or executable != canonical_executable:
+    if not plan.executable.is_absolute() or plan.executable != canonical_executable:
         raise ValueError("Hermes executable must be an existing canonical absolute path")
+
+    if not executable_identity_matches(plan):
+        raise ValueError("sealed Hermes executable identity changed")
 
     items: list[UninstallItemResult] = []
     for target in plan.targets:
@@ -104,7 +106,7 @@ def execute_uninstall_plan(
                 status = UninstallExecutionStatus.PARTIAL_DELETE
             return UninstallExecutionResult(status, tuple(items))
 
-        argv = (str(executable), "profile", "delete", target.current_name, "--yes")
+        argv = (str(plan.executable), "profile", "delete", target.current_name, "--yes")
         pending: BaseException | None = None
         command: CommandOutcome | None = None
         try:

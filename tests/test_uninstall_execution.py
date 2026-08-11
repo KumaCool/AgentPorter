@@ -67,7 +67,7 @@ def ready_plan(tmp_path: Path):
                 profiles_root=root,
             )
         )
-    return build_uninstall_plan(candidates)
+    return build_uninstall_plan(candidates, executable=executable_at(tmp_path))
 
 
 def enumerate_root(root: Path) -> tuple[ProfileEntry, ...]:
@@ -98,7 +98,6 @@ def test_deletes_each_target_in_plan_order_with_exact_native_argv(tmp_path: Path
     validations: list[str] = []
     result = execute_uninstall_plan(
         plan,
-        executable=executable,
         executor=DeletingExecutor(),  # type: ignore[arg-type]
         env={"HOME": str(tmp_path)},
         per_target_revalidate=lambda bound, target: (
@@ -133,7 +132,6 @@ def test_first_command_failure_stops_with_delete_failed_even_when_target_absent(
 
     result = execute_uninstall_plan(
         plan,
-        executable=executable_at(tmp_path),
         executor=FailedAfterDeletion(),  # type: ignore[arg-type]
         env={},
         per_target_revalidate=lambda _plan, _target: RevalidationStatus.VALID,
@@ -163,7 +161,6 @@ def test_second_command_failure_after_first_delete_is_partial_delete(tmp_path: P
 
     result = execute_uninstall_plan(
         plan,
-        executable=executable_at(tmp_path),
         executor=SecondFails(),  # type: ignore[arg-type]
         env={},
         per_target_revalidate=lambda _plan, _target: RevalidationStatus.VALID,
@@ -200,7 +197,6 @@ def test_second_marker_change_stops_without_second_command_as_partial_delete(
 
     result = execute_uninstall_plan(
         plan,
-        executable=executable_at(tmp_path),
         executor=DeleteFirst(),  # type: ignore[arg-type]
         env={},
         per_target_revalidate=revalidate,  # type: ignore[arg-type]
@@ -222,7 +218,6 @@ def test_success_with_path_still_present_is_verification_failed(tmp_path: Path) 
 
     result = execute_uninstall_plan(
         plan,
-        executable=executable_at(tmp_path),
         executor=NonDeletingExecutor(),  # type: ignore[arg-type]
         env={},
         per_target_revalidate=lambda _plan, _target: RevalidationStatus.VALID,
@@ -246,7 +241,6 @@ def test_enumeration_error_makes_successful_command_verification_failed(tmp_path
 
     result = execute_uninstall_plan(
         plan,
-        executable=executable_at(tmp_path),
         executor=DeletingExecutor(),  # type: ignore[arg-type]
         env={},
         per_target_revalidate=lambda _plan, _target: RevalidationStatus.VALID,
@@ -279,7 +273,6 @@ def test_lstat_error_makes_successful_command_verification_failed(
     monkeypatch.setattr(Path, "lstat", selective_lstat)
     result = execute_uninstall_plan(
         plan,
-        executable=executable_at(tmp_path),
         executor=DeletingExecutor(),  # type: ignore[arg-type]
         env={},
         per_target_revalidate=lambda _plan, _target: RevalidationStatus.VALID,
@@ -320,7 +313,6 @@ def test_command_baseexception_runs_both_readbacks_then_propagates_with_note(
         with pytest.raises(type(error)) as raised:
             execute_uninstall_plan(
                 plan,
-                executable=executable_at(tmp_path),
                 executor=RaisingExecutor(),  # type: ignore[arg-type]
                 env={},
                 per_target_revalidate=lambda _plan, _target: RevalidationStatus.VALID,
@@ -339,7 +331,6 @@ def test_pre_command_revalidation_baseexception_propagates_without_readback(tmp_
     with pytest.raises(SystemExit) as raised:
         execute_uninstall_plan(
             plan,
-            executable=executable_at(tmp_path),
             executor=pytest.fail,  # type: ignore[arg-type]
             env={},
             per_target_revalidate=lambda _plan, _target: (_ for _ in ()).throw(error),
@@ -361,7 +352,6 @@ def test_first_unsafe_path_stops_with_zero_commands(tmp_path: Path) -> None:
 
     result = execute_uninstall_plan(
         plan,
-        executable=executable_at(tmp_path),
         executor=MustNotRun(),  # type: ignore[arg-type]
         env={},
         per_target_revalidate=lambda _plan, _target: RevalidationStatus.UNSAFE_PATH,
@@ -373,28 +363,29 @@ def test_first_unsafe_path_stops_with_zero_commands(tmp_path: Path) -> None:
     assert calls == 0
 
 
-def test_rejects_tampered_fingerprint_before_any_callback(tmp_path: Path) -> None:
-    plan = replace(ready_plan(tmp_path), fingerprint="0" * 64)
+def test_rejects_replaced_plan_executable_even_if_callback_claims_valid(tmp_path: Path) -> None:
+    plan = ready_plan(tmp_path)
+    assert plan.executable is not None
+    replacement = tmp_path / "replacement-hermes"
+    replacement.write_bytes(plan.executable.read_bytes())
+    replacement.replace(plan.executable)
 
-    with pytest.raises(ValueError, match="ready and sealed"):
+    with pytest.raises(ValueError, match="executable identity"):
         execute_uninstall_plan(
             plan,
-            executable=executable_at(tmp_path),
             executor=pytest.fail,  # type: ignore[arg-type]
             env={},
-            per_target_revalidate=lambda _plan, _target: pytest.fail("must not revalidate"),
+            per_target_revalidate=lambda _plan, _target: RevalidationStatus.VALID,
             enumerate_profiles=lambda: pytest.fail("must not enumerate"),
         )
 
 
-def test_rejects_noncanonical_or_missing_executable_before_revalidation(tmp_path: Path) -> None:
-    plan = ready_plan(tmp_path)
-    missing = (tmp_path / "bin" / "missing").absolute()
+def test_rejects_tampered_fingerprint_before_any_callback(tmp_path: Path) -> None:
+    plan = replace(ready_plan(tmp_path), fingerprint="0" * 64)
 
-    with pytest.raises(ValueError, match="existing canonical absolute"):
+    with pytest.raises(ValueError, match="ready, sealed, and executable-bound"):
         execute_uninstall_plan(
             plan,
-            executable=missing,
             executor=pytest.fail,  # type: ignore[arg-type]
             env={},
             per_target_revalidate=lambda _plan, _target: pytest.fail("must not revalidate"),

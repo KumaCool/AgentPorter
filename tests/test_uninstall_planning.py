@@ -37,6 +37,12 @@ class Candidate:
     profiles_root: Path
 
 
+def executable_at(tmp_path: Path) -> Path:
+    executable = tmp_path / "hermes"
+    executable.write_bytes(b"hermes")
+    return executable.resolve(strict=True)
+
+
 def candidates(tmp_path: Path) -> tuple[Candidate, Candidate]:
     home = tmp_path / ".hermes"
     root = home / "profiles"
@@ -70,14 +76,17 @@ def test_builds_immutable_sealed_plan_in_registry_order_independent_of_input(
 ) -> None:
     first, second = candidates(tmp_path)
 
-    plan = build_uninstall_plan((second, first))
+    plan = build_uninstall_plan((second, first), executable=executable_at(tmp_path))
 
     assert plan.status is PlanStatus.READY
     assert tuple(target.component_id for target in plan.targets) == tuple(COMPONENT_IDS.values())
     assert plan.installation_id == first.installation_id
     assert plan.confirmation_phrase == f"DELETE AGENTPORTER {first.installation_id[:8]}"
     assert len(plan.fingerprint) == 64
-    assert plan.fingerprint == build_uninstall_plan((first, second)).fingerprint
+    assert (
+        plan.fingerprint
+        == build_uninstall_plan((first, second), executable=executable_at(tmp_path)).fingerprint
+    )
     with pytest.raises(FrozenInstanceError):
         plan.status = PlanStatus.INVALID  # type: ignore[misc]
 
@@ -106,7 +115,7 @@ def test_rejects_non_exact_or_unsafe_collection(tmp_path: Path, mutate: object) 
     first, second = candidates(tmp_path)
     changed = mutate(first, second)  # type: ignore[operator]
 
-    plan = build_uninstall_plan(changed)
+    plan = build_uninstall_plan(changed, executable=executable_at(tmp_path))
 
     assert plan.status is PlanStatus.INVALID
     assert plan.targets == ()
@@ -121,12 +130,15 @@ def test_noncanonical_roots_are_invalid(tmp_path: Path) -> None:
         replace(item, hermes_home=noncanonical_home, profiles_root=noncanonical_home / "profiles")
         for item in (first, second)
     )
-    assert build_uninstall_plan(changed).status is PlanStatus.INVALID
+    assert (
+        build_uninstall_plan(changed, executable=executable_at(tmp_path)).status
+        is PlanStatus.INVALID
+    )
 
 
 def test_every_snapshot_field_and_bound_root_affect_fingerprint(tmp_path: Path) -> None:
     baseline = candidates(tmp_path)
-    original = build_uninstall_plan(baseline)
+    original = build_uninstall_plan(baseline, executable=executable_at(tmp_path))
     mutations = {
         "current_name": "another-name",
         "profile_device": 99,
@@ -141,7 +153,7 @@ def test_every_snapshot_field_and_bound_root_affect_fingerprint(tmp_path: Path) 
         changed = replace(baseline[0], **{field: value})
         if field == "current_name":
             changed = replace(changed, path=changed.profiles_root / str(value))
-        plan = build_uninstall_plan((changed, baseline[1]))
+        plan = build_uninstall_plan((changed, baseline[1]), executable=executable_at(tmp_path))
         assert plan.status is PlanStatus.READY
         assert plan.fingerprint != original.fingerprint, field
 
@@ -155,13 +167,16 @@ def test_every_snapshot_field_and_bound_root_affect_fingerprint(tmp_path: Path) 
         )
         for item in baseline
     )
-    assert build_uninstall_plan(moved).fingerprint != original.fingerprint
+    assert (
+        build_uninstall_plan(moved, executable=executable_at(tmp_path)).fingerprint
+        != original.fingerprint
+    )
 
 
 def test_render_has_explicit_allowlist_and_complete_permanent_deletion_warning(
     tmp_path: Path,
 ) -> None:
-    plan = build_uninstall_plan(candidates(tmp_path))
+    plan = build_uninstall_plan(candidates(tmp_path), executable=executable_at(tmp_path))
 
     rendered = render_uninstall_plan(plan)
 
@@ -204,7 +219,7 @@ def test_render_has_explicit_allowlist_and_complete_permanent_deletion_warning(
 def test_confirmation_is_exact_single_input_and_continues_only_when_fresh(
     tmp_path: Path, answer: str, expected: InteractionStatus
 ) -> None:
-    plan = build_uninstall_plan(candidates(tmp_path))
+    plan = build_uninstall_plan(candidates(tmp_path), executable=executable_at(tmp_path))
     inputs = 0
     validations = 0
     continuations = 0
@@ -252,7 +267,7 @@ def test_confirmation_is_exact_single_input_and_continues_only_when_fresh(
 def test_input_termination_cancels_with_zero_revalidation_or_continuation(
     tmp_path: Path, error: BaseException
 ) -> None:
-    plan = build_uninstall_plan(candidates(tmp_path))
+    plan = build_uninstall_plan(candidates(tmp_path), executable=executable_at(tmp_path))
 
     def terminate(_: str) -> str:
         raise error
@@ -268,7 +283,7 @@ def test_input_termination_cancels_with_zero_revalidation_or_continuation(
 
 
 def test_failed_collection_revalidation_is_stale_and_zero_continuation(tmp_path: Path) -> None:
-    plan = build_uninstall_plan(candidates(tmp_path))
+    plan = build_uninstall_plan(candidates(tmp_path), executable=executable_at(tmp_path))
     calls = 0
 
     def stale(_: object) -> bool:
@@ -289,7 +304,7 @@ def test_failed_collection_revalidation_is_stale_and_zero_continuation(tmp_path:
 
 
 def test_invalid_plan_is_rejected_without_interaction(tmp_path: Path) -> None:
-    plan = build_uninstall_plan(candidates(tmp_path)[:1])
+    plan = build_uninstall_plan(candidates(tmp_path)[:1], executable=executable_at(tmp_path))
     outcome = run_uninstall_confirmation(
         plan,
         revalidate_collection=lambda _: pytest.fail("must not revalidate"),
@@ -301,7 +316,7 @@ def test_invalid_plan_is_rejected_without_interaction(tmp_path: Path) -> None:
 
 
 def test_output_and_injected_exceptions_propagate(tmp_path: Path) -> None:
-    plan = build_uninstall_plan(candidates(tmp_path))
+    plan = build_uninstall_plan(candidates(tmp_path), executable=executable_at(tmp_path))
 
     class BrokenOutput(StringIO):
         def write(self, _: str) -> int:
@@ -336,7 +351,7 @@ def test_output_and_injected_exceptions_propagate(tmp_path: Path) -> None:
 
 
 def test_repr_hides_snapshot_hashes_and_fingerprint(tmp_path: Path) -> None:
-    plan = build_uninstall_plan(candidates(tmp_path))
+    plan = build_uninstall_plan(candidates(tmp_path), executable=executable_at(tmp_path))
     representation = repr(plan)
     assert plan.fingerprint not in representation
     assert all(target.marker_sha256 not in representation for target in plan.targets)

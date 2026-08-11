@@ -41,6 +41,12 @@ def _write_marker(profile: Path, component_id: str) -> None:
     )
 
 
+def _executable(tmp_path: Path) -> Path:
+    executable = tmp_path / "hermes"
+    executable.write_bytes(b"hermes")
+    return executable.resolve(strict=True)
+
+
 def _discover(tmp_path: Path):
     home = tmp_path / ".hermes"
     root = home / "profiles"
@@ -57,7 +63,7 @@ def test_ready_discovery_builds_sealed_plan_and_revalidates_before_continuation(
     discovery = _discover(tmp_path)
 
     assert discovery.status is DiscoveryStatus.READY
-    plan = build_uninstall_plan(discovery)
+    plan = build_uninstall_plan(discovery, executable=_executable(tmp_path))
 
     assert plan.status is PlanStatus.READY
     assert discovery.hermes_home == tmp_path / ".hermes"
@@ -122,7 +128,10 @@ def test_non_ready_discovery_cannot_build_plan(tmp_path: Path) -> None:
     discovery = discover_installation(tmp_path / ".hermes" / "profiles")
 
     assert discovery.status is DiscoveryStatus.ALREADY_ABSENT
-    assert build_uninstall_plan(discovery).status is PlanStatus.INVALID
+    assert (
+        build_uninstall_plan(discovery, executable=_executable(tmp_path)).status
+        is PlanStatus.INVALID
+    )
 
 
 @pytest.mark.parametrize(
@@ -139,7 +148,7 @@ def test_collection_revalidation_fails_closed_for_path_or_identity_mutation(
     tmp_path: Path, mutation: str
 ) -> None:
     discovery = _discover(tmp_path)
-    plan = build_uninstall_plan(discovery)
+    plan = build_uninstall_plan(discovery, executable=_executable(tmp_path))
     assert plan.status is PlanStatus.READY
     first = plan.targets[0]
     marker = first.path / MARKER_NAME
@@ -191,7 +200,7 @@ def test_collection_revalidation_fails_closed_for_path_or_identity_mutation(
 def test_per_target_revalidation_remains_valid_after_an_earlier_target_is_deleted(
     tmp_path: Path,
 ) -> None:
-    plan = build_uninstall_plan(_discover(tmp_path))
+    plan = build_uninstall_plan(_discover(tmp_path), executable=_executable(tmp_path))
     first, second = plan.targets
 
     assert revalidate_uninstall_target(plan, first) is RevalidationStatus.VALID
@@ -205,7 +214,9 @@ def test_per_target_revalidation_remains_valid_after_an_earlier_target_is_delete
 def test_per_target_revalidation_distinguishes_marker_change_from_unsafe_path(
     tmp_path: Path,
 ) -> None:
-    marker_plan = build_uninstall_plan(_discover(tmp_path / "marker"))
+    marker_plan = build_uninstall_plan(
+        _discover(tmp_path / "marker"), executable=_executable(tmp_path / "marker")
+    )
     marker = marker_plan.targets[0].path / MARKER_NAME
     marker.write_bytes(marker.read_bytes() + b"\n")
 
@@ -214,7 +225,9 @@ def test_per_target_revalidation_distinguishes_marker_change_from_unsafe_path(
         is RevalidationStatus.MARKER_CHANGED
     )
 
-    unsafe_plan = build_uninstall_plan(_discover(tmp_path / "unsafe"))
+    unsafe_plan = build_uninstall_plan(
+        _discover(tmp_path / "unsafe"), executable=_executable(tmp_path / "unsafe")
+    )
     target = unsafe_plan.targets[0]
     moved = tmp_path / "moved-target"
     target.path.rename(moved)
@@ -226,7 +239,7 @@ def test_per_target_revalidation_distinguishes_marker_change_from_unsafe_path(
 def test_revalidation_capability_check_is_dynamic_and_fail_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    plan = build_uninstall_plan(_discover(tmp_path))
+    plan = build_uninstall_plan(_discover(tmp_path), executable=_executable(tmp_path))
     monkeypatch.setattr(uninstall_planning, "_revalidation_supported", lambda: False)
     monkeypatch.setattr(os, "open", lambda *args, **kwargs: pytest.fail("filesystem accessed"))
 
@@ -234,7 +247,7 @@ def test_revalidation_capability_check_is_dynamic_and_fail_closed(
 
 
 def test_repeated_collection_revalidation_closes_every_descriptor(tmp_path: Path) -> None:
-    plan = build_uninstall_plan(_discover(tmp_path))
+    plan = build_uninstall_plan(_discover(tmp_path), executable=_executable(tmp_path))
     descriptor_dir = Path("/proc/self/fd")
     if not descriptor_dir.exists():
         pytest.skip("descriptor counter unavailable")

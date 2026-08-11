@@ -128,7 +128,6 @@ def run_uninstaller(
         assert plan.executable is not None
         execution = execute_uninstall_plan(
             plan,
-            executable=plan.executable,
             executor=executor,
             env=env,
             per_target_revalidate=validate_target,

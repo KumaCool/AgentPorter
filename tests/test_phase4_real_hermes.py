@@ -167,7 +167,7 @@ def _install_and_rename(
 
     discovery = discover_installation(detection.profiles_root)
     assert discovery.status is DiscoveryStatus.READY
-    plan = build_uninstall_plan(discovery)
+    plan = build_uninstall_plan(discovery, executable=detection.executable)
     assert plan.status is PlanStatus.READY
     # Discovery is name-sorted, but a sealed plan is in fixed component registry order.
     assert [target.current_name for target in discovery.targets] == sorted(RENAMED)
@@ -242,7 +242,6 @@ def _delete(
 ):
     return execute_uninstall_plan(
         plan,
-        executable=detection.executable,
         executor=executor,
         env=env,
         per_target_revalidate=revalidator,
@@ -322,7 +321,10 @@ def test_real_corrupt_renamed_marker_is_ambiguous_with_zero_delete(isolated_root
 
     assert discovery.status is DiscoveryStatus.AMBIGUOUS
     assert discovery.targets == ()
-    assert build_uninstall_plan(discovery).status is PlanStatus.INVALID
+    assert (
+        build_uninstall_plan(discovery, executable=detection.executable).status
+        is PlanStatus.INVALID
+    )
     assert _delete_calls(runner) == []
     assert {entry.name for entry in native.enumerate_profiles()} == set(RENAMED)
     _assert_audit(runner)
