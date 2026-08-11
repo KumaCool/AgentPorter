@@ -169,14 +169,19 @@ def test_noncanonical_or_nondirectory_root_is_unsafe(tmp_path: Path, root_kind: 
     assert result.primary_finding.code is FindingCode.UNSAFE_PATH
 
 
-def test_unknown_component_and_unsupported_schema_are_protocol_findings(tmp_path: Path) -> None:
+def test_unknown_component_and_unsupported_schema_are_distinct_protocol_findings(
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "profiles"
     _marker(root, "unknown", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
     _marker(root, "schema", next(iter(COMPONENT_IDS.values())), schema_version=2)
 
     result = discover_installation(root)
 
-    assert _codes(result).count(FindingCode.UNKNOWN_COMPONENT) == 2
+    assert _codes(result).count(FindingCode.UNKNOWN_COMPONENT) == 1
+    assert _codes(result).count(FindingCode.INVALID_MARKER) == 1
+    assert result.primary_finding is not None
+    assert result.primary_finding.code is FindingCode.INVALID_MARKER
 
 
 def test_duplicate_component_is_ambiguous(tmp_path: Path) -> None:

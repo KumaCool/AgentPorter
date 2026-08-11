@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from collections.abc import Mapping, Sequence
 from io import StringIO
@@ -89,9 +90,11 @@ def test_ambiguous_result_is_safe_and_never_interacts_or_executes(tmp_path: Path
     assert result.status is UninstallerStatus.AMBIGUOUS
     assert result.findings
     rendered = output.getvalue()
-    assert str(profile / "agentporter-profile.json") in rendered
+    assert str(profile / "agentporter-profile.json") not in rendered
+    assert "private-profile-name" not in rendered
     assert secret not in rendered
     assert "marker schema is invalid" not in rendered
+    assert "invalid-marker" in rendered
 
 
 def test_confirmed_batch_rename_deletes_with_fresh_detection_per_target(tmp_path: Path) -> None:
@@ -134,8 +137,68 @@ def test_confirmed_batch_rename_deletes_with_fresh_detection_per_target(tmp_path
     assert result.status is UninstallerStatus.DELETED
     assert result.execution is not None
     assert result.execution.status is UninstallExecutionStatus.DELETED
-    assert detections == 4  # discovery, continuation binding, then immediately before each target
+    assert detections == 3  # discovery, then immediately before each target
     assert commands == [(str(executable), "profile", "delete", name, "--yes") for name in names]
+
+
+def test_executable_same_bytes_replacement_during_answer_is_stale_with_zero_command(
+    tmp_path: Path,
+) -> None:
+    executable = tmp_path / "hermes"
+    executable.write_bytes(b"hermes")
+    home = tmp_path / ".hermes"
+    _write_installation(home / "profiles")
+    output = StringIO()
+
+    def answer(_: str) -> str:
+        replacement = tmp_path / "replacement"
+        replacement.write_bytes(executable.read_bytes())
+        os.replace(replacement, executable)
+        installation = output.getvalue().split("Installation ID: ", 1)[1].splitlines()[0]
+        return f"DELETE AGENTPORTER {installation[:8]}"
+
+    result = run_uninstaller(
+        {},
+        input_fn=answer,
+        output=output,
+        detector=lambda **_: _detection(home, executable.resolve()),
+        executor_factory=lambda: pytest.fail("stale executable must not execute"),
+    )
+    assert result.status is UninstallerStatus.STALE
+
+
+def test_executable_path_switch_after_first_delete_returns_partial_delete(tmp_path: Path) -> None:
+    executable = tmp_path / "hermes"
+    executable.write_bytes(b"old")
+    alternate = tmp_path / "hermes-new"
+    alternate.write_bytes(b"new")
+    home = tmp_path / ".hermes"
+    names = _write_installation(home / "profiles")
+    output = StringIO()
+    commands: list[tuple[str, ...]] = []
+    switched = False
+
+    def detector(*, env: Mapping[str, str]) -> HermesDetection:
+        return _detection(home, (alternate if switched else executable).resolve())
+
+    class Executor:
+        def run(self, argv: Sequence[str], *, env: Mapping[str, str]) -> CommandOutcome:
+            nonlocal switched
+            normalized = tuple(argv)
+            commands.append(normalized)
+            shutil.rmtree(home / "profiles" / normalized[3])
+            switched = True
+            return CommandOutcome(CommandStatus.SUCCEEDED, normalized, 0)
+
+    def answer(_: str) -> str:
+        installation = output.getvalue().split("Installation ID: ", 1)[1].splitlines()[0]
+        return f"DELETE AGENTPORTER {installation[:8]}"
+
+    result = run_uninstaller(
+        {}, input_fn=answer, output=output, detector=detector, executor_factory=Executor
+    )
+    assert result.status is UninstallerStatus.PARTIAL_DELETE
+    assert commands == [(str(executable.resolve()), "profile", "delete", names[0], "--yes")]
 
 
 def test_cancel_has_zero_executor_adapter_or_delete(tmp_path: Path) -> None:

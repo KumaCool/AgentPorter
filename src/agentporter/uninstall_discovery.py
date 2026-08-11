@@ -202,7 +202,7 @@ def _parse_marker(payload: bytes) -> tuple[MarkerV1 | None, FindingCode | None, 
     product_id = data.get("product_id")
     schema_version = data.get("schema_version")
     if product_id == PRODUCT_ID and schema_version != 1:
-        return None, FindingCode.UNKNOWN_COMPONENT, "unsupported marker schema version"
+        return None, FindingCode.INVALID_MARKER, "unsupported marker schema version"
     try:
         marker = MarkerV1.model_validate(raw)
     except ValidationError:

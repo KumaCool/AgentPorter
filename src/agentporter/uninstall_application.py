@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -95,11 +96,13 @@ def run_uninstaller(
     if discovery.status is DiscoveryStatus.ALREADY_ABSENT:
         return UninstallerResult(UninstallerStatus.ALREADY_ABSENT)
     if discovery.status is DiscoveryStatus.AMBIGUOUS:
-        for finding in discovery.findings:
-            print(f"AgentPorter uninstall blocked: {finding.code} at {finding.path}", file=output)
+        counts = Counter(finding.code for finding in discovery.findings)
+        print(f"AgentPorter uninstall blocked: {len(discovery.findings)} finding(s)", file=output)
+        for code, count in sorted(counts.items(), key=lambda item: item[0].value):
+            print(f"- {code.value}: {count}", file=output)
         return UninstallerResult(UninstallerStatus.AMBIGUOUS, discovery.findings)
 
-    plan = build_uninstall_plan(discovery)
+    plan = build_uninstall_plan(discovery, executable=initial.executable)
     if plan.status is not PlanStatus.READY:
         return UninstallerResult(UninstallerStatus.FAILED)
 
@@ -107,25 +110,25 @@ def run_uninstaller(
 
     def continue_uninstall() -> UninstallExecutionResult:
         nonlocal execution
-        bound_detection = detector(env=env)
         executor = executor_factory()
-        adapter = adapter_factory(executor, env, bound_detection)
+        adapter = adapter_factory(executor, env, initial)
 
         def validate_target(
             bound_plan: UninstallPlan, target: TargetSnapshot
         ) -> RevalidationStatus:
             current = detector(env=env)
             if (
-                current.executable != bound_detection.executable
+                current.executable != bound_plan.executable
                 or current.hermes_home != bound_plan.hermes_home
                 or current.profiles_root != bound_plan.profiles_root
             ):
                 return RevalidationStatus.UNSAFE_PATH
             return revalidate_uninstall_target(bound_plan, target)
 
+        assert plan.executable is not None
         execution = execute_uninstall_plan(
             plan,
-            executable=bound_detection.executable,
+            executable=plan.executable,
             executor=executor,
             env=env,
             per_target_revalidate=validate_target,

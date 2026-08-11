@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 from io import StringIO
 from pathlib import Path
 
@@ -82,6 +83,39 @@ def test_ready_discovery_builds_sealed_plan_and_revalidates_before_continuation(
     assert outcome.status is InteractionStatus.CONFIRMED
     assert outcome.continuation_result == "delete-stage"
     assert continuations == 1
+
+
+def test_discovery_plan_seals_regular_executable_identity_and_revalidates_it(
+    tmp_path: Path,
+) -> None:
+    discovery = _discover(tmp_path)
+    executable = (tmp_path / "hermes").resolve()
+    executable.write_bytes(b"hermes")
+
+    plan = build_uninstall_plan(discovery, executable=executable)
+
+    executable_stat = executable.stat()
+    assert plan.status is PlanStatus.READY
+    assert plan.executable == executable
+    assert plan.executable_device == executable_stat.st_dev
+    assert plan.executable_inode == executable_stat.st_ino
+    assert plan.executable_type == stat.S_IFREG
+    assert revalidate_uninstall_collection(plan)
+
+    replacement = tmp_path / "replacement"
+    replacement.write_bytes(executable.read_bytes())
+    os.replace(replacement, executable)
+    assert not revalidate_uninstall_collection(plan)
+
+
+def test_discovery_plan_rejects_non_regular_executable(tmp_path: Path) -> None:
+    executable = (tmp_path / "hermes").resolve()
+    executable.mkdir()
+
+    assert (
+        build_uninstall_plan(_discover(tmp_path), executable=executable).status
+        is PlanStatus.INVALID
+    )
 
 
 def test_non_ready_discovery_cannot_build_plan(tmp_path: Path) -> None:
