@@ -189,7 +189,9 @@ Offline full pytest at candidate worktree: 437 passed, 2 warnings
 
 覆盖结果：配置/凭据/probe-support 零调用门控、HTTP/timeout/nonce 安全分类、实际 route/fallback/API/tool 校验、按 component 的双 Worker 聚合、freshness 与生命周期失效、敏感值排除以及取消/timeout/`KeyboardInterrupt`/`BaseException` 清理合同均已通过。安装、update、卸载与静态 readback 的真实组合根接线仍由后续 Phase B 生命周期测试关闭。
 
-## Phase B：可重放运行绑定事务
+## Phase B：可重放运行绑定事务（已实现并通过离线事务门禁）
+
+**Status:** 已完成。实现包含专用 `agentporter-activate`、完整 installation set 发现、typed snapshot、一次确认、descriptor-relative 配置/receipt 事务、原子 compare/exchange、并发漂移保留、控制流异常补偿后传播，以及 Hermes v0.20 默认/force-config update 保留语义。Phase B 不执行模型 canary。
 
 **Objective:** 让重装后不再依赖人工编辑完整 `config.yaml`。
 
@@ -224,6 +226,18 @@ python -m pytest \
   tests/test_activation_application.py \
   tests/test_entrypoints.py -v
 ```
+
+**Closure evidence:**
+
+```text
+Phase B focused/related tests: 76 passed
+Repository offline pytest: 611 passed, 2 existing duplicate-archive fixture warnings
+Ruff format/check: passed
+Pyright strict: 0 errors, 0 warnings
+sdist/wheel build: passed
+```
+
+首轮语义复审的 8 个 finding family 与限定 closure review 的 3 个机械竞态均已转成确定性回归测试并关闭；由于 review 预算已用完，最后 3 项由主代理重放 exact reproduction 后随完整门禁验收，未追加第三轮泛化复审。
 
 ## Phase C：真实 canary 与 readiness evidence
 
