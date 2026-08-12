@@ -1,4 +1,4 @@
-from dataclasses import FrozenInstanceError, fields
+from dataclasses import FrozenInstanceError, fields, replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -10,16 +10,19 @@ from agentporter.readiness import (
 )
 
 
-def binding() -> RuntimeBinding:
-    return RuntimeBinding(
-        portable_id="codex_worker",
-        component_id="component-codex",
-        current_profile_name="codex",
-        expected_model="gpt-5-codex",
-        expected_provider="openai",
-        provider_source_kind="profile-config",
-        fallback_policy="forbidden",
-    )
+def binding(**changes: object) -> RuntimeBinding:
+    values: dict[str, object] = {
+        "portable_id": "codex_worker",
+        "component_id": "component-codex",
+        "current_profile_name": "codex",
+        "expected_model": "gpt-5-codex",
+        "expected_provider": "openai",
+        "provider_source_kind": "profile-config",
+        "binding_fingerprint": "binding-fingerprint",
+        "config_digest": "config-digest",
+    }
+    values.update(changes)
+    return RuntimeBinding(**values)  # type: ignore[arg-type]
 
 
 def evidence(**changes: object) -> ReadinessEvidence:
@@ -39,94 +42,148 @@ def evidence(**changes: object) -> ReadinessEvidence:
         "fresh_until": started + timedelta(minutes=5),
     }
     values.update(changes)
-    return ReadinessEvidence(**values)
+    return ReadinessEvidence(**values)  # type: ignore[arg-type]
 
 
 def test_runtime_binding_is_frozen_and_has_no_secret_or_endpoint_fields() -> None:
     item = binding()
     with pytest.raises(FrozenInstanceError):
         item.expected_model = "other"  # type: ignore[misc]
-    assert {field.name for field in fields(item)} == {
-        "portable_id",
-        "component_id",
-        "current_profile_name",
-        "expected_model",
-        "expected_provider",
-        "provider_source_kind",
-        "fallback_policy",
-    }
-    with pytest.raises(TypeError):
-        RuntimeBinding(
-            portable_id=item.portable_id,
-            component_id=item.component_id,
-            current_profile_name=item.current_profile_name,
-            expected_model=item.expected_model,
-            expected_provider=item.expected_provider,
-            provider_source_kind=item.provider_source_kind,
-            fallback_policy=item.fallback_policy,
-            api_key="secret",  # type: ignore[call-arg]
-        )
+    names = {field.name for field in fields(item)}
+    assert {"endpoint", "api_key", "credential_path"}.isdisjoint(names)
+    assert {"binding_fingerprint", "config_digest"}.issubset(names)
 
 
-def test_evidence_rejects_fallback_and_unexpected_runtime_route() -> None:
+def test_evidence_rejects_fallback_unexpected_route_and_bad_calls() -> None:
     with pytest.raises(ValueError, match="fallback"):
         evidence(fallback_used=True)
     with pytest.raises(ValueError, match="unexpected-runtime-route"):
         evidence(actual_model="other")
     with pytest.raises(ValueError, match="unexpected-runtime-route"):
         evidence(actual_provider="other")
+    with pytest.raises(ValueError, match="response-contract-failed"):
+        evidence(api_calls=2)
+    with pytest.raises(ValueError, match="response-contract-failed"):
+        evidence(tool_calls_observed=1)
 
 
-def test_evidence_classifies_safe_failure_reasons() -> None:
-    for status, reason in (
-        ("authentication-failed", "authentication-failed"),
-        ("model-unsupported", "model-unsupported"),
-        ("endpoint-unavailable", "endpoint-unavailable"),
-        ("rate-limited", "rate-limited"),
-        ("probe-timeout", "probe-timeout"),
-        ("response-contract-failed", "response-contract-failed"),
-    ):
-        item = evidence(
-            status=status,
-            safe_reason_code=reason,
-            actual_model=None,
-            actual_provider=None,
-            response_contract_passed=False,
-        )
-        assert item.status == status
-        assert item.safe_reason_code == reason
+@pytest.mark.parametrize(
+    "status",
+    [
+        "configuration-required",
+        "credential-required",
+        "probe-unsupported",
+        "authentication-failed",
+        "model-unsupported",
+        "endpoint-unavailable",
+        "rate-limited",
+        "probe-timeout",
+        "response-contract-failed",
+        "unexpected-runtime-route",
+    ],
+)
+def test_evidence_supports_full_safe_finding_family(status: str) -> None:
+    item = evidence(
+        status=status,
+        safe_reason_code=status,
+        actual_model=None,
+        actual_provider=None,
+        api_calls=0,
+        response_contract_passed=False,
+    )
+    assert item.status == status
 
 
-def test_freshness_is_strict_and_aggregation_takes_weakest_evidence() -> None:
+def test_freshness_requires_time_version_config_and_binding_identity() -> None:
+    item = evidence()
     now = datetime(2026, 8, 12, 12, 4, 59, tzinfo=UTC)
-    assert evidence().is_fresh(now)
-    assert not evidence().is_fresh(now + timedelta(seconds=1))
-    assert aggregate_readiness([evidence()], now=now) == "operational"
-    stale = evidence()
-    assert aggregate_readiness([stale], now=now + timedelta(minutes=10)) == "canary-required"
-    failed = evidence(
+    assert item.is_fresh(
+        now,
+        hermes_version="0.20.0",
+        config_digest="config-digest",
+        binding_fingerprint="binding-fingerprint",
+    )
+    assert not item.is_fresh(
+        now + timedelta(seconds=1),
+        hermes_version="0.20.0",
+        config_digest="config-digest",
+        binding_fingerprint="binding-fingerprint",
+    )
+    assert not item.is_fresh(
+        now,
+        hermes_version="0.21.0",
+        config_digest="config-digest",
+        binding_fingerprint="binding-fingerprint",
+    )
+    assert not item.is_fresh(
+        now,
+        hermes_version="0.20.0",
+        config_digest="changed",
+        binding_fingerprint="binding-fingerprint",
+    )
+    assert not item.is_fresh(
+        now,
+        hermes_version="0.20.0",
+        config_digest="config-digest",
+        binding_fingerprint="changed",
+    )
+
+
+def test_two_workers_aggregate_by_component_not_identical_binding() -> None:
+    now = datetime(2026, 8, 12, 12, 1, tzinfo=UTC)
+    luna_binding = binding(
+        portable_id="luna_worker",
+        component_id="component-luna",
+        current_profile_name="luna",
+        expected_model="gpt-5.6-luna",
+        expected_provider="custom",
+        binding_fingerprint="luna-fingerprint",
+        config_digest="luna-config",
+    )
+    luna = evidence(
+        binding=luna_binding,
+        actual_model="gpt-5.6-luna",
+        actual_provider="custom",
+    )
+    assert (
+        aggregate_readiness(
+            [evidence(), luna],
+            now=now,
+            required_components={"component-codex", "component-luna"},
+        )
+        == "operational"
+    )
+
+
+def test_aggregation_rejects_missing_duplicate_failed_and_stale_components() -> None:
+    now = datetime(2026, 8, 12, 12, 1, tzinfo=UTC)
+    required = {"component-codex", "component-luna"}
+    assert (
+        aggregate_readiness([], now=now, required_components=required) == "configuration-required"
+    )
+    assert (
+        aggregate_readiness([evidence()], now=now, required_components=required)
+        == "canary-required"
+    )
+    with pytest.raises(ValueError, match="duplicate component"):
+        aggregate_readiness([evidence(), evidence()], now=now)
+
+    failed = replace(
+        evidence(),
         status="authentication-failed",
         safe_reason_code="authentication-failed",
         actual_model=None,
         actual_provider=None,
+        api_calls=0,
         response_contract_passed=False,
     )
-    assert aggregate_readiness([evidence(), failed], now=now) == "blocked"
+    assert aggregate_readiness([failed], now=now) == "blocked"
+    assert aggregate_readiness([evidence()], now=now + timedelta(minutes=10)) == "canary-required"
 
 
-def test_aggregate_never_accepts_mismatched_binding_or_empty_evidence() -> None:
-    assert aggregate_readiness([], now=datetime.now(UTC)) == "configuration-required"
-    other_binding = RuntimeBinding(
-        portable_id="codex_worker",
-        component_id="component-codex",
-        current_profile_name="codex",
-        expected_model="different",
-        expected_provider="openai",
-        provider_source_kind="profile-config",
-    )
-    other = evidence(
-        binding=other_binding,
-        actual_model="different",
-    )
-    with pytest.raises(ValueError, match="binding"):
-        aggregate_readiness([evidence(), other], now=datetime(2026, 8, 12, 12, 1, tzinfo=UTC))
+def test_fresh_install_force_config_and_static_model_change_invalidate_evidence() -> None:
+    item = evidence()
+    assert not item.valid_after_lifecycle("fresh-install")
+    assert item.valid_after_lifecycle("update")
+    assert not item.valid_after_lifecycle("update", force_config=True)
+    assert not item.valid_after_lifecycle("update", expected_model="changed")

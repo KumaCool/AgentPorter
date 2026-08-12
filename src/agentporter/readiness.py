@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
 ReadinessStatus = Literal[
     "runtime-ready",
+    "configuration-required",
+    "credential-required",
+    "probe-unsupported",
     "authentication-failed",
     "model-unsupported",
     "endpoint-unavailable",
@@ -18,9 +22,14 @@ ReadinessStatus = Literal[
 ]
 ReasonCode = ReadinessStatus
 ProviderSourceKind = Literal["profile-config", "task-override", "unresolved"]
+LifecycleEvent = Literal["fresh-install", "update", "uninstall"]
+AggregateStatus = Literal["operational", "canary-required", "blocked", "configuration-required"]
 
-_FAILURES = frozenset(
+_BLOCKING = frozenset(
     {
+        "configuration-required",
+        "credential-required",
+        "probe-unsupported",
         "authentication-failed",
         "model-unsupported",
         "endpoint-unavailable",
@@ -40,6 +49,8 @@ class RuntimeBinding:
     expected_model: str
     expected_provider: str | None
     provider_source_kind: ProviderSourceKind
+    binding_fingerprint: str
+    config_digest: str
     fallback_policy: Literal["forbidden"] = "forbidden"
 
     def __post_init__(self) -> None:
@@ -48,6 +59,8 @@ class RuntimeBinding:
             "component_id",
             "current_profile_name",
             "expected_model",
+            "binding_fingerprint",
+            "config_digest",
         ):
             if not getattr(self, name).strip():
                 raise ValueError(f"{name} must be non-empty")
@@ -78,7 +91,7 @@ class ReadinessEvidence:
     def __post_init__(self) -> None:
         if self.status != self.safe_reason_code:
             raise ValueError("status and safe_reason_code must match")
-        if self.status not in {"runtime-ready", *_FAILURES}:
+        if self.status not in {"runtime-ready", *_BLOCKING}:
             raise ValueError("invalid readiness status")
         if self.fallback_used:
             raise ValueError("fallback is forbidden")
@@ -89,35 +102,73 @@ class ReadinessEvidence:
         if self.api_calls < 0 or self.tool_calls_observed < 0:
             raise ValueError("call counts cannot be negative")
         if self.status == "runtime-ready":
-            if self.actual_model != self.binding.expected_model:
+            if (
+                self.actual_model != self.binding.expected_model
+                or self.actual_provider != self.binding.expected_provider
+            ):
                 raise ValueError("unexpected-runtime-route")
-            if self.actual_provider != self.binding.expected_provider:
-                raise ValueError("unexpected-runtime-route")
-            if self.api_calls != 1 or self.tool_calls_observed != 0:
+            if (
+                self.api_calls != 1
+                or self.tool_calls_observed != 0
+                or not self.response_contract_passed
+            ):
                 raise ValueError("response-contract-failed")
-            if not self.response_contract_passed:
-                raise ValueError("response-contract-failed")
-        elif self.status in _FAILURES and self.status != "unexpected-runtime-route":
-            if self.actual_model is not None or self.actual_provider is not None:
-                raise ValueError("failure evidence must omit runtime route")
+        elif self.actual_model is not None or self.actual_provider is not None:
+            raise ValueError("failure evidence must omit runtime route")
 
-    def is_fresh(self, now: datetime) -> bool:
-        """Freshness is strict: evidence expires at ``fresh_until``."""
-        return now < self.fresh_until
+    def is_fresh(
+        self,
+        now: datetime,
+        *,
+        hermes_version: str | None = None,
+        config_digest: str | None = None,
+        binding_fingerprint: str | None = None,
+    ) -> bool:
+        return (
+            now < self.fresh_until
+            and (hermes_version is None or hermes_version == self.hermes_version)
+            and (config_digest is None or config_digest == self.binding.config_digest)
+            and (
+                binding_fingerprint is None
+                or binding_fingerprint == self.binding.binding_fingerprint
+            )
+        )
+
+    def valid_after_lifecycle(
+        self,
+        event: LifecycleEvent,
+        *,
+        force_config: bool = False,
+        expected_model: str | None = None,
+    ) -> bool:
+        """Express lifecycle invalidation; Phase B owns integration wiring."""
+        return (
+            event == "update"
+            and not force_config
+            and (expected_model is None or expected_model == self.binding.expected_model)
+        )
 
 
 def aggregate_readiness(
-    evidence: list[ReadinessEvidence], *, now: datetime
-) -> Literal["operational", "canary-required", "blocked", "configuration-required"]:
+    evidence: list[ReadinessEvidence],
+    *,
+    now: datetime,
+    required_components: Collection[str] | None = None,
+) -> AggregateStatus:
     if not evidence:
         return "configuration-required"
-    first = evidence[0].binding
-    if any(item.binding != first for item in evidence[1:]):
-        raise ValueError("evidence binding mismatch")
-    if any(item.status in _FAILURES for item in evidence):
+    component_ids = [item.binding.component_id for item in evidence]
+    if len(component_ids) != len(set(component_ids)):
+        raise ValueError("duplicate component evidence")
+    if required_components is not None:
+        required = set(required_components)
+        unknown = set(component_ids) - required
+        if unknown:
+            raise ValueError("unexpected component evidence")
+        if required - set(component_ids):
+            return "canary-required"
+    if any(item.status in _BLOCKING for item in evidence):
         return "blocked"
     if any(not item.is_fresh(now) for item in evidence):
         return "canary-required"
-    if all(item.status == "runtime-ready" for item in evidence):
-        return "operational"
-    return "canary-required"
+    return "operational"
