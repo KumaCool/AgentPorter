@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import stat
 import subprocess
@@ -52,6 +53,7 @@ printf 'python3 %s\n' "$*" >> "$CALL_LOG"
 if [ "${1-}" = '-c' ]; then
   case "$2" in
     *hashlib*) printf '%s\n' "$FAKE_ACTUAL_CHECKSUM" ;;
+    *pathlib*) exec /usr/bin/python3 "$@" ;;
     *agentporter*) printf '{VERSION}\n' ;;
     *path.write_bytes*) exec /usr/bin/python3 "$@" ;;
   esac
@@ -143,6 +145,13 @@ def test_bootstrap_downloads_verifies_installs_and_runs(tmp_path: Path) -> None:
     uninstall = tmp_path / "bin" / "agentporter-uninstall"
     assert uninstall.is_symlink()
     assert uninstall.resolve() == install_root / "venv" / "bin" / "agentporter-uninstall"
+    receipt = json.loads((install_root / "bootstrap-install.json").read_text(encoding="utf-8"))
+    assert receipt == {
+        "schema_version": 1,
+        "product": "agentporter",
+        "version": VERSION,
+        "public_entry": str(uninstall),
+    }
     calls = (tmp_path / "calls.log").read_text(encoding="utf-8")
     assert (
         f"https://github.com/KumaCool/AgentPorter/releases/download/v{VERSION}/{WHEEL_NAME}"

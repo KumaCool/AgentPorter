@@ -117,6 +117,18 @@ path.write_bytes(new + data[len(old):])' \
         "$ENTRY" "#!${VENV}/bin/python" "#!${FINAL_VENV}/bin/python" \
         || fail 'could not bind package entry points to the final installation path'
 done
+"$PYTHON" -c 'import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+payload = {
+    "schema_version": 1,
+    "product": "agentporter",
+    "version": sys.argv[2],
+    "public_entry": sys.argv[3],
+}
+path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+path.chmod(0o600)' \
+    "$STAGING/bootstrap-install.json" "$VERSION" "$UNINSTALL_LINK" \
+    || fail 'could not write the bootstrap ownership receipt'
 mv "$STAGING" "$INSTALL_ROOT" || fail 'could not publish the verified installation'
 PUBLISHED=1
 VENV=${FINAL_VENV}

@@ -4,7 +4,7 @@
 
 | 顺序 | 计划 | 状态 | 权威范围 |
 |---|---|---|---|
-| 01 | [安装基础实施记录](01-installation-foundation.md) | v0.1.0 已实现、验收并发布 | Worker Profile 集合安装、静态读回、有限补偿、独立卸载、打包与发布 |
+| 01 | [安装基础实施记录](01-installation-foundation.md) | v0.1.0 已发布；卸载完整自清理修复已实现，待后续发布 | Worker Profile 集合安装、静态读回、有限补偿、独立完整卸载、打包与发布 |
 | 02 | [多代理编排与路由实施计划](02-multi-agent-orchestration.md) | 方案已落地，代码与真实任务验收未开始 | 工作组部署、任务分解、按职责路由、dispatcher 接线、端到端任务主链 |
 | 02A | [Worker Readiness 与编排闭环优化方案](02a-worker-readiness-orchestration-closure.md) | 方案已完成，尚未进入开发 | 基于实际安装使用反馈，闭合推理 readiness、凭据边界、派发收据、通知/结构性接续、运行证据、暂停恢复与文件所有权 |
 | 03 | [Worker 验证与基准计划](03-agent-validation-and-benchmark.md) | 方案已确认，执行器与结果未实现；等待 Plan 02 与 Plan 02A | Worker 行为、质量、时延、资源、成本与稳定性统计评测 |

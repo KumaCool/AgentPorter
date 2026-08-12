@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib
 import os
+import sys
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -132,10 +134,76 @@ def test_uninstall_entry_exit_contract(
     from agentporter.uninstall_application import UninstallerStatus
 
     result = SimpleNamespace(status=UninstallerStatus(status))
-    monkeypatch.setattr(uninstall, "run_uninstaller", lambda env: result)
+
+    def return_result(env: dict[str, str]) -> object:
+        return result
+
+    monkeypatch.setattr(uninstall, "run_uninstaller", return_result)
 
     if successful:
         uninstall.main()
     else:
         with pytest.raises(SystemExit, match=status):
             uninstall.main()
+
+
+@pytest.mark.parametrize("status", ["already-absent", "deleted"])
+def test_successful_bootstrap_uninstall_removes_the_published_package(
+    monkeypatch: pytest.MonkeyPatch, status: str
+) -> None:
+    uninstall = _uninstall_module()
+    from agentporter.self_cleanup import CleanupPlanStatus
+    from agentporter.uninstall_application import UninstallerStatus
+
+    plan = SimpleNamespace(status=CleanupPlanStatus.READY)
+    calls: list[object] = []
+    monkeypatch.setattr(sys, "executable", "/sealed/agentporter/venv/bin/python")
+
+    def successful_uninstall(env: dict[str, str]) -> object:
+        return SimpleNamespace(status=UninstallerStatus(status))
+
+    monkeypatch.setattr(uninstall, "run_uninstaller", successful_uninstall)
+
+    def build(*, executable: Path, version: str, env: dict[str, str]) -> object:
+        calls.append((executable, version, env is os.environ))
+        return plan
+
+    monkeypatch.setattr(uninstall, "build_bootstrap_cleanup_plan", build)
+    monkeypatch.setattr(uninstall, "execute_cleanup_plan", calls.append)
+
+    uninstall.main()
+
+    assert calls == [
+        (Path("/sealed/agentporter/venv/bin/python"), "0.1.2", True),
+        plan,
+    ]
+
+
+def test_failed_profile_uninstall_never_removes_the_package(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uninstall = _uninstall_module()
+    from agentporter.self_cleanup import CleanupPlanStatus
+    from agentporter.uninstall_application import UninstallerStatus
+
+    plan = SimpleNamespace(status=CleanupPlanStatus.READY)
+
+    def build(*, executable: Path, version: str, env: dict[str, str]) -> object:
+        return plan
+
+    def partial_uninstall(env: dict[str, str]) -> object:
+        return SimpleNamespace(status=UninstallerStatus.PARTIAL_DELETE)
+
+    def forbidden_cleanup(cleanup_plan: object) -> None:
+        pytest.fail("failed profile uninstall must preserve the package")
+
+    monkeypatch.setattr(uninstall, "build_bootstrap_cleanup_plan", build)
+    monkeypatch.setattr(
+        uninstall,
+        "run_uninstaller",
+        partial_uninstall,
+    )
+    monkeypatch.setattr(uninstall, "execute_cleanup_plan", forbidden_cleanup)
+
+    with pytest.raises(SystemExit, match="partial-delete"):
+        uninstall.main()

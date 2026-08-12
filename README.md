@@ -29,7 +29,7 @@ If the command is not on `PATH`, run:
 "${XDG_BIN_HOME:-$HOME/.local/bin}/agentporter-uninstall"
 ```
 
-Uninstall deletes the Worker Profiles installed by AgentPorter, including their local data and later customization, so back them up before confirming. It does not remove AgentPorter's private Python environment. See the [installation guide](docs/04-installation-and-troubleshooting.md) for the inspect-first flow, PATH, trust boundary, and complete uninstall details.
+Uninstall deletes the Worker Profiles installed by AgentPorter, including their local data and later customization, so back them up before confirming. After successful Profile deletion (or when they are already absent), a bootstrap-installed uninstaller also removes its exact published entry and versioned private Python environment. A trusted source-checkout `python uninstall.py` removes Profiles only and never deletes the checkout or its virtual environment. See the [installation guide](docs/04-installation-and-troubleshooting.md) for the inspect-first flow, PATH, trust boundary, and complete uninstall details.
 
 ## What v0.1.2 installs
 

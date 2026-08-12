@@ -26,7 +26,7 @@
 2. 不覆盖任一预先存在的 Profile，不修改 `default`。
 3. 不复制或发布 `.env`、`auth.json`、API key、私有 base URL、记忆、会话、日志或状态数据库。
 4. 第一版安装器、静态读回、补偿、卸载及 Plan 01 集成验收不发起模型请求；静态安装成功不代表模型运行成功。Plan 01 完成后另行显式运行的 [Worker 基准](plan/03-agent-validation-and-benchmark.md) 不属于这些路径。
-5. **安装失败补偿和日后主动卸载是两种删除语义。** 补偿只处理当前安装事务中可证明新建的目标；卸载会删除后来产生的 Profile-local 数据，必须重新发现、警告并确认。
+5. **安装失败补偿和日后主动卸载是两种删除语义。** 补偿只处理当前安装事务中可证明新建的目标；卸载会删除后来产生的 Profile-local 数据，必须重新发现、警告并确认。发布版引导脚本安装的软件包属于第二层收尾：只有 Profile 集合已确认删除或原本不存在后，才可清理精确发布入口和对应版本私有环境。
 6. 原始/当前 Profile 名、Portable ID、Display name 和 description 均不构成所有权身份。
 7. 名称无关 marker 是唯一组件/安装身份；Hermes distribution info 中的 source 只可作为当前安装期的辅助事务证据，不能单独建立身份，也永不参与日后卸载资格。
 8. 通过对应交付门禁的修改可直接 commit；push 仍需用户明确授权。
@@ -265,6 +265,19 @@ DELETE AGENTPORTER <installation_id 前 8 位>
 | 逐项目结果 | `verification-failed` | 原生命令成功但枚举或路径读回未证明删除完成 |
 | 集合结果 | `partial-delete` | 至少一个目标已删除后，后续目标变化、删除失败或验证失败，剩余操作停止 |
 
+### 5.5 发布版软件包自清理
+
+`agentporter-uninstall` 从 POSIX 发布版引导脚本的固定布局运行时，在 Profile 集合结果为 `deleted` 或 `already-absent` 后继续完整卸载：
+
+1. 发布版引导脚本在原子发布前写入受限权限的 `bootstrap-install.json` ownership receipt；卸载时从当前 Python 解释器反推固定 `agentporter/<version>/venv` 布局，再以 receipt 读取并验证精确公开入口，不以卸载时可变的 HOME/XDG 环境作为授权；
+2. receipt 使用固定 schema/product/version/public-entry 字段；计划封印 receipt 内容与身份、版本安装目录、解释器、私有卸载入口及公开 symlink 的设备/inode/type，并要求 symlink 精确指向该私有入口；
+3. 清理前整体重验；任一对象变化、非普通类型、非 symlink、目标不匹配或隔离名冲突时停止，报告 Profile 已删除但软件包清理不安全；
+4. 先把精确版本目录原子改名到同一产品根内的事务隔离名并重新验证被移动对象及内部 receipt/解释器/入口身份；公开 symlink 也先原子改名到同目录隔离名并重验 inode/type/target，只有隔离对象仍匹配才删除；最后删除版本隔离目录，产品根仅在为空时删除；
+5. 不删除其它版本、不删除源码 checkout 或源码虚拟环境，也不因 Profile 删除失败/部分删除而清理软件包；
+6. `python uninstall.py` 这类非发布布局只执行 Profile 卸载，返回 `not-bootstrap-install`，绝不推测可删除路径。
+
+自清理使用已封印的产品专属目录删除，而不是 Hermes Profile 删除失败后的目录强删兜底；两者权限边界不同。进程已装载的 Python 代码允许在 POSIX 上删除其隔离后的环境，但任何清理异常必须以非成功退出并保留可诊断残留。
+
 Hermes v0.20 的 `profile delete` 仅按名称执行，没有原子 identity-conditioned delete。最终重验和 Hermes 再次解析名称之间存在无法完全消除的竞态。因此：
 
 - 不宣称完全 TOCTOU 防护或原子卸载；
@@ -306,6 +319,7 @@ Hermes v0.20 的 `profile delete` 仅按名称执行，没有原子 identity-con
 | UN-07 | 每项调用前重验；原生删除后枚举与路径双重读回 |
 | UN-08 | 首次删除后的并发变化或失败停止剩余操作；逐项给出 delete-failed/verification-failed 等原因，集合报告 partial-delete |
 | UN-09 | 文档和报告如实披露 Hermes 非原子按名称删除竞态 |
+| UN-10 | 发布版入口仅在 Profile 全部删除或已不存在后清理精确 symlink、当前版本私有环境及空产品目录；源码运行、其它版本、身份漂移和失败/部分删除路径均不被清理 |
 
 ### 7.3 边界和交付
 

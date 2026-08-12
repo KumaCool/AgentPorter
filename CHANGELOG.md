@@ -9,6 +9,10 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Reframed AgentPorter around one-command deployment of a role-specific multi-agent Worker team; the one-shot installer is the delivery foundation, not the complete product.
 - Added the Hermes-native Kanban orchestration and task-routing implementation plan, with truthful separation between installed Profiles, static routing metadata, dispatcher readiness, and live routing acceptance.
 
+### Fixed
+
+- Bootstrap-installed `agentporter-uninstall` now completes uninstall by removing its exact published symlink and versioned private Python environment after Profile deletion is verified. Source-checkout execution and other installed versions remain outside that cleanup boundary.
+
 ## [0.1.2] - 2026-08-12
 
 ### Fixed
