@@ -16,6 +16,7 @@ from .activation_application import (
     build_activation_plan,
 )
 from .hermes import HermesDetection, detect_hermes
+from .identity import COMPONENT_IDS
 from .runtime_binding import RuntimeBindingPlan
 from .runtime_probe import ProbeObservation, negotiate_hermes_probe
 from .uninstall_application import minimal_process_environment
@@ -39,7 +40,11 @@ def run_activator(
     found = detector(env=env)
     discovery = discover_installation(found.profiles_root)
     inputs: dict[str, ActivationBindingInput] = {}
-    for target in discovery.targets:
+    targets = {target.component_id: target for target in discovery.targets}
+    if not set(COMPONENT_IDS.values()) <= set(targets):
+        raise SystemExit("AgentPorter activation requires both worker components")
+    for component_id in COMPONENT_IDS.values():
+        target = targets[component_id]
         provider = input_fn(f"Provider ID for {target.current_name}: ").strip()
         endpoint = endpoint_reader(f"Endpoint for {target.current_name} (hidden): ")
         grant = input_fn("Credential grant (external-secret/profile-auth/profile-env): ").strip()

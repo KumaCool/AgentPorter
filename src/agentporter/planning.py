@@ -22,7 +22,7 @@ from .manifest import load_manifest
 from .models import WorkersManifest
 from .render import DISTRIBUTION_OWNED, render_staging
 from .security import StagingViolation, scan_staging
-from .uninstall_discovery import DiscoveryResult, DiscoveryStatus
+from .uninstall_discovery import DiscoveryResult, DiscoveryStatus, discover_installation
 
 PlanStatus = Literal["ready", "configuration-required", "unsupported", "conflict", "invalid"]
 RuntimeConfiguration = Literal[
@@ -546,7 +546,26 @@ def preflight_installation(
         detection = detector()
     except DetectionError:
         return _base_plan(None, status="invalid", reason="Hermes detection failed")
-    return plan_installation(detection, manifest_path, staging_parent=staging_parent, **kwargs)  # type: ignore[arg-type]
+    authoritative = discover_installation(detection.profiles_root)
+    supplied = dict(kwargs)
+    supplied.pop("existing_installation", None)
+    if authoritative.status is DiscoveryStatus.AMBIGUOUS:
+        return _base_plan(
+            detection,
+            status="conflict",
+            reason="existing installation discovery is ambiguous",
+        )
+    installed_components = {target.component_id for target in authoritative.targets}
+    if installed_components == set(INSTALL_COMPONENT_IDS.values()):
+        return _base_plan(detection, status="conflict", reason="AgentPorter is already installed")
+    existing = authoritative if authoritative.status is DiscoveryStatus.READY else None
+    return plan_installation(
+        detection,
+        manifest_path,
+        staging_parent=staging_parent,
+        existing_installation=existing,
+        **supplied,  # type: ignore[arg-type]
+    )
 
 
 def _same_detection(plan: InstallPlan, detection: HermesDetection) -> bool:
@@ -560,6 +579,16 @@ def _same_detection(plan: InstallPlan, detection: HermesDetection) -> bool:
         or not detection.capabilities.supports_required_profile_commands
     ):
         return False
+    planned_components = {worker.component_id for worker in plan.workers}
+    orchestrator_component = INSTALL_COMPONENT_IDS["agentporter_orchestrator"]
+    if planned_components == {orchestrator_component}:
+        current = discover_installation(detection.profiles_root)
+        return (
+            current.status is DiscoveryStatus.READY
+            and not current.findings
+            and {target.component_id for target in current.targets} == set(COMPONENT_IDS.values())
+            and {target.installation_id for target in current.targets} == {plan.installation_id}
+        )
     targets = {worker.profile_name for worker in plan.workers}
     return not any(entry.name in targets for entry in detection.profile_entries)
 

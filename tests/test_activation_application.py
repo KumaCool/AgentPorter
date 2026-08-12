@@ -20,7 +20,7 @@ from agentporter.activation_application import (
     build_activation_plan,
 )
 from agentporter.hermes import HermesCapabilities, HermesDetection
-from agentporter.identity import COMPONENT_IDS, PRODUCT_ID
+from agentporter.identity import COMPONENT_IDS, ORCHESTRATOR_COMPONENT_ID, PRODUCT_ID
 from agentporter.runtime_binding import RuntimeBindingPlan
 from agentporter.runtime_probe import ProbeObservation, ProbeResult
 from agentporter.uninstall_discovery import DiscoveryResult, DiscoveryStatus, discover_installation
@@ -104,6 +104,112 @@ def test_build_plan_uses_only_complete_discovered_installation_and_typed_snapsho
     }
     assert all(item.original_config.provider is None for item in plan.bindings)
     assert SECRET_ENDPOINT not in repr(plan)
+
+
+def test_build_plan_accepts_complete_three_component_discovery_but_reads_only_workers(
+    tmp_path: Path,
+) -> None:
+    found, _ = _installation(tmp_path)
+    orchestrator = found.profiles_root / "renamed-orchestrator"
+    orchestrator.mkdir(mode=0o700)
+    sentinel = b"orchestrator: untouched\n"
+    (orchestrator / "config.yaml").write_bytes(sentinel)
+    (orchestrator / "agentporter-profile.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "product_id": PRODUCT_ID,
+                "component_id": ORCHESTRATOR_COMPONENT_ID,
+                "installation_id": INSTALLATION_ID,
+                "distribution_version": "0.1.3",
+            }
+        ),
+        encoding="utf-8",
+    )
+    discovery = discover_installation(found.profiles_root)
+
+    plan = build_activation_plan(discovery, found, _inputs())
+
+    assert [binding.component_id for binding in plan.bindings] == list(COMPONENT_IDS.values())
+    assert (orchestrator / "config.yaml").read_bytes() == sentinel
+
+
+def test_formal_activation_entry_prompts_for_workers_in_component_order_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import agentporter.activation_entry as entry
+
+    found, _ = _installation(tmp_path)
+    orchestrator = found.profiles_root / "renamed-orchestrator"
+    orchestrator.mkdir(mode=0o700)
+    (orchestrator / "config.yaml").write_bytes(b"orchestrator: untouched\n")
+    (orchestrator / "agentporter-profile.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "product_id": PRODUCT_ID,
+                "component_id": ORCHESTRATOR_COMPONENT_ID,
+                "installation_id": INSTALLATION_ID,
+                "distribution_version": "0.1.3",
+            }
+        ),
+        encoding="utf-8",
+    )
+    prompts: list[str] = []
+    captured: dict[str, ActivationBindingInput] = {}
+    answers = iter(
+        (
+            "provider-luna",
+            "profile-auth",
+            "operator-authorized",
+            "provider-codex",
+            "profile-auth",
+            "operator-authorized",
+        )
+    )
+    sentinel_plan = object()
+    sentinel_result = object()
+
+    def answer(prompt: str) -> str:
+        prompts.append(prompt)
+        return next(answers)
+
+    def endpoint(prompt: str) -> str:
+        prompts.append(prompt)
+        return "https://worker.invalid/v1"
+
+    def capture_plan(
+        discovery: DiscoveryResult,
+        detection: HermesDetection,
+        inputs: dict[str, ActivationBindingInput],
+    ) -> object:
+        assert detection is found
+        captured.update(inputs)
+        return sentinel_plan
+
+    monkeypatch.setattr(entry, "build_activation_plan", capture_plan)
+    monkeypatch.setattr(
+        entry,
+        "negotiate_hermes_probe",
+        lambda **kwargs: type("Capability", (), {"supported": False})(),
+    )
+    monkeypatch.setattr(
+        entry,
+        "apply_activation",
+        lambda plan, **kwargs: sentinel_result if plan is sentinel_plan else pytest.fail(),
+    )
+
+    result = entry.run_activator(
+        {}, detector=lambda **kwargs: found, input_fn=answer, endpoint_reader=endpoint
+    )
+
+    assert result is sentinel_result
+    assert list(captured) == list(COMPONENT_IDS.values())
+    assert [prompt for prompt in prompts if prompt.startswith("Provider ID")] == [
+        "Provider ID for renamed-luna: ",
+        "Provider ID for renamed-codex: ",
+    ]
+    assert all("orchestrator" not in prompt for prompt in prompts)
 
 
 def test_apply_activation_confirms_once_then_writes_and_reads_back_without_cli(

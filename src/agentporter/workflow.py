@@ -113,7 +113,7 @@ def confirm_preflight_plan(
     """Confirm a live plan, invoke its sole write continuation, then clean staging."""
     result = WorkflowOutcome(
         status=WorkflowStatus.REJECTED,
-        reason="plan is not installable or is stale",
+        reason=plan.reason if not plan.installable else "plan is not installable or is stale",
         cleanup_verified=False,
     )
     pending_error: BaseException | None = None
