@@ -239,7 +239,9 @@ sdist/wheel build: passed
 
 首轮语义复审的 8 个 finding family 与限定 closure review 的 3 个机械竞态均已转成确定性回归测试并关闭；由于 review 预算已用完，最后 3 项由主代理重放 exact reproduction 后随完整门禁验收，未追加第三轮泛化复审。
 
-## Phase C：真实 canary 与 readiness evidence
+## Phase C：安全 canary 与 readiness evidence（离线合同已完成；Hermes v0.20 live unsupported）
+
+**Status:** 离线 capability negotiation、probe isolation、硬超时、nonce/route/call/fallback 验证、异常安全、fresh evidence 和 receipt CAS 已完成。Hermes v0.20 的公共 one-shot seam不能证明 `tool_calls=0` 与 `fallback=false`，因此正式入口必须返回 `probe-unsupported`、保持 canary required 并执行零模型调用；本阶段不声称真实 canary 或 runtime-ready。
 
 **Objective:** 用真实调用取代 `config check` 假绿。
 
@@ -267,7 +269,19 @@ sdist/wheel build: passed
 python -m pytest tests/test_phase8_authorized_live_probe.py -v
 ```
 
-前置：用户明确授权调用与预算、凭据已在 sandbox/Profile 内由操作者准备、provider-only egress、临时 HOME/HERMES_HOME、cleanup 可验证。
+前置：用户明确授权调用与预算、凭据已在 sandbox/Profile 内由操作者准备、provider-only egress、临时 HOME/HERMES_HOME、cleanup 可验证。当前 Hermes v0.20 因 capability 不足固定 skip/unsupported；环境变量自声明不能替代 sandbox attestation，也不能把测试转为通过。
+
+**Offline closure evidence:**
+
+```text
+Phase C focused: 93 passed, 1 expected unsupported skip
+Repository offline pytest: 628 passed, 1 expected unsupported skip, 2 existing duplicate-archive warnings
+Ruff format/check: passed
+Pyright strict: 0 errors, 0 warnings
+sdist/wheel build: passed
+```
+
+首轮 7 项 finding family 与限定 closure review 的 6 项机械复现均已固化为回归测试；最后 6 项由主代理逐项重放并随完整门禁关闭，未追加第三轮泛化复审。
 
 ## Phase D：第三组件 orchestrator 与安全 Kanban 配置
 

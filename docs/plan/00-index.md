@@ -8,7 +8,7 @@
 | 02 | [多代理编排与路由实施计划](02-multi-agent-orchestration.md) | 方案已落地，代码与真实任务验收未开始 | 工作组部署、任务分解、按职责路由、dispatcher 接线、端到端任务主链 |
 | 02A | [Worker Readiness 与编排闭环优化方案](02a-worker-readiness-orchestration-closure.md) | 纯领域 readiness/delegation 合同已实现；运行绑定、真实探针和编排运行时未实现 | 基于实际安装使用反馈，冻结推理 readiness、凭据边界、派发收据、通知/结构性接续、运行证据、暂停恢复与文件所有权 |
 | 03 | [Worker 验证与基准计划](03-agent-validation-and-benchmark.md) | 方案已确认，执行器与结果未实现；等待 Plan 04 | Worker 行为、质量、时延、资源、成本与稳定性统计评测 |
-| 04 | [Runtime Readiness 与编排闭环落地计划](04-runtime-readiness-closure-implementation.md) | Phase A、B 已实现并通过离线合同与事务门禁；Phase C 安全 canary 接线进行中 | 实现可重放运行绑定、安全 canary、专用 orchestrator、任务订阅读回、派发收据、运行观察与发布闭环 |
+| 04 | [Runtime Readiness 与编排闭环落地计划](04-runtime-readiness-closure-implementation.md) | Phase A、B 已完成；Phase C 离线安全合同已完成但 Hermes v0.20 真实 probe 不受支持；Phase D 进行中 | 实现可重放运行绑定、安全 canary、专用 orchestrator、任务订阅读回、派发收据、运行观察与发布闭环 |
 
 ## 依赖关系
 
