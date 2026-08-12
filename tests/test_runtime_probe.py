@@ -1,3 +1,4 @@
+import multiprocessing
 import stat
 import time
 from datetime import UTC, datetime, timedelta
@@ -126,33 +127,32 @@ def test_route_or_fallback_mismatch_is_unexpected_runtime_route(
 @pytest.mark.parametrize(
     "raised", [RuntimeError("cancelled"), KeyboardInterrupt(), BaseException("stop")]
 )
-def test_probe_cleans_temporary_evidence_for_all_base_exceptions(raised: BaseException) -> None:
-    observed_directory: Path | None = None
+def test_probe_cleans_temporary_evidence_for_all_base_exceptions(
+    raised: BaseException, tmp_path: Path
+) -> None:
+    marker = tmp_path / "directory"
 
     def runner(_nonce: str, directory: Path) -> ProbeObservation:
-        nonlocal observed_directory
-        observed_directory = directory
+        marker.write_text(str(directory), encoding="utf-8")
         (directory / "usage.json").write_text("private usage", encoding="utf-8")
         (directory / "stdout").write_text("private output", encoding="utf-8")
         (directory / "stderr").write_text("private error", encoding="utf-8")
         raise raised
 
-    with pytest.raises(type(raised)):
-        run_runtime_probe(
-            expected_model="gpt-5.6-luna",
-            expected_provider="custom",
-            runner=runner,
-        )
-    assert observed_directory is not None
-    assert not observed_directory.exists()
+    result = run_runtime_probe(
+        expected_model="gpt-5.6-luna",
+        expected_provider="custom",
+        runner=runner,
+    )
+    assert result.status == "response-contract-failed"
+    assert not Path(marker.read_text(encoding="utf-8")).exists()
 
 
-def test_timeout_result_also_cleans_temporary_evidence() -> None:
-    observed_directory: Path | None = None
+def test_timeout_result_also_cleans_temporary_evidence(tmp_path: Path) -> None:
+    marker = tmp_path / "directory"
 
     def runner(_nonce: str, directory: Path) -> ProbeObservation:
-        nonlocal observed_directory
-        observed_directory = directory
+        marker.write_text(str(directory), encoding="utf-8")
         (directory / "stdout").write_text("private output", encoding="utf-8")
         return ProbeObservation(timed_out=True)
 
@@ -162,8 +162,7 @@ def test_timeout_result_also_cleans_temporary_evidence() -> None:
         runner=runner,
     )
     assert result.status == "probe-timeout"
-    assert observed_directory is not None
-    assert not observed_directory.exists()
+    assert not Path(marker.read_text(encoding="utf-8")).exists()
 
 
 def test_hanging_supported_runner_is_killed_by_hard_timeout(tmp_path: Path) -> None:
@@ -184,6 +183,45 @@ def test_hanging_supported_runner_is_killed_by_hard_timeout(tmp_path: Path) -> N
     assert result.status == "probe-timeout"
     assert time.monotonic() - started < 2
     assert marker.read_text(encoding="utf-8") == "started"
+
+
+def test_default_timeout_is_finite_and_supported_probe_is_always_isolated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[float] = []
+
+    def isolated(_runner: object, nonce: str, _directory: Path, timeout: float) -> ProbeObservation:
+        observed.append(timeout)
+        return observation(nonce)
+
+    monkeypatch.setattr("agentporter.runtime_probe._isolated_observation", isolated)
+    result = run_runtime_probe(
+        expected_model="gpt-5.6-luna",
+        expected_provider="custom",
+        runner=lambda nonce, _directory: observation(nonce),
+    )
+    assert result.status == "runtime-ready"
+    assert observed == [30.0]
+
+
+def test_child_base_exception_is_safe_eof_tolerant_and_leaves_no_process(
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    before = {child.pid for child in multiprocessing.active_children()}
+
+    def interrupt(_nonce: str, _directory: Path) -> ProbeObservation:
+        raise KeyboardInterrupt("RAW_CHILD_SECRET")
+
+    result = run_runtime_probe(
+        expected_model="gpt-5.6-luna",
+        expected_provider="custom",
+        runner=interrupt,
+        timeout_seconds=0.1,
+    )
+    captured = capfd.readouterr()
+    assert result.status == "response-contract-failed"
+    assert "RAW_CHILD_SECRET" not in captured.err
+    assert {child.pid for child in multiprocessing.active_children()} == before
 
 
 def test_public_hermes_v020_seam_is_unsupported_without_tool_call_proof() -> None:
@@ -228,6 +266,27 @@ def test_probe_directory_is_private_and_evidence_binds_version_config_and_ttl() 
     assert item.binding.config_digest == "config-digest"
     assert item.binding.binding_fingerprint == binding_fingerprint(binding)
     assert item.fresh_until == started + timedelta(minutes=5)
+
+
+def test_probe_result_carries_real_timing_and_nonce_contract_without_nonce() -> None:
+    instants = iter(
+        [
+            datetime(2026, 8, 13, 12, 0, tzinfo=UTC),
+            datetime(2026, 8, 13, 12, 0, 2, tzinfo=UTC),
+        ]
+    )
+    result = run_runtime_probe(
+        expected_model="gpt-5.6-luna",
+        expected_provider="custom",
+        runner=lambda nonce, _directory: observation(nonce),
+        now=lambda: next(instants),
+        freshness=timedelta(minutes=5),
+    )
+    assert result.probe_started_at < result.probe_finished_at
+    assert result.fresh_until == result.probe_finished_at + timedelta(minutes=5)
+    assert result.nonce_contract_passed is True
+    assert result.nonce_digest
+    assert "AGENTPORTER_READY" not in repr(result)
 
 
 def test_unsupported_capability_creates_zero_temporary_or_runner_calls() -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import getpass
 import os
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import TextIO
 
 from .activation_application import (
@@ -16,7 +17,7 @@ from .activation_application import (
 )
 from .hermes import HermesDetection, detect_hermes
 from .runtime_binding import RuntimeBindingPlan
-from .runtime_probe import ProbeResult, negotiate_hermes_probe
+from .runtime_probe import ProbeObservation, negotiate_hermes_probe
 from .uninstall_application import minimal_process_environment
 from .uninstall_discovery import discover_installation
 
@@ -58,14 +59,15 @@ def run_activator(
         version=found.version, help_text="", command_runner=lambda _argv: None
     )
 
-    def unsupported_probe(_binding: RuntimeBindingPlan) -> ProbeResult:
-        if capability.supported:
-            return ProbeResult("response-contract-failed")
-        return ProbeResult("probe-unsupported")
+    def unavailable_observation(
+        _binding: RuntimeBindingPlan, _nonce: str, _directory: Path
+    ) -> ProbeObservation:
+        return ProbeObservation()
 
     kwargs: dict[str, object] = {
         "input_fn": input_fn,
-        "probe_runner": unsupported_probe,
+        "probe_runner": unavailable_observation,
+        "probe_supported": capability.supported,
     }
     if output is not None:
         kwargs["output"] = output

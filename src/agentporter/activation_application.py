@@ -13,7 +13,6 @@ import sys
 from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
@@ -29,7 +28,7 @@ from .runtime_binding import (
     RuntimeBindingPlan,
     binding_fingerprint,
 )
-from .runtime_probe import ProbeResult
+from .runtime_probe import ProbeObservation, ProbeResult, run_runtime_probe
 from .uninstall_discovery import DiscoveryResult, DiscoveryStatus, Target
 
 
@@ -654,18 +653,23 @@ def _write_canary_receipt(
         "tool_calls": result.tool_calls,
         "fallback_used": result.fallback_used,
         "response_contract_passed": result.response_contract_passed,
+        "nonce_contract_passed": result.nonce_contract_passed,
+        "nonce_digest": result.nonce_digest,
     }
     loaded["canary_status"] = "passed" if result.status == "runtime-ready" else "failed"
     loaded["canary_reason_code"] = result.status
     loaded["canary_evidence_digest"] = _digest(
         json.dumps(safe_summary, sort_keys=True, separators=(",", ":")).encode()
     )
-    now = datetime.now(UTC)
     loaded.update(
         {
-            "probe_started_at": now.isoformat(),
-            "probe_finished_at": now.isoformat(),
-            "fresh_until": (now + timedelta(minutes=5)).isoformat(),
+            "probe_started_at": result.probe_started_at.isoformat()
+            if result.probe_started_at
+            else None,
+            "probe_finished_at": result.probe_finished_at.isoformat()
+            if result.probe_finished_at
+            else None,
+            "fresh_until": result.fresh_until.isoformat() if result.fresh_until else None,
             "hermes_version": target.binding.hermes_version,
             "config_digest": target.binding.config_digest,
             "binding_fingerprint": binding_fingerprint(target.binding),
@@ -675,6 +679,8 @@ def _write_canary_receipt(
             "tool_calls_observed": result.tool_calls if result.status == "runtime-ready" else 0,
             "fallback_used": result.fallback_used,
             "response_contract_passed": result.response_contract_passed,
+            "nonce_contract_passed": result.nonce_contract_passed,
+            "nonce_digest": result.nonce_digest,
         }
     )
     data = (json.dumps(loaded, sort_keys=True, separators=(",", ":")) + "\n").encode()
@@ -712,7 +718,12 @@ def _restore_receipts(
                 continue
             if snapshot.exists:
                 _publish_receipt(
-                    target, snapshot.content, uid=snapshot.uid, gid=snapshot.gid, mode=snapshot.mode
+                    target,
+                    snapshot.content,
+                    uid=snapshot.uid,
+                    gid=snapshot.gid,
+                    mode=snapshot.mode,
+                    expected=published,
                 )
             else:
                 directory_fd = _receipt_directory_fd(target)
@@ -733,7 +744,8 @@ def apply_activation(
     output: TextIO = sys.stdout,
     command_observer: Callable[[object], None] | None = None,
     after_write: Callable[[ActivationTargetPlan, int], None] | None = None,
-    probe_runner: Callable[[RuntimeBindingPlan], ProbeResult] | None = None,
+    probe_runner: Callable[[RuntimeBindingPlan, str, Path], ProbeObservation] | None = None,
+    probe_supported: bool = True,
 ) -> ActivationResult:
     """Confirm once, compare/write/read back, and safely compensate on failure."""
     del command_observer  # The secure direct-file seam intentionally executes no command.
@@ -800,6 +812,8 @@ def apply_activation(
         return ActivationResult(ActivationStatus.CREDENTIAL_REQUIRED, items)
     if probe_runner is None:
         return ActivationResult(ActivationStatus.CANARY_REQUIRED, items)
+    if not probe_supported:
+        return ActivationResult(ActivationStatus.PROBE_UNSUPPORTED, items)
 
     # Binding publication commits before canaries begin. Canary receipt updates
     # form a separate transaction and never roll back authorized configuration.
@@ -809,7 +823,15 @@ def apply_activation(
     results_list: list[ProbeResult] = []
     for target in plan.bindings:
         try:
-            results_list.append(probe_runner(target.binding))
+            results_list.append(
+                run_runtime_probe(
+                    expected_model=target.binding.expected_model,
+                    expected_provider=target.binding.provider_id,
+                    runner=lambda nonce, directory, target=target: probe_runner(
+                        target.binding, nonce, directory
+                    ),
+                )
+            )
         except Exception:
             results_list.append(ProbeResult("response-contract-failed"))
         except BaseException:

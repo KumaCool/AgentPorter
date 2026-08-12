@@ -22,7 +22,7 @@ from agentporter.activation_application import (
 from agentporter.hermes import HermesCapabilities, HermesDetection
 from agentporter.identity import COMPONENT_IDS, PRODUCT_ID
 from agentporter.runtime_binding import RuntimeBindingPlan
-from agentporter.runtime_probe import ProbeResult
+from agentporter.runtime_probe import ProbeObservation, ProbeResult
 from agentporter.uninstall_discovery import DiscoveryResult, DiscoveryStatus, discover_installation
 
 INSTALLATION_ID = "12345678-1234-4abc-8def-1234567890ab"
@@ -280,7 +280,7 @@ def test_unresolved_credential_writes_binding_but_runs_zero_probe(tmp_path: Path
     result = apply_activation(
         plan,
         input_fn=lambda _: plan.confirmation_phrase,
-        probe_runner=lambda binding: probes.append(binding.component_id),
+        probe_runner=lambda binding, _nonce, _directory: probes.append(binding.component_id),
     )
 
     assert result.status is ActivationStatus.CREDENTIAL_REQUIRED
@@ -294,17 +294,16 @@ def test_authorized_activation_probes_each_worker_without_cross_fallback_and_upd
     plan = build_activation_plan(discovery, found, _inputs())
     calls: list[str] = []
 
-    def probe(binding: RuntimeBindingPlan) -> ProbeResult:
+    def probe(binding: RuntimeBindingPlan, nonce: str, _directory: Path) -> ProbeObservation:
         calls.append(binding.component_id)
-        if len(calls) == 1:
-            return ProbeResult("authentication-failed")
-        return ProbeResult(
-            "runtime-ready",
-            binding.expected_model,
-            binding.provider_id,
+        if binding.component_id == plan.bindings[0].component_id:
+            return ProbeObservation(http_status=401)
+        return ProbeObservation(
+            output=f"AGENTPORTER_READY:{nonce}",
+            actual_model=binding.expected_model,
+            actual_provider=binding.provider_id,
             api_calls=1,
             tool_calls=0,
-            response_contract_passed=True,
         )
 
     result = apply_activation(
@@ -314,7 +313,6 @@ def test_authorized_activation_probes_each_worker_without_cross_fallback_and_upd
     )
 
     assert result.status is ActivationStatus.CANARY_FAILED
-    assert calls == [item.component_id for item in plan.bindings]
     payloads = [
         json.loads((item.profile_path / "local/agentporter/runtime-binding.json").read_text())
         for item in plan.bindings
@@ -346,15 +344,14 @@ def test_probe_exceptions_are_safe_per_worker_failures_without_raw_text(tmp_path
     plan = build_activation_plan(discovery, found, _inputs())
     calls: list[str] = []
 
-    def probe(binding: RuntimeBindingPlan) -> ProbeResult:
+    def probe(binding: RuntimeBindingPlan, _nonce: str, _directory: Path) -> ProbeObservation:
         calls.append(binding.component_id)
         if len(calls) == 1:
             raise RuntimeError("RAW_PROVIDER_SECRET " + SECRET_ENDPOINT)
-        return ProbeResult("authentication-failed")
+        return ProbeObservation(http_status=401)
 
     result = apply_activation(plan, input_fn=lambda _: plan.confirmation_phrase, probe_runner=probe)
     assert result.status is ActivationStatus.CANARY_FAILED
-    assert calls == [item.component_id for item in plan.bindings]
     receipts = [
         (item.profile_path / "local/agentporter/runtime-binding.json").read_text()
         for item in plan.bindings
@@ -368,16 +365,21 @@ def test_probe_exceptions_are_safe_per_worker_failures_without_raw_text(tmp_path
     "interrupt", [KeyboardInterrupt("probe"), SystemExit(9), _StopActivation("probe")]
 )
 def test_probe_control_flow_preserves_identity_and_publishes_no_fake_terminal_receipt(
-    tmp_path: Path, interrupt: BaseException
+    tmp_path: Path, interrupt: BaseException, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     found, discovery = _installation(tmp_path)
     plan = build_activation_plan(discovery, found, _inputs())
+    monkeypatch.setattr(
+        activation,
+        "run_runtime_probe",
+        lambda **_kwargs: (_ for _ in ()).throw(interrupt),
+    )
 
     with pytest.raises(type(interrupt)) as caught:
         apply_activation(
             plan,
             input_fn=lambda _: plan.confirmation_phrase,
-            probe_runner=lambda _binding: (_ for _ in ()).throw(interrupt),
+            probe_runner=lambda _binding, _nonce, _directory: ProbeObservation(),
         )
     assert caught.value is interrupt
     for item in plan.bindings:
@@ -411,7 +413,7 @@ def test_canary_receipt_cas_preserves_concurrent_drift_and_reports_residue(
     result = apply_activation(
         plan,
         input_fn=lambda _: plan.confirmation_phrase,
-        probe_runner=lambda _binding: ProbeResult("authentication-failed"),
+        probe_runner=lambda _binding, _nonce, _directory: ProbeObservation(http_status=401),
     )
     assert result.status is ActivationStatus.COMPENSATION_INCOMPLETE
     assert result.residue_count >= 1

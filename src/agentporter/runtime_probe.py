@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import multiprocessing
 import secrets
 import tempfile
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -68,6 +70,11 @@ class ProbeResult:
     tool_calls: int = 0
     fallback_used: bool = False
     response_contract_passed: bool = False
+    probe_started_at: datetime | None = None
+    probe_finished_at: datetime | None = None
+    fresh_until: datetime | None = None
+    nonce_contract_passed: bool = False
+    nonce_digest: str | None = None
 
     def __post_init__(self) -> None:
         if self.api_calls < 0 or self.tool_calls < 0:
@@ -83,6 +90,16 @@ class ProbeResult:
             raise ValueError("runtime-ready result violates the closed probe contract")
         if self.status != "runtime-ready" and self.response_contract_passed:
             raise ValueError("failure result cannot pass response contract")
+        if self.status == "runtime-ready" and (
+            self.probe_started_at is None
+            or self.probe_finished_at is None
+            or self.fresh_until is None
+            or self.probe_started_at > self.probe_finished_at
+            or self.fresh_until <= self.probe_finished_at
+            or not self.nonce_contract_passed
+            or not self.nonce_digest
+        ):
+            raise ValueError("runtime-ready result lacks sealed probe provenance")
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,8 +138,9 @@ def _isolated_observation(
     def invoke() -> None:
         try:
             sending.send(runner(nonce, directory))
-        except Exception:
-            sending.send(None)
+        except BaseException:
+            with suppress(BaseException):
+                sending.send(ProbeObservation(http_status=500))
         finally:
             sending.close()
 
@@ -135,9 +153,12 @@ def _isolated_observation(
         process.join()
         receiving.close()
         return None
-    value = receiving.recv() if receiving.poll() else None
+    try:
+        value = receiving.recv() if receiving.poll() else None
+    except (EOFError, OSError):
+        value = None
     receiving.close()
-    return value if isinstance(value, ProbeObservation) else ProbeObservation()
+    return value if isinstance(value, ProbeObservation) else None
 
 
 def run_runtime_probe(
@@ -146,26 +167,36 @@ def run_runtime_probe(
     expected_provider: str,
     runner: Callable[[str, Path], ProbeObservation],
     supported: bool = True,
-    timeout_seconds: float | None = None,
+    timeout_seconds: float = 30.0,
+    now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    freshness: timedelta = timedelta(minutes=5),
 ) -> ProbeResult:
     if not supported:
         return ProbeResult("probe-unsupported")
-    if timeout_seconds is not None and timeout_seconds <= 0:
+    if timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be positive")
+    if freshness <= timedelta(0):
+        raise ValueError("freshness must be positive")
+    started = now()
     nonce = secrets.token_hex(16)
     with tempfile.TemporaryDirectory(prefix="agentporter-probe-") as raw_directory:
         directory = Path(raw_directory)
         directory.chmod(0o700)
-        observation = (
-            runner(nonce, directory)
-            if timeout_seconds is None
-            else _isolated_observation(runner, nonce, directory, timeout_seconds)
-        )
+        observation = _isolated_observation(runner, nonce, directory, timeout_seconds)
+    finished = now()
+    provenance: dict[str, object] = {
+        "probe_started_at": started,
+        "probe_finished_at": finished,
+        "fresh_until": finished + freshness,
+        "nonce_contract_passed": False,
+        "nonce_digest": hashlib.sha256(nonce.encode()).hexdigest(),
+    }
     if observation is None:
-        return ProbeResult("probe-timeout")
+        return ProbeResult("probe-timeout", **provenance)  # type: ignore[arg-type]
     if observation.timed_out or observation.http_status is not None:
         return ProbeResult(
-            classify_probe_failure(ProbeFailure(observation.http_status, observation.timed_out))
+            classify_probe_failure(ProbeFailure(observation.http_status, observation.timed_out)),
+            **provenance,  # type: ignore[arg-type]
         )
     if (
         observation.fallback_used
@@ -179,6 +210,7 @@ def run_runtime_probe(
             observation.api_calls,
             observation.tool_calls,
             observation.fallback_used,
+            **provenance,  # type: ignore[arg-type]
         )
     if (
         observation.output != f"AGENTPORTER_READY:{nonce}"
@@ -189,7 +221,9 @@ def run_runtime_probe(
             "response-contract-failed",
             api_calls=observation.api_calls,
             tool_calls=observation.tool_calls,
+            **provenance,  # type: ignore[arg-type]
         )
+    provenance["nonce_contract_passed"] = True
     return ProbeResult(
         "runtime-ready",
         observation.actual_model,
@@ -198,6 +232,7 @@ def run_runtime_probe(
         observation.tool_calls,
         observation.fallback_used,
         True,
+        **provenance,  # type: ignore[arg-type]
     )
 
 
@@ -211,14 +246,14 @@ def probe_readiness_evidence(
 ) -> ReadinessEvidence:
     if freshness <= timedelta(0):
         raise ValueError("freshness must be positive")
-    started = now()
     result = run_runtime_probe(
         expected_model=binding.expected_model,
         expected_provider=binding.provider_id,
         runner=runner,
         supported=supported,
+        now=now,
+        freshness=freshness,
     )
-    finished = now()
     ready = result.status == "runtime-ready"
     safe_binding = RuntimeBinding(
         binding.portable_id,
@@ -235,12 +270,12 @@ def probe_readiness_evidence(
         safe_reason_code=result.status,
         binding=safe_binding,
         hermes_version=binding.hermes_version,
-        probe_started_at=started,
-        probe_finished_at=finished,
+        probe_started_at=result.probe_started_at or now(),
+        probe_finished_at=result.probe_finished_at or now(),
         actual_model=result.actual_model if ready else None,
         actual_provider=result.actual_provider if ready else None,
         api_calls=result.api_calls if ready else 0,
         response_contract_passed=ready,
         tool_calls_observed=result.tool_calls if ready else 0,
-        fresh_until=finished + freshness,
+        fresh_until=result.fresh_until or now() + freshness,
     )
