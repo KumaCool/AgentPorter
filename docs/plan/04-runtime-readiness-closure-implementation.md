@@ -140,7 +140,9 @@ fresh_until
 
 ## 3. 分阶段实施
 
-## Phase A：冻结失败家族与共享合同（先 RED）
+## Phase A：冻结失败家族与共享合同（已实现并通过离线门禁）
+
+**Status:** 已完成。Phase A 只冻结并实现纯领域/runtime probe 合同；真实配置写入、安装/update 生命周期接线和 authorized live canary 仍分别属于 Phase B/C。
 
 **Objective:** 一次性覆盖本次事故的完整 finding family，避免逐补丁复审。
 
@@ -175,6 +177,17 @@ python -m pytest \
 ```
 
 Expected: 因生产行为尚不存在而失败，不能是 import/fixture 错误。
+
+**GREEN evidence:**
+
+```text
+44 passed
+Ruff check/format: passed
+Pyright strict: 0 errors, 0 warnings
+Offline full pytest at candidate worktree: 437 passed, 2 warnings
+```
+
+覆盖结果：配置/凭据/probe-support 零调用门控、HTTP/timeout/nonce 安全分类、实际 route/fallback/API/tool 校验、按 component 的双 Worker 聚合、freshness 与生命周期失效、敏感值排除以及取消/timeout/`KeyboardInterrupt`/`BaseException` 清理合同均已通过。安装、update、卸载与静态 readback 的真实组合根接线仍由后续 Phase B 生命周期测试关闭。
 
 ## Phase B：可重放运行绑定事务
 
