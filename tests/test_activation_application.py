@@ -22,6 +22,7 @@ from agentporter.activation_application import (
 from agentporter.hermes import HermesCapabilities, HermesDetection
 from agentporter.identity import COMPONENT_IDS, PRODUCT_ID
 from agentporter.runtime_binding import RuntimeBindingPlan
+from agentporter.runtime_probe import ProbeResult
 from agentporter.uninstall_discovery import DiscoveryResult, DiscoveryStatus, discover_installation
 
 INSTALLATION_ID = "12345678-1234-4abc-8def-1234567890ab"
@@ -284,6 +285,45 @@ def test_unresolved_credential_writes_binding_but_runs_zero_probe(tmp_path: Path
 
     assert result.status is ActivationStatus.CREDENTIAL_REQUIRED
     assert probes == []
+
+
+def test_authorized_activation_probes_each_worker_without_cross_fallback_and_updates_receipts(
+    tmp_path: Path,
+) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+    calls: list[str] = []
+
+    def probe(binding: RuntimeBindingPlan) -> ProbeResult:
+        calls.append(binding.component_id)
+        if len(calls) == 1:
+            return ProbeResult("authentication-failed")
+        return ProbeResult(
+            "runtime-ready",
+            binding.expected_model,
+            binding.provider_id,
+            api_calls=1,
+            tool_calls=0,
+        )
+
+    result = apply_activation(
+        plan,
+        input_fn=lambda _: plan.confirmation_phrase,
+        probe_runner=probe,
+    )
+
+    assert result.status is ActivationStatus.CANARY_FAILED
+    assert calls == [item.component_id for item in plan.bindings]
+    payloads = [
+        json.loads((item.profile_path / "local/agentporter/runtime-binding.json").read_text())
+        for item in plan.bindings
+    ]
+    assert [item["canary_status"] for item in payloads] == ["failed", "passed"]
+    assert [item["canary_reason_code"] for item in payloads] == [
+        "authentication-failed",
+        "runtime-ready",
+    ]
+    assert all("error" not in item for item in payloads)
 
 
 def test_safe_receipt_is_private_atomic_and_inside_user_owned_local(tmp_path: Path) -> None:

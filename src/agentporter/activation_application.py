@@ -23,6 +23,7 @@ import yaml
 from .hermes import HermesDetection
 from .identity import COMPONENT_IDS
 from .runtime_binding import CredentialGrantKind, CredentialState, RuntimeBindingPlan
+from .runtime_probe import ProbeResult
 from .uninstall_discovery import DiscoveryResult, DiscoveryStatus, Target
 
 
@@ -33,6 +34,7 @@ class ActivationStatus(StrEnum):
     STALE = "stale"
     FAILED = "failed"
     COMPENSATION_INCOMPLETE = "compensation-incomplete"
+    CANARY_FAILED = "canary-failed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -604,6 +606,34 @@ def _write_receipt(target: ActivationTargetPlan, readback: ConfigSnapshot) -> _R
     )
 
 
+def _write_canary_receipt(target: ActivationTargetPlan, result: ProbeResult) -> _ReceiptSnapshot:
+    existing = _receipt_snapshot(target)
+    if not existing.exists:
+        raise ValueError("binding receipt is missing")
+    loaded = json.loads(existing.content)
+    if not isinstance(loaded, dict):
+        raise ValueError("binding receipt is invalid")
+    safe_summary = {
+        "status": result.status,
+        "api_calls": result.api_calls,
+        "tool_calls": result.tool_calls,
+        "fallback_used": result.fallback_used,
+    }
+    loaded["canary_status"] = "passed" if result.status == "runtime-ready" else "failed"
+    loaded["canary_reason_code"] = result.status
+    loaded["canary_evidence_digest"] = _digest(
+        json.dumps(safe_summary, sort_keys=True, separators=(",", ":")).encode()
+    )
+    data = (json.dumps(loaded, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    return _publish_receipt(
+        target,
+        data,
+        uid=existing.uid,
+        gid=existing.gid,
+        mode=0o600,
+    )
+
+
 def _same_receipt(current: _ReceiptSnapshot, expected: _ReceiptSnapshot) -> bool:
     return (
         current.exists
@@ -649,7 +679,7 @@ def apply_activation(
     output: TextIO = sys.stdout,
     command_observer: Callable[[object], None] | None = None,
     after_write: Callable[[ActivationTargetPlan, int], None] | None = None,
-    probe_runner: Callable[[RuntimeBindingPlan], object] | None = None,
+    probe_runner: Callable[[RuntimeBindingPlan], ProbeResult] | None = None,
 ) -> ActivationResult:
     """Confirm once, compare/write/read back, and safely compensate on failure."""
     del command_observer  # The secure direct-file seam intentionally executes no command.
@@ -714,6 +744,26 @@ def apply_activation(
     )
     if any(target.binding.credential_state != "operator-authorized" for target in plan.bindings):
         return ActivationResult(ActivationStatus.CREDENTIAL_REQUIRED, items)
-    # Phase B stops at a verified binding receipt. Phase C owns all real probes.
-    del probe_runner
-    return ActivationResult(ActivationStatus.ACTIVATED, items)
+    if probe_runner is None:
+        return ActivationResult(ActivationStatus.ACTIVATED, items)
+
+    # Binding publication commits before canaries begin. Canary receipt updates
+    # form a separate transaction and never roll back authorized configuration.
+    results = tuple(probe_runner(target.binding) for target in plan.bindings)
+    canary_snapshots: list[
+        tuple[ActivationTargetPlan, _ReceiptSnapshot, _ReceiptSnapshot | None]
+    ] = [(target, _receipt_snapshot(target), None) for target in plan.bindings]
+    try:
+        for index, (target, result) in enumerate(zip(plan.bindings, results, strict=True)):
+            published = _write_canary_receipt(target, result)
+            canary_snapshots[index] = (target, canary_snapshots[index][1], published)
+    except Exception:
+        residue = _restore_receipts(canary_snapshots)
+        status = ActivationStatus.COMPENSATION_INCOMPLETE if residue else ActivationStatus.FAILED
+        return ActivationResult(status, items, residue)
+    status = (
+        ActivationStatus.ACTIVATED
+        if all(result.status == "runtime-ready" for result in results)
+        else ActivationStatus.CANARY_FAILED
+    )
+    return ActivationResult(status, items)

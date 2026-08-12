@@ -6,10 +6,15 @@ import secrets
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
+from .readiness import ReadinessEvidence, RuntimeBinding
+from .runtime_binding import RuntimeBindingPlan, binding_fingerprint
+
 ProbeStatus = Literal[
+    "probe-unsupported",
     "runtime-ready",
     "authentication-failed",
     "model-unsupported",
@@ -63,6 +68,28 @@ class ProbeResult:
     fallback_used: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class ProbeCapability:
+    supported: bool
+    status: Literal["supported", "probe-unsupported"]
+
+
+def negotiate_hermes_probe(
+    *,
+    version: str,
+    help_text: str,
+    command_runner: Callable[[tuple[str, ...]], object],
+) -> ProbeCapability:
+    """Fail closed unless a public seam proves every canary invariant.
+
+    Hermes 0.20 ``-z --usage-file`` proves model, provider, and API-call count,
+    but neither disables all tools nor reports tool-call/fallback counts. A
+    normal prompt is therefore not a safe substitute and no command is run.
+    """
+    del version, help_text, command_runner
+    return ProbeCapability(False, "probe-unsupported")
+
+
 def classify_probe_failure(failure: ProbeFailure) -> ProbeFailureReason:
     if failure.timed_out:
         return "probe-timeout"
@@ -82,11 +109,16 @@ def run_runtime_probe(
     expected_model: str,
     expected_provider: str,
     runner: Callable[[str, Path], ProbeObservation],
+    supported: bool = True,
 ) -> ProbeResult:
     """Run one injected canary in a 0700 temporary directory, always cleaning it."""
+    if not supported:
+        return ProbeResult("probe-unsupported")
     nonce = secrets.token_hex(16)
     with tempfile.TemporaryDirectory(prefix="agentporter-probe-") as raw_directory:
-        observation = runner(nonce, Path(raw_directory))
+        directory = Path(raw_directory)
+        directory.chmod(0o700)
+        observation = runner(nonce, directory)
 
     if observation.timed_out or observation.http_status is not None:
         status = classify_probe_failure(
@@ -123,4 +155,50 @@ def run_runtime_probe(
         observation.api_calls,
         observation.tool_calls,
         observation.fallback_used,
+    )
+
+
+def probe_readiness_evidence(
+    *,
+    binding: RuntimeBindingPlan,
+    runner: Callable[[str, Path], ProbeObservation],
+    now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    freshness: timedelta = timedelta(minutes=5),
+    supported: bool = True,
+) -> ReadinessEvidence:
+    """Run a canary and convert only its bounded summary to readiness evidence."""
+    if freshness <= timedelta(0):
+        raise ValueError("freshness must be positive")
+    started = now()
+    result = run_runtime_probe(
+        expected_model=binding.expected_model,
+        expected_provider=binding.provider_id,
+        runner=runner,
+        supported=supported,
+    )
+    finished = now()
+    ready = result.status == "runtime-ready"
+    safe_binding = RuntimeBinding(
+        portable_id=binding.portable_id,
+        component_id=binding.component_id,
+        current_profile_name=binding.current_profile_name,
+        expected_model=binding.expected_model,
+        expected_provider=binding.provider_id,
+        provider_source_kind="profile-config",
+        binding_fingerprint=binding_fingerprint(binding),
+        config_digest=binding.config_digest,
+    )
+    return ReadinessEvidence(
+        status=result.status,
+        safe_reason_code=result.status,
+        binding=safe_binding,
+        hermes_version=binding.hermes_version,
+        probe_started_at=started,
+        probe_finished_at=finished,
+        actual_model=result.actual_model if ready else None,
+        actual_provider=result.actual_provider if ready else None,
+        api_calls=result.api_calls if ready else 0,
+        response_contract_passed=ready,
+        tool_calls_observed=result.tool_calls if ready else 0,
+        fresh_until=finished + freshness,
     )

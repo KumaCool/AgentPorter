@@ -94,6 +94,10 @@ def test_evidence_supports_full_safe_finding_family(status: str) -> None:
     assert item.status == status
 
 
+def test_failure_evidence_cannot_persist_raw_provider_error() -> None:
+    assert "error" not in {field.name for field in fields(ReadinessEvidence)}
+
+
 def test_freshness_requires_time_version_config_and_binding_identity() -> None:
     item = evidence()
     now = datetime(2026, 8, 12, 12, 4, 59, tzinfo=UTC)

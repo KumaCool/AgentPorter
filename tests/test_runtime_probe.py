@@ -1,11 +1,17 @@
+import stat
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
+from agentporter.runtime_binding import RuntimeBindingPlan, binding_fingerprint
 from agentporter.runtime_probe import (
     ProbeFailure,
     ProbeObservation,
+    ProbeResult,
     classify_probe_failure,
+    negotiate_hermes_probe,
+    probe_readiness_evidence,
     run_runtime_probe,
 )
 
@@ -138,3 +144,59 @@ def test_timeout_result_also_cleans_temporary_evidence() -> None:
     assert result.status == "probe-timeout"
     assert observed_directory is not None
     assert not observed_directory.exists()
+
+
+def test_public_hermes_v020_seam_is_unsupported_without_tool_call_proof() -> None:
+    calls: list[object] = []
+    capability = negotiate_hermes_probe(
+        version="0.20.0",
+        help_text="-z PROMPT --usage-file PATH -t TOOLSETS",
+        command_runner=lambda argv: calls.append(argv),
+    )
+    assert capability.supported is False
+    assert capability.status == "probe-unsupported"
+    assert calls == []
+
+
+def test_probe_directory_is_private_and_evidence_binds_version_config_and_ttl() -> None:
+    binding = RuntimeBindingPlan.from_values(
+        portable_id="luna_worker",
+        component_id="component-luna",
+        current_profile_name="luna",
+        expected_model="gpt-5.6-luna",
+        provider_id="custom",
+        endpoint_value="https://provider.invalid/v1",
+        credential_grant_kind="profile-auth",
+        credential_state="operator-authorized",
+        hermes_version="0.20.0",
+        config_digest="config-digest",
+    )
+    started = datetime(2026, 8, 13, 12, 0, tzinfo=UTC)
+
+    def runner(nonce: str, directory: Path) -> ProbeObservation:
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+        return observation(nonce)
+
+    item = probe_readiness_evidence(
+        binding=binding,
+        runner=runner,
+        now=lambda: started,
+        freshness=timedelta(minutes=5),
+    )
+    assert item.status == "runtime-ready"
+    assert item.hermes_version == "0.20.0"
+    assert item.binding.config_digest == "config-digest"
+    assert item.binding.binding_fingerprint == binding_fingerprint(binding)
+    assert item.fresh_until == started + timedelta(minutes=5)
+
+
+def test_unsupported_capability_creates_zero_temporary_or_runner_calls() -> None:
+    calls: list[str] = []
+    result = run_runtime_probe(
+        expected_model="gpt-5.6-luna",
+        expected_provider="custom",
+        runner=lambda nonce, _directory: calls.append(nonce) or observation(nonce),
+        supported=False,
+    )
+    assert result == ProbeResult("probe-unsupported")
+    assert calls == []
