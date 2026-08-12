@@ -2,7 +2,7 @@
 
 English | [简体中文](04-installation-and-troubleshooting.zh-CN.md)
 
-AgentPorter v0.1.3 is the current release candidate for the one-shot installation foundation of the Hermes multi-agent Worker team; v0.1.2 remains the latest supported public release until hosted v0.1.3 assets pass readback. The repository has offline contract tests and isolated real-Hermes evidence for v0.20.0; that observed version is **not** a promised minimum or universal compatibility range.
+AgentPorter v0.1.3 is the current supported patch release of the one-shot installation foundation for the Hermes multi-agent Worker team. The repository has offline contract tests and isolated real-Hermes evidence for v0.20.0; that observed version is **not** a promised minimum or universal compatibility range.
 
 ## One-line POSIX install
 

@@ -4,7 +4,7 @@
 
 AgentPorter 是一个开源的 [Hermes Agent](https://hermes-agent.nousresearch.com/) 多代理工作组部署方案：一次安装多个职责明确的 Worker Profile，并逐步接通 Hermes 原生 Kanban 的任务分解与合理路由。
 
-> **候选版本能力：** v0.1.3 正在准备安全交付双 Profile 安装/卸载基础，并写入 routing description；Hermes 能只读枚举两个 assignee。但 AgentPorter 尚未配置或验收自动分解、dispatcher 执行和真实 Worker 路由。这是下一阶段计划，不是当前发布能力。
+> **当前能力：** v0.1.3 已安全交付双 Profile 安装/卸载基础，并写入 routing description；Hermes 能只读枚举两个 assignee。但 AgentPorter 尚未配置或验收自动分解、dispatcher 执行和真实 Worker 路由。这是下一阶段计划，不是当前发布能力。
 
 ## curl 一键安装（POSIX）
 

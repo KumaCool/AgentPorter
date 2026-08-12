@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
 
 AgentPorter is an open-source deployment kit for a reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) multi-agent Worker team. It installs role-specific Profiles in one run and is evolving toward verified task decomposition and routing through Hermes-native Kanban orchestration.
 
-> **Release candidate capability:** v0.1.3 is being prepared to safely install and uninstall the two-Profile Worker foundation. It writes routing descriptions and Hermes can enumerate both assignees, but AgentPorter has not yet configured or accepted automatic decomposition, dispatcher execution, or live Worker routing. That is the next implementation plan—not a current release claim.
+> **Current capability:** v0.1.3 safely installs and uninstalls the two-Profile Worker foundation. It writes routing descriptions and Hermes can enumerate both assignees, but AgentPorter has not yet configured or accepted automatic decomposition, dispatcher execution, or live Worker routing. That is the next implementation plan—not a current release claim.
 
 ## One-line install (POSIX)
 
