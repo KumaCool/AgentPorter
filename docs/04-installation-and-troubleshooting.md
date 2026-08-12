@@ -2,7 +2,7 @@
 
 English | [简体中文](04-installation-and-troubleshooting.zh-CN.md)
 
-AgentPorter v0.1.0 is the first supported release of the one-shot installation foundation for the Hermes multi-agent Worker team. The repository has offline contract tests and isolated real-Hermes evidence for v0.20.0; that observed version is **not** a promised minimum or universal compatibility range.
+AgentPorter v0.1.1 is the current supported patch release of the one-shot installation foundation for the Hermes multi-agent Worker team. The repository has offline contract tests and isolated real-Hermes evidence for v0.20.0; that observed version is **not** a promised minimum or universal compatibility range.
 
 ## One-line POSIX install
 
@@ -13,7 +13,7 @@ curl --fail --location --proto '=https' --tlsv1.2 \
   https://github.com/KumaCool/AgentPorter/releases/latest/download/install.sh | sh
 ```
 
-GitHub's `latest` endpoint selects the release bootstrap; that bootstrap pins and downloads its exact-version wheel and `.sha256` sidecar. It verifies the wheel, builds in a private sibling staging directory, reads back the installed package version, atomically publishes the versioned installation, and links `agentporter-uninstall` into `${XDG_BIN_HOME:-$HOME/.local/bin}` before launching the normal interactive installer through `/dev/tty`. Existing install or link paths are refused rather than overwritten. If the product installation is cancelled or fails, the verified package and uninstaller remain available for diagnosis or cleanup. The uninstaller removes installed Hermes Profiles; it does not remove this private Python environment.
+GitHub's `latest` endpoint selects the release bootstrap; that bootstrap pins and downloads its exact-version wheel and `.sha256` sidecar. It verifies and installs the wheel in a private sibling staging directory, reads back the installed package version, validates and rewrites the two generated entry-point shebangs to their final virtual-environment path, and only then atomically publishes the versioned installation. It links `agentporter-uninstall` into `${XDG_BIN_HOME:-$HOME/.local/bin}` before launching the normal interactive installer through `/dev/tty`. Existing install or link paths are refused rather than overwritten. If the product installation is cancelled or fails, the verified package and uninstaller remain available for diagnosis or cleanup. The uninstaller removes installed Hermes Profiles; it does not remove this private Python environment.
 
 The checksum protects against accidental corruption or mismatched hosting; it is not independent of the GitHub release account. The wheel still resolves its declared dependencies through pip, restricted to binary distributions, so the release checksum does not independently authenticate those dependency downloads. For stronger provenance, inspect the script and compare published release attestations/checksums before execution. Add `${XDG_BIN_HOME:-$HOME/.local/bin}` to `PATH` if necessary.
 
@@ -28,13 +28,13 @@ Linux has the strongest real-Hermes acceptance evidence. macOS and Windows are c
 
 ## Install from a release artifact
 
-To install a downloaded v0.1.0 wheel manually, verify its published checksum and create a disposable environment:
+To install a downloaded v0.1.1 wheel manually, verify its published checksum and create a disposable environment:
 
 ```bash
 python -m venv .venv
 # POSIX: source .venv/bin/activate
 # Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install agentporter-0.1.0-py3-none-any.whl
+python -m pip install agentporter-0.1.1-py3-none-any.whl
 agentporter
 ```
 
@@ -57,7 +57,7 @@ The source checkout and artifact must come from a commit you trust. Do not run f
 
 Terminal statuses distinguish success, cancellation, preflight failure, install failure with compensation, incomplete compensation, and readback failure. Treat anything other than the explicit success result as not installed or requiring inspection; never infer success from some profile directories being present.
 
-AgentPorter v0.1.0 installs two dedicated Worker Profiles. It does not overwrite existing profiles, copy provider credentials, invoke a model, install a daemon, or create a task database. Profile-local credentials and runtime data remain managed by Hermes and the user.
+AgentPorter v0.1.1 installs two dedicated Worker Profiles. It does not overwrite existing profiles, copy provider credentials, invoke a model, install a daemon, or create a task database. Profile-local credentials and runtime data remain managed by Hermes and the user.
 
 This release does **not** configure automatic decomposition, start the gateway dispatcher, create Kanban tasks, or prove live task routing. Those capabilities are tracked in the [multi-agent orchestration plan](plan/02-multi-agent-orchestration.md).
 
@@ -101,7 +101,7 @@ Never post raw config files, marker paths, credentials, sessions, memories, or p
 
    ```bash
    python scripts/verify_release.py \
-     --version 0.1.0 \
+     --version 0.1.1 \
      --dependency 'pydantic<3,>=2' \
      --dependency 'PyYAML<7,>=6' \
      --entry-point 'agentporter=agentporter:main' \
@@ -114,4 +114,4 @@ Never post raw config files, marker paths, credentials, sessions, memories, or p
 6. Inspect checksums, commit identity, tag, changelog, license, README, and verifier output before upload. Publish only the exact verified bytes.
 7. Download hosted artifacts, recompute checksums, and rerun verification. A tag or successful upload alone is not acceptance.
 
-The example resource path is the v0.1.0 release contract. Hosted release acceptance additionally downloads every published asset, recomputes checksums, reruns this verifier, and checks the public `latest/download/install.sh` endpoint.
+The example resource path is the v0.1.1 release contract. Hosted release acceptance additionally downloads every published asset, recomputes checksums, reruns this verifier, and checks the public `latest/download/install.sh` endpoint.

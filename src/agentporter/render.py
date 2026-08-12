@@ -10,7 +10,7 @@ import yaml
 from .identity import COMPONENT_IDS, INITIAL_PROFILE_NAMES, PRODUCT_ID
 from .models import HermesProfileName, MarkerV1, WorkersManifest
 
-DISTRIBUTION_VERSION = "0.1.0"
+DISTRIBUTION_VERSION = "0.1.1"
 DISTRIBUTION_OWNED = ("SOUL.md", "config.yaml", "agentporter-profile.json")
 
 

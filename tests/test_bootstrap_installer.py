@@ -8,7 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "install.sh"
-LATEST_BOOTSTRAP_URL = "https://github.com/KumaCool/AgentPorter/releases/latest/download/install.sh"
+VERSION = "0.1.1"
+WHEEL_NAME = f"agentporter-{VERSION}-py3-none-any.whl"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -17,7 +18,7 @@ def _write_executable(path: Path, content: str) -> None:
 
 
 def _fake_tools(
-    tmp_path: Path, *, checksum: str, checksum_name: str = "agentporter-0.1.0-py3-none-any.whl"
+    tmp_path: Path, *, checksum: str, checksum_name: str = WHEEL_NAME
 ) -> tuple[Path, Path]:
     tools = tmp_path / "tools"
     tools.mkdir()
@@ -50,7 +51,8 @@ printf 'python3 %s\n' "$*" >> "$CALL_LOG"
 if [ "${1-}" = '-c' ]; then
   case "$2" in
     *hashlib*) printf '%s\n' "$FAKE_ACTUAL_CHECKSUM" ;;
-    *agentporter*) printf '0.1.0\n' ;;
+    *agentporter*) printf '{VERSION}\n' ;;
+    *path.write_bytes*) exec /usr/bin/python3 "$@" ;;
   esac
   exit 0
 fi
@@ -60,26 +62,43 @@ if [ "${1-}" = '-m' ] && [ "${2-}" = 'venv' ]; then
 #!/bin/sh
 set -eu
 printf 'venv-python %s\n' "$*" >> "$CALL_LOG"
-if [ "${1-}" = '-m' ] && [ "${2-}" = 'pip' ]; then exit 0; fi
-if [ "${1-}" = '-c' ]; then printf '0.1.0\n'; exit 0; fi
+if [ "${1-}" = '-m' ] && [ "${2-}" = 'pip' ]; then
+  case " $* " in
+    *' --force-reinstall '*)
+      venv_bin=$(dirname "$0")
+      for entry in agentporter agentporter-uninstall; do
+        body=$(sed -n '2,$p' "$venv_bin/$entry")
+        printf '#!%s/python\n%s\n' "$venv_bin" "$body" > "$venv_bin/$entry"
+        chmod +x "$venv_bin/$entry"
+      done
+      ;;
+  esac
+  exit 0
+fi
+if [ "${1-}" = '-c' ]; then printf '{VERSION}\n'; exit 0; fi
+case "${1-}" in
+  */bin/agentporter|*/bin/agentporter-uninstall) exec /usr/bin/python3 "$@" ;;
+esac
 exit 0
 EOF
   chmod +x "$3/bin/python"
-  cat > "$3/bin/agentporter" <<'EOF'
-#!/bin/sh
-printf 'agentporter %s\n' "$*" >> "$CALL_LOG"
-exit "${AGENTPORTER_EXIT_CODE:-0}"
+  printf '#!%s/bin/python\n' "$3" > "$3/bin/agentporter"
+  cat >> "$3/bin/agentporter" <<'EOF'
+import os
+from pathlib import Path
+Path(os.environ["CALL_LOG"]).open("a", encoding="utf-8").write("agentporter \\n")
+raise SystemExit(int(os.environ.get("AGENTPORTER_EXIT_CODE", "0")))
 EOF
   chmod +x "$3/bin/agentporter"
-  cat > "$3/bin/agentporter-uninstall" <<'EOF'
-#!/bin/sh
-exit 0
+  printf '#!%s/bin/python\n' "$3" > "$3/bin/agentporter-uninstall"
+  cat >> "$3/bin/agentporter-uninstall" <<'EOF'
+raise SystemExit(0)
 EOF
   chmod +x "$3/bin/agentporter-uninstall"
   exit 0
 fi
 exit 1
-""",
+""".replace("{VERSION}", VERSION),
     )
     return tools, log
 
@@ -118,22 +137,29 @@ def test_bootstrap_downloads_verifies_installs_and_runs(tmp_path: Path) -> None:
     result = _run(tmp_path, checksum=checksum)
 
     assert result.returncode == 0, result.stderr
-    install_root = tmp_path / "data" / "agentporter" / "0.1.0"
+    install_root = tmp_path / "data" / "agentporter" / VERSION
     assert (install_root / "venv" / "bin" / "agentporter").is_file()
     uninstall = tmp_path / "bin" / "agentporter-uninstall"
     assert uninstall.is_symlink()
     assert uninstall.resolve() == install_root / "venv" / "bin" / "agentporter-uninstall"
     calls = (tmp_path / "calls.log").read_text(encoding="utf-8")
     assert (
-        "https://github.com/KumaCool/AgentPorter/releases/download/v0.1.0/agentporter-0.1.0-py3-none-any.whl"
+        f"https://github.com/KumaCool/AgentPorter/releases/download/v{VERSION}/{WHEEL_NAME}"
         in calls
     )
     assert (
-        "https://github.com/KumaCool/AgentPorter/releases/download/v0.1.0/agentporter-0.1.0-py3-none-any.whl.sha256"
+        f"https://github.com/KumaCool/AgentPorter/releases/download/v{VERSION}/{WHEEL_NAME}.sha256"
         in calls
     )
     assert "-m pip install --disable-pip-version-check" in calls
+    assert "--force-reinstall" not in calls
+    assert calls.count("curl ") == 2
     assert "agentporter \n" in calls
+    for entry in ("agentporter", "agentporter-uninstall"):
+        shebang = (
+            (install_root / "venv" / "bin" / entry).read_text(encoding="utf-8").splitlines()[0]
+        )
+        assert shebang == f"#!{install_root}/venv/bin/python"
 
 
 def test_documentation_uses_unversioned_latest_bootstrap_url() -> None:
@@ -144,8 +170,8 @@ def test_documentation_uses_unversioned_latest_bootstrap_url() -> None:
         "docs/04-installation-and-troubleshooting.zh-CN.md",
     ):
         text = (ROOT / name).read_text(encoding="utf-8")
-        assert LATEST_BOOTSTRAP_URL in text
-        assert "raw.githubusercontent.com/KumaCool/AgentPorter/v0.1.0/install.sh" not in text
+        assert "https://github.com/KumaCool/AgentPorter/releases/latest/download/install.sh" in text
+        assert "raw.githubusercontent.com/KumaCool/AgentPorter/" not in text
 
 
 def test_bootstrap_rejects_bad_checksum_before_creating_venv(tmp_path: Path) -> None:
@@ -153,7 +179,7 @@ def test_bootstrap_rejects_bad_checksum_before_creating_venv(tmp_path: Path) -> 
 
     assert result.returncode != 0
     assert "checksum" in result.stderr.lower()
-    assert not (tmp_path / "data" / "agentporter" / "0.1.0" / "venv").exists()
+    assert not (tmp_path / "data" / "agentporter" / VERSION / "venv").exists()
 
 
 def test_bootstrap_requires_terminal_before_creating_paths(tmp_path: Path) -> None:
@@ -196,11 +222,11 @@ def test_bootstrap_rejects_checksum_for_wrong_wheel_name(tmp_path: Path) -> None
 
     assert result.returncode != 0
     assert "wrong wheel" in result.stderr
-    assert not (tmp_path / "data" / "agentporter" / "0.1.0" / "venv").exists()
+    assert not (tmp_path / "data" / "agentporter" / VERSION / "venv").exists()
 
 
 def test_bootstrap_refuses_existing_install_without_downloading(tmp_path: Path) -> None:
-    existing = tmp_path / "data" / "agentporter" / "0.1.0"
+    existing = tmp_path / "data" / "agentporter" / VERSION
     existing.mkdir(parents=True)
     checksum = hashlib.sha256(b"wheel-bytes").hexdigest()
 
