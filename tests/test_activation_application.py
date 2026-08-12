@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 from dataclasses import replace
 from pathlib import Path
 from typing import TextIO
@@ -8,10 +10,12 @@ from typing import TextIO
 import pytest
 import yaml
 
+import agentporter.activation_application as activation
 from agentporter.activation_application import (
     ActivationBindingInput,
     ActivationStatus,
     ActivationTargetPlan,
+    ConfigSnapshot,
     apply_activation,
     build_activation_plan,
 )
@@ -22,6 +26,10 @@ from agentporter.uninstall_discovery import DiscoveryResult, DiscoveryStatus, di
 
 INSTALLATION_ID = "12345678-1234-4abc-8def-1234567890ab"
 SECRET_ENDPOINT = "https://activation-endpoint.invalid/v1"
+
+
+class _StopActivation(BaseException):
+    pass
 
 
 def _detection(tmp_path: Path) -> HermesDetection:
@@ -280,6 +288,162 @@ def test_symlink_config_is_rejected_without_read_or_write(tmp_path: Path) -> Non
         build_activation_plan(discovery, found, _inputs())
 
     assert outside.read_text(encoding="utf-8") == "sentinel: unchanged\n"
+
+
+@pytest.mark.parametrize(
+    "interrupt", [KeyboardInterrupt("sentinel"), SystemExit(23), _StopActivation("sentinel")]
+)
+def test_control_flow_exception_is_compensated_then_propagated_with_identity(
+    tmp_path: Path, interrupt: BaseException
+) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+
+    with pytest.raises(type(interrupt)) as caught:
+        apply_activation(
+            plan,
+            input_fn=lambda _: plan.confirmation_phrase,
+            after_write=lambda _target, index: (
+                (_ for _ in ()).throw(interrupt) if index == 0 else None
+            ),
+        )
+
+    assert caught.value is interrupt
+    assert all(
+        "provider" not in yaml.safe_load((item.profile_path / "config.yaml").read_text())["model"]
+        for item in plan.bindings
+    )
+
+
+def test_marker_content_change_after_plan_is_stale_with_zero_writes(tmp_path: Path) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+    marker = plan.bindings[0].profile_path / "agentporter-profile.json"
+    marker.write_text("{}", encoding="utf-8")
+
+    result = apply_activation(plan, input_fn=lambda _: plan.confirmation_phrase)
+
+    assert result.status is ActivationStatus.STALE
+    assert all(
+        "provider" not in yaml.safe_load((item.profile_path / "config.yaml").read_text())["model"]
+        for item in plan.bindings
+    )
+
+
+def test_config_replacement_with_identical_content_is_stale(tmp_path: Path) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+    config = plan.bindings[0].profile_path / "config.yaml"
+    content = config.read_bytes()
+    replacement = config.with_suffix(".replacement")
+    replacement.write_bytes(content)
+    replacement.replace(config)
+
+    assert (
+        apply_activation(plan, input_fn=lambda _: plan.confirmation_phrase).status
+        is ActivationStatus.STALE
+    )
+    assert "provider" not in yaml.safe_load(config.read_text())["model"]
+
+
+def test_preexisting_fixed_temp_names_are_never_unlinked(tmp_path: Path) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+    sentinels: list[Path] = []
+    for target in plan.bindings:
+        config_temp = target.profile_path / ".agentporter-config.tmp"
+        config_temp.write_text("owned elsewhere", encoding="utf-8")
+        receipt_dir = target.profile_path / "local" / "agentporter"
+        receipt_dir.mkdir(parents=True)
+        receipt_temp = receipt_dir / ".runtime-binding.tmp"
+        receipt_temp.write_text("owned elsewhere", encoding="utf-8")
+        sentinels.extend((config_temp, receipt_temp))
+
+    assert (
+        apply_activation(plan, input_fn=lambda _: plan.confirmation_phrase).status
+        is ActivationStatus.ACTIVATED
+    )
+    assert [path.read_text() for path in sentinels] == ["owned elsewhere"] * len(sentinels)
+
+
+def test_second_receipt_failure_restores_both_existing_receipts_and_configs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    found, discovery = _installation(tmp_path)
+    first_plan = build_activation_plan(discovery, found, _inputs())
+    assert (
+        apply_activation(first_plan, input_fn=lambda _: first_plan.confirmation_phrase).status
+        is ActivationStatus.ACTIVATED
+    )
+    before_configs = [
+        item.profile_path.joinpath("config.yaml").read_bytes() for item in first_plan.bindings
+    ]
+    receipts = [
+        item.profile_path / "local/agentporter/runtime-binding.json" for item in first_plan.bindings
+    ]
+    before_receipts = [path.read_bytes() for path in receipts]
+    changed = {
+        key: replace(value, provider_id="replacement-provider") for key, value in _inputs().items()
+    }
+    plan = build_activation_plan(discover_installation(found.profiles_root), found, changed)
+    original = activation._write_receipt
+    calls = 0
+
+    def fail_second(target: ActivationTargetPlan, readback: ConfigSnapshot) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("receipt fault")
+        original(target, readback)
+
+    monkeypatch.setattr(activation, "_write_receipt", fail_second)
+    result = apply_activation(plan, input_fn=lambda _: plan.confirmation_phrase)
+
+    assert result.status is ActivationStatus.FAILED
+    assert [
+        item.profile_path.joinpath("config.yaml").read_bytes() for item in plan.bindings
+    ] == before_configs
+    assert [path.read_bytes() for path in receipts] == before_receipts
+
+
+def test_restore_refuses_whole_file_drift_and_preserves_unrelated_key(
+    tmp_path: Path,
+) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+
+    def drift_then_fail(target: ActivationTargetPlan, index: int) -> None:
+        if index == 0:
+            path = target.profile_path / "config.yaml"
+            loaded = yaml.safe_load(path.read_text())
+            loaded["concurrent"] = "KEEP"
+            path.write_text(yaml.safe_dump(loaded), encoding="utf-8")
+            raise RuntimeError("fault")
+
+    result = apply_activation(
+        plan, input_fn=lambda _: plan.confirmation_phrase, after_write=drift_then_fail
+    )
+
+    assert result.status is ActivationStatus.COMPENSATION_INCOMPLETE
+    assert result.residue_count >= 1
+    loaded = yaml.safe_load((plan.bindings[0].profile_path / "config.yaml").read_text())
+    assert loaded["concurrent"] == "KEEP"
+    assert loaded["model"]["provider"] == "custom-provider"
+
+
+def test_atomic_config_replacement_preserves_owner_and_private_mode(tmp_path: Path) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+    config = plan.bindings[0].profile_path / "config.yaml"
+    os.chown(config, 65534, 65534)
+    plan = build_activation_plan(discover_installation(found.profiles_root), found, _inputs())
+
+    assert (
+        apply_activation(plan, input_fn=lambda _: plan.confirmation_phrase).status
+        is ActivationStatus.ACTIVATED
+    )
+    info = config.stat()
+    assert (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) == (65534, 65534, 0o600)
 
 
 class _Writer(TextIO):

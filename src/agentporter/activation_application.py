@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import secrets
 import stat
 import sys
 from collections.abc import Callable, Mapping
@@ -47,6 +48,10 @@ class ConfigSnapshot:
     base_url: str | None = field(repr=False)
     digest: str
     content: bytes = field(repr=False)
+    device: int = field(repr=False)
+    inode: int = field(repr=False)
+    uid: int = field(repr=False)
+    gid: int = field(repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +61,9 @@ class ActivationTargetPlan:
     original_config: ConfigSnapshot = field(repr=False)
     profile_device: int = field(repr=False)
     profile_inode: int = field(repr=False)
+    marker_digest: str = field(repr=False)
+    marker_device: int = field(repr=False)
+    marker_inode: int = field(repr=False)
 
     @property
     def component_id(self) -> str:
@@ -147,7 +155,17 @@ def _read_config(path: Path) -> ConfigSnapshot:
             raise ValueError("config.yaml model.provider must be a string")
         if base_url is not None and not isinstance(base_url, str):
             raise ValueError("config.yaml model.base_url must be a string")
-        return ConfigSnapshot(default, provider, base_url, _digest(payload), payload)
+        return ConfigSnapshot(
+            default,
+            provider,
+            base_url,
+            _digest(payload),
+            payload,
+            opened.st_dev,
+            opened.st_ino,
+            opened.st_uid,
+            opened.st_gid,
+        )
     except (OSError, UnicodeError, yaml.YAMLError) as error:
         raise ValueError("config.yaml could not be safely read") from error
     finally:
@@ -162,19 +180,33 @@ def _decoded_mapping(snapshot: ConfigSnapshot) -> dict[str, object]:
     return cast(dict[str, object], loaded)
 
 
-def _atomic_write(path: Path, payload: bytes) -> None:
+def _same_config(current: ConfigSnapshot, expected: ConfigSnapshot) -> bool:
+    return (
+        current.digest == expected.digest
+        and current.device == expected.device
+        and current.inode == expected.inode
+    )
+
+
+def _atomic_write(path: Path, payload: bytes, expected: ConfigSnapshot) -> ConfigSnapshot:
     profile_fd = _safe_profile_fd(path)
-    temporary = ".agentporter-config.tmp"
+    temporary = f".agentporter-config.{secrets.token_hex(16)}.tmp"
     temp_fd: int | None = None
+    created: tuple[int, int] | None = None
     try:
-        with suppress(FileNotFoundError):
-            os.unlink(temporary, dir_fd=profile_fd)
+        current = _read_config(path)
+        if not _same_config(current, expected):
+            raise ValueError("config changed before publication")
         temp_fd = os.open(
             temporary,
             os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
             0o600,
             dir_fd=profile_fd,
         )
+        temp_info = os.fstat(temp_fd)
+        created = (temp_info.st_dev, temp_info.st_ino)
+        os.fchown(temp_fd, expected.uid, expected.gid)
+        os.fchmod(temp_fd, 0o600)
         view = memoryview(payload)
         while view:
             written = os.write(temp_fd, view)
@@ -182,15 +214,35 @@ def _atomic_write(path: Path, payload: bytes) -> None:
         os.fsync(temp_fd)
         os.close(temp_fd)
         temp_fd = None
+        # Revalidate the named source immediately before publication.
+        if not _same_config(_read_config(path), expected):
+            raise ValueError("config changed before publication")
         os.replace(temporary, "config.yaml", src_dir_fd=profile_fd, dst_dir_fd=profile_fd)
+        created = None
         os.chmod("config.yaml", 0o600, dir_fd=profile_fd, follow_symlinks=False)
         os.fsync(profile_fd)
+        return _read_config(path)
     finally:
         if temp_fd is not None:
             os.close(temp_fd)
-        with suppress(FileNotFoundError):
-            os.unlink(temporary, dir_fd=profile_fd)
+        if created is not None:
+            with suppress(FileNotFoundError):
+                leftover = os.stat(temporary, dir_fd=profile_fd, follow_symlinks=False)
+                if (leftover.st_dev, leftover.st_ino) == created:
+                    os.unlink(temporary, dir_fd=profile_fd)
         os.close(profile_fd)
+
+
+def _atomic_write_target(
+    target: ActivationTargetPlan, payload: bytes, expected: ConfigSnapshot
+) -> ConfigSnapshot:
+    """Publish only while the complete planned installation identity remains bound."""
+    if not _target_is_bound(target):
+        raise ValueError("activation target changed before publication")
+    result = _atomic_write(target.profile_path, payload, expected)
+    if not _target_is_bound(target):
+        raise ValueError("activation target changed during publication")
+    return result
 
 
 def _updated_payload(target: ActivationTargetPlan) -> bytes:
@@ -205,6 +257,35 @@ def _updated_payload(target: ActivationTargetPlan) -> bytes:
 
 def _target_for_component(discovery: DiscoveryResult) -> Mapping[str, Target]:
     return MappingProxyType({target.component_id: target for target in discovery.targets})
+
+
+def _marker_identity(path: Path) -> tuple[str, int, int]:
+    profile_fd = _safe_profile_fd(path)
+    descriptor: int | None = None
+    try:
+        before = os.stat("agentporter-profile.json", dir_fd=profile_fd, follow_symlinks=False)
+        if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+            raise ValueError("marker must be a safe regular file")
+        descriptor = os.open(
+            "agentporter-profile.json", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=profile_fd
+        )
+        opened = os.fstat(descriptor)
+        chunks: list[bytes] = []
+        while chunk := os.read(descriptor, 65536):
+            chunks.append(chunk)
+            if sum(map(len, chunks)) > 1024 * 1024:
+                raise ValueError("marker exceeds size limit")
+        rebound = os.stat("agentporter-profile.json", dir_fd=profile_fd, follow_symlinks=False)
+        if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino) or (
+            rebound.st_dev,
+            rebound.st_ino,
+        ) != (opened.st_dev, opened.st_ino):
+            raise ValueError("marker changed during read")
+        return _digest(b"".join(chunks)), opened.st_dev, opened.st_ino
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        os.close(profile_fd)
 
 
 def build_activation_plan(
@@ -232,6 +313,7 @@ def build_activation_plan(
     for component_id in COMPONENT_IDS.values():
         target = targets[component_id]
         snapshot = _read_config(target.path)
+        marker_digest, marker_device, marker_inode = _marker_identity(target.path)
         supplied = inputs[component_id]
         binding = RuntimeBindingPlan.from_values(
             portable_id=portable_by_component[component_id],
@@ -247,7 +329,14 @@ def build_activation_plan(
         )
         bindings.append(
             ActivationTargetPlan(
-                binding, target.path, snapshot, target.profile_device, target.profile_inode
+                binding,
+                target.path,
+                snapshot,
+                target.profile_device,
+                target.profile_inode,
+                marker_digest,
+                marker_device,
+                marker_inode,
             )
         )
     installation_id = installation_ids.pop()
@@ -278,12 +367,18 @@ def _target_is_bound(target: ActivationTargetPlan) -> bool:
         current = target.profile_path.lstat()
     except OSError:
         return False
-    return (
+    if not (
         stat.S_ISDIR(current.st_mode)
         and not stat.S_ISLNK(current.st_mode)
         and current.st_dev == target.profile_device
         and current.st_ino == target.profile_inode
-    )
+    ):
+        return False
+    try:
+        marker = _marker_identity(target.profile_path)
+    except (OSError, ValueError):
+        return False
+    return marker == (target.marker_digest, target.marker_device, target.marker_inode)
 
 
 def _restore(attempted: list[ActivationTargetPlan]) -> int:
@@ -291,36 +386,137 @@ def _restore(attempted: list[ActivationTargetPlan]) -> int:
     for target in reversed(attempted):
         try:
             current = _read_config(target.profile_path)
-            config = _decoded_mapping(current)
-            model_value = config["model"]
-            assert isinstance(model_value, dict)
-            model = cast(dict[str, object], model_value)
-            binding = target.binding
-            for key, written, original in (
-                ("provider", binding.provider_id, target.original_config.provider),
-                ("base_url", binding.endpoint_value, target.original_config.base_url),
-            ):
-                if model.get(key) == written:
-                    if original is None:
-                        model.pop(key, None)
-                    else:
-                        model[key] = original
-                else:
-                    residue += 1
-            _atomic_write(target.profile_path, yaml.safe_dump(config, sort_keys=False).encode())
+            if current.content != _updated_payload(target) or not _target_is_bound(target):
+                residue += 1
+                continue
+            _atomic_write_target(target, target.original_config.content, current)
         except (OSError, ValueError, yaml.YAMLError):
             residue += 1
     return residue
 
 
+@dataclass(frozen=True, slots=True)
+class _ReceiptSnapshot:
+    exists: bool
+    content: bytes = field(default=b"", repr=False)
+    uid: int = 0
+    gid: int = 0
+    mode: int = 0
+
+
+def _receipt_directory_fd(target: ActivationTargetPlan) -> int:
+    profile_fd = _safe_profile_fd(target.profile_path)
+    local_fd: int | None = None
+    try:
+        profile_info = os.fstat(profile_fd)
+        if (profile_info.st_dev, profile_info.st_ino) != (
+            target.profile_device,
+            target.profile_inode,
+        ):
+            raise ValueError("receipt profile changed")
+        with suppress(FileExistsError):
+            os.mkdir("local", 0o700, dir_fd=profile_fd)
+        local_fd = os.open("local", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=profile_fd)
+        local_info = os.fstat(local_fd)
+        bound_local = os.stat("local", dir_fd=profile_fd, follow_symlinks=False)
+        if (local_info.st_dev, local_info.st_ino) != (bound_local.st_dev, bound_local.st_ino):
+            raise ValueError("receipt parent changed")
+        with suppress(FileExistsError):
+            os.mkdir("agentporter", 0o700, dir_fd=local_fd)
+        directory_fd = os.open(
+            "agentporter", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=local_fd
+        )
+        directory_info = os.fstat(directory_fd)
+        bound_directory = os.stat("agentporter", dir_fd=local_fd, follow_symlinks=False)
+        if (directory_info.st_dev, directory_info.st_ino) != (
+            bound_directory.st_dev,
+            bound_directory.st_ino,
+        ):
+            os.close(directory_fd)
+            raise ValueError("receipt directory changed")
+        os.fchmod(local_fd, 0o700)
+        os.fchmod(directory_fd, 0o700)
+        return directory_fd
+    finally:
+        if local_fd is not None:
+            os.close(local_fd)
+        os.close(profile_fd)
+
+
+def _receipt_snapshot(target: ActivationTargetPlan) -> _ReceiptSnapshot:
+    directory_fd = _receipt_directory_fd(target)
+    descriptor: int | None = None
+    try:
+        try:
+            before = os.stat("runtime-binding.json", dir_fd=directory_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return _ReceiptSnapshot(False)
+        if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+            raise ValueError("receipt is unsafe")
+        descriptor = os.open(
+            "runtime-binding.json", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd
+        )
+        opened = os.fstat(descriptor)
+        chunks: list[bytes] = []
+        while chunk := os.read(descriptor, 65536):
+            chunks.append(chunk)
+        rebound = os.stat("runtime-binding.json", dir_fd=directory_fd, follow_symlinks=False)
+        if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino) or (
+            rebound.st_dev,
+            rebound.st_ino,
+        ) != (opened.st_dev, opened.st_ino):
+            raise ValueError("receipt changed during snapshot")
+        return _ReceiptSnapshot(
+            True, b"".join(chunks), opened.st_uid, opened.st_gid, stat.S_IMODE(opened.st_mode)
+        )
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        os.close(directory_fd)
+
+
+def _publish_receipt(
+    target: ActivationTargetPlan, data: bytes, *, uid: int, gid: int, mode: int
+) -> None:
+    directory_fd = _receipt_directory_fd(target)
+    temporary = f".runtime-binding.{secrets.token_hex(16)}.tmp"
+    descriptor: int | None = None
+    created: tuple[int, int] | None = None
+    try:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=directory_fd,
+        )
+        info = os.fstat(descriptor)
+        created = (info.st_dev, info.st_ino)
+        os.fchown(descriptor, uid, gid)
+        os.fchmod(descriptor, mode)
+        view = memoryview(data)
+        while view:
+            written = os.write(descriptor, view)
+            view = view[written:]
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = None
+        os.replace(
+            temporary, "runtime-binding.json", src_dir_fd=directory_fd, dst_dir_fd=directory_fd
+        )
+        created = None
+        os.fsync(directory_fd)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if created is not None:
+            with suppress(FileNotFoundError):
+                leftover = os.stat(temporary, dir_fd=directory_fd, follow_symlinks=False)
+                if (leftover.st_dev, leftover.st_ino) == created:
+                    os.unlink(temporary, dir_fd=directory_fd)
+        os.close(directory_fd)
+
+
 def _write_receipt(target: ActivationTargetPlan, readback: ConfigSnapshot) -> None:
-    local = target.profile_path / "local"
-    agentporter = local / "agentporter"
-    for directory in (local, agentporter):
-        directory.mkdir(mode=0o700, exist_ok=True)
-        if directory.is_symlink() or not directory.is_dir():
-            raise ValueError("receipt directory is unsafe")
-        directory.chmod(0o700)
     payload = {
         **target.binding.safe_receipt().as_dict(),
         "config_digest": readback.digest,
@@ -328,36 +524,35 @@ def _write_receipt(target: ActivationTargetPlan, readback: ConfigSnapshot) -> No
         "canary_status": "required",
     }
     data = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
-    directory_fd = os.open(agentporter, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    temporary = ".runtime-binding.tmp"
-    descriptor: int | None = None
-    try:
-        with suppress(FileNotFoundError):
-            os.unlink(temporary, dir_fd=directory_fd)
-        descriptor = os.open(
-            temporary,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-            0o600,
-            dir_fd=directory_fd,
-        )
-        os.write(descriptor, data)
-        os.fsync(descriptor)
-        os.close(descriptor)
-        descriptor = None
-        os.replace(
-            temporary,
-            "runtime-binding.json",
-            src_dir_fd=directory_fd,
-            dst_dir_fd=directory_fd,
-        )
-        os.chmod("runtime-binding.json", 0o600, dir_fd=directory_fd, follow_symlinks=False)
-        os.fsync(directory_fd)
-    finally:
-        if descriptor is not None:
-            os.close(descriptor)
-        with suppress(FileNotFoundError):
-            os.unlink(temporary, dir_fd=directory_fd)
-        os.close(directory_fd)
+    existing = _receipt_snapshot(target)
+    _publish_receipt(
+        target,
+        data,
+        uid=existing.uid if existing.exists else os.geteuid(),
+        gid=existing.gid if existing.exists else os.getegid(),
+        mode=0o600,
+    )
+
+
+def _restore_receipts(snapshots: list[tuple[ActivationTargetPlan, _ReceiptSnapshot]]) -> int:
+    residue = 0
+    for target, snapshot in reversed(snapshots):
+        try:
+            if snapshot.exists:
+                _publish_receipt(
+                    target, snapshot.content, uid=snapshot.uid, gid=snapshot.gid, mode=snapshot.mode
+                )
+            else:
+                directory_fd = _receipt_directory_fd(target)
+                try:
+                    with suppress(FileNotFoundError):
+                        os.unlink("runtime-binding.json", dir_fd=directory_fd)
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+        except (OSError, ValueError):
+            residue += 1
+    return residue
 
 
 def apply_activation(
@@ -376,8 +571,8 @@ def apply_activation(
         return ActivationResult(ActivationStatus.CANCELLED)
     try:
         for target in plan.bindings:
-            if not _target_is_bound(target) or (
-                _read_config(target.profile_path).digest != target.original_config.digest
+            if not _target_is_bound(target) or not _same_config(
+                _read_config(target.profile_path), target.original_config
             ):
                 return ActivationResult(ActivationStatus.STALE)
     except ValueError:
@@ -385,17 +580,18 @@ def apply_activation(
 
     attempted: list[ActivationTargetPlan] = []
     readbacks: list[ConfigSnapshot] = []
+    receipt_snapshots: list[tuple[ActivationTargetPlan, _ReceiptSnapshot]] = []
     try:
+        receipt_snapshots = [(target, _receipt_snapshot(target)) for target in plan.bindings]
         for index, target in enumerate(plan.bindings):
-            if not _target_is_bound(target) or (
-                _read_config(target.profile_path).digest != target.original_config.digest
-            ):
+            current = _read_config(target.profile_path)
+            if not _target_is_bound(target) or not _same_config(current, target.original_config):
                 raise ValueError("activation target changed before write")
-            _atomic_write(target.profile_path, _updated_payload(target))
+            # Register before publication so a post-replace identity failure is compensable.
             attempted.append(target)
+            readback = _atomic_write_target(target, _updated_payload(target), current)
             if after_write is not None:
                 after_write(target, index)
-            readback = _read_config(target.profile_path)
             if (
                 readback.model != target.expected_model
                 or readback.provider != target.binding.provider_id
@@ -405,10 +601,21 @@ def apply_activation(
             readbacks.append(readback)
         for target, readback in zip(plan.bindings, readbacks, strict=True):
             _write_receipt(target, readback)
-    except BaseException:
-        residue = _restore(attempted)
+    except Exception:
+        residue = _restore(attempted) + _restore_receipts(receipt_snapshots)
         status = ActivationStatus.COMPENSATION_INCOMPLETE if residue else ActivationStatus.FAILED
         return ActivationResult(status, residue_count=residue)
+    except BaseException as original:
+        try:
+            residue = _restore(attempted) + _restore_receipts(receipt_snapshots)
+        except BaseException:
+            residue = max(1, len(attempted))
+        original.add_note(
+            "AgentPorter activation compensation was incomplete; manual review required."
+            if residue
+            else "AgentPorter activation was compensated."
+        )
+        raise
 
     items = tuple(
         ActivationItemResult(target.component_id, target.profile_name, True)

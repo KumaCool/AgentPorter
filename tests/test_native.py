@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -118,6 +119,85 @@ def test_install_uses_v020_exact_source_yes_argv_without_alias_force_or_name(
         env,
     )
     assert not {"--alias", "--force", "--name"} & set(outcome.argv)
+
+
+@pytest.mark.parametrize(
+    ("force_config", "expected_tail"),
+    [(False, ("--yes",)), (True, ("--force-config", "--yes"))],
+)
+def test_update_uses_v020_distribution_semantics(
+    tmp_path: Path, force_config: bool, expected_tail: tuple[str, ...]
+) -> None:
+    native, runner, found, env = adapter(tmp_path, [completed()])
+
+    outcome = native.update("porter-review", force_config=force_config)
+
+    assert outcome.status is CommandStatus.SUCCEEDED
+    assert_safe_call(
+        runner,
+        (str(found.executable), "profile", "update", "porter-review", *expected_tail),
+        env,
+    )
+
+
+def test_actual_v020_distribution_update_preserves_config_and_local_receipt(
+    tmp_path: Path,
+) -> None:
+    executable_value = shutil.which("hermes")
+    if executable_value is None:
+        pytest.skip("Hermes CLI is unavailable")
+    executable = Path(executable_value).resolve()
+    home = tmp_path / "hermes-home"
+    profiles = home / "profiles"
+    profiles.mkdir(parents=True)
+    source = tmp_path / "distribution" / "phase-b-fixture"
+    source.mkdir(parents=True)
+    (source / "distribution.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "name": "phase-b-fixture",
+                "version": "1.0.0",
+                "description": "Phase B lifecycle fixture",
+                "distribution_owned": ["SOUL.md", "config.yaml"],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    (source / "SOUL.md").write_text("version one\n", encoding="utf-8")
+    (source / "config.yaml").write_text("model:\n  default: fixture-v1\n", encoding="utf-8")
+    env = {
+        "HOME": str(tmp_path / "user"),
+        "HERMES_HOME": str(home),
+        "PATH": os.environ["PATH"],
+    }
+    found = HermesDetection(
+        executable,
+        "0.20.0",
+        home,
+        profiles,
+        HermesCapabilities(frozenset({"install", "update"}), frozenset()),
+        (),
+    )
+    native = NativeHermesAdapter(CommandExecutor(timeout_seconds=20), env, found)
+    installed = native.install(WorkerStub(profile_name="phase-b-fixture"), PlanStub(source.parent))
+    assert installed.status is CommandStatus.SUCCEEDED
+    profile = profiles / "phase-b-fixture"
+    config = profile / "config.yaml"
+    config.write_text("model:\n  default: operator-value\n", encoding="utf-8")
+    receipt = profile / "local" / "agentporter" / "runtime-binding.json"
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text('{"fixture":true}\n', encoding="utf-8")
+    (source / "SOUL.md").write_text("version two\n", encoding="utf-8")
+    (source / "config.yaml").write_text("model:\n  default: fixture-v2\n", encoding="utf-8")
+
+    assert native.update("phase-b-fixture").status is CommandStatus.SUCCEEDED
+    assert config.read_text() == "model:\n  default: operator-value\n"
+    assert receipt.read_text() == '{"fixture":true}\n'
+    assert (profile / "SOUL.md").read_text() == "version two\n"
+    assert native.update("phase-b-fixture", force_config=True).status is CommandStatus.SUCCEEDED
+    assert config.read_text() == "model:\n  default: fixture-v2\n"
+    assert receipt.read_text() == '{"fixture":true}\n'
 
 
 def test_install_preserves_nonzero_and_timeout_as_command_outcomes(tmp_path: Path) -> None:

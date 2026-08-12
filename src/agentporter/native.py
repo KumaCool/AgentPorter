@@ -217,6 +217,19 @@ class NativeHermesAdapter:
         argv = (str(self._detection.executable), "profile", "info", safe_name)
         return self._run("distribution info", argv, env)
 
+    def update(
+        self,
+        name: str,
+        *,
+        force_config: bool = False,
+        env: Mapping[str, str] | None = None,
+    ) -> CommandOutcome:
+        """Update a Hermes v0.20 Distribution, preserving user data by default."""
+        safe_name = self._profile_name(name)
+        options = ("--force-config", "--yes") if force_config else ("--yes",)
+        argv = (str(self._detection.executable), "profile", "update", safe_name, *options)
+        return self._run("distribution update", argv, env)
+
     def read_distribution_info(
         self, worker: _Worker, *, env: Mapping[str, str] | None = None
     ) -> Mapping[str, object]:
