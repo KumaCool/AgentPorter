@@ -6,13 +6,15 @@ from uuid import UUID
 
 import yaml
 
-from agentporter.identity import COMPONENT_IDS, PRODUCT_ID
+from agentporter.identity import INSTALL_COMPONENT_IDS, PRODUCT_ID
 from agentporter.manifest import load_manifest
 from agentporter.models import MarkerV1
 from agentporter.render import render_staging
 
 
-def test_render_staging_produces_minimal_valid_artifacts_for_both_workers(tmp_path: Path) -> None:
+def test_render_staging_produces_three_profiles_with_isolated_orchestrator_control(
+    tmp_path: Path,
+) -> None:
     manifest = load_manifest(Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml")
     installation_id = UUID("12345678-1234-4abc-8def-1234567890ab")
 
@@ -21,6 +23,7 @@ def test_render_staging_produces_minimal_valid_artifacts_for_both_workers(tmp_pa
     assert [item.profile_name for item in rendered] == [
         "luna_worker",
         "codex-5-3-small-worker",
+        "agentporter-orchestrator",
     ]
     markers: list[MarkerV1] = []
     for item in rendered:
@@ -43,7 +46,7 @@ def test_render_staging_produces_minimal_valid_artifacts_for_both_workers(tmp_pa
             "agentporter-profile.json",
         ]
         assert distribution["license"] == "MIT"
-        assert set(config) == {"model", "agent"}
+        assert {"model", "agent"} <= set(config)
         assert "provider" not in config["model"]
         soul = (item.directory / "SOUL.md").read_text()
         assert "Do not change the delegated objective" in soul
@@ -51,9 +54,27 @@ def test_render_staging_produces_minimal_valid_artifacts_for_both_workers(tmp_pa
         assert "report the exact blocker" in soul
         assert "Never invent results" in soul
 
+    orchestrator = rendered[2].directory
+    orchestrator_config = yaml.safe_load((orchestrator / "config.yaml").read_text())
+    assert set(orchestrator_config) == {"model", "agent", "kanban", "platform_toolsets"}
+    assert orchestrator_config["kanban"] == {
+        "auto_decompose": False,
+        "max_in_progress_per_profile": 1,
+        "dispatch_interval_seconds": 10,
+        "orchestrator_profile": "agentporter-orchestrator",
+        "auto_subscribe_on_create": True,
+    }
+    assert "default_assignee" not in orchestrator_config["kanban"]
+    assert orchestrator_config["platform_toolsets"] == {"cli": ["kanban"]}
+    for worker in rendered[:2]:
+        worker_config = yaml.safe_load((worker.directory / "config.yaml").read_text())
+        assert "kanban" not in worker_config
+        assert "platform_toolsets" not in worker_config
+    assert "does not execute" in (orchestrator / "SOUL.md").read_text(encoding="utf-8").lower()
+
     assert {marker.installation_id for marker in markers} == {str(installation_id)}
     assert {marker.product_id for marker in markers} == {PRODUCT_ID}
-    assert {marker.component_id for marker in markers} == set(COMPONENT_IDS.values())
+    assert {marker.component_id for marker in markers} == set(INSTALL_COMPONENT_IDS.values())
     for marker in markers:
         payload = json.loads(marker.model_dump_json())
         assert len(payload) == 5

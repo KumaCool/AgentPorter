@@ -11,9 +11,14 @@ COMPONENT_IDS: Final[Mapping[str, str]] = MappingProxyType(
         "codex_5_3_small_worker": "7dab98fb-9ac0-44fa-90fb-4a4f30e1470c",
     }
 )
+ORCHESTRATOR_COMPONENT_ID: Final = "ee21f7f8-5a9d-4cf2-9e57-2508034cadc7"
+INSTALL_COMPONENT_IDS: Final[Mapping[str, str]] = MappingProxyType(
+    {**COMPONENT_IDS, "agentporter_orchestrator": ORCHESTRATOR_COMPONENT_ID}
+)
 INITIAL_PROFILE_NAMES: Final[Mapping[str, str]] = MappingProxyType(
     {
         "luna_worker": "luna_worker",
         "codex_5_3_small_worker": "codex-5-3-small-worker",
+        "agentporter_orchestrator": "agentporter-orchestrator",
     }
 )

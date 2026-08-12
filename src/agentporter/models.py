@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator
 
-from .identity import COMPONENT_IDS
+from .identity import INSTALL_COMPONENT_IDS
 
 _PORTABLE_ID = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _PROFILE_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -42,7 +42,7 @@ class ClosedModel(BaseModel):
 
 class WorkerDefinition(ClosedModel):
     display_name: NonEmptyString
-    tier: Literal["bounded", "mechanical"]
+    tier: Literal["bounded", "mechanical", "orchestrator"]
     model: NonEmptyString
     provider: NonEmptyString | None = None
     reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]
@@ -58,7 +58,7 @@ class WorkersManifest(ClosedModel):
     @field_validator("workers")
     @classmethod
     def validate_ids(cls, value: dict[str, WorkerDefinition]) -> dict[str, WorkerDefinition]:
-        if tuple(value) != tuple(COMPONENT_IDS):
+        if tuple(value) != tuple(INSTALL_COMPONENT_IDS):
             raise ValueError(
                 "workers must exactly match the identity registry in declaration order"
             )

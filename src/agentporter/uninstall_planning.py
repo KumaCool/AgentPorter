@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Generic, Protocol, TextIO, TypeVar, cast
 from uuid import UUID
 
-from .identity import COMPONENT_IDS, PRODUCT_ID
+from .identity import COMPONENT_IDS, INSTALL_COMPONENT_IDS, PRODUCT_ID
 from .models import HermesProfileName, MarkerV1
 from .uninstall_discovery import (
     MARKER_NAME,
@@ -214,7 +214,8 @@ def build_uninstall_plan(
             return _invalid_plan()
         home = candidates[0].hermes_home
         root = candidates[0].profiles_root
-    if len(candidates) != len(COMPONENT_IDS):
+    allowed_sets = (tuple(COMPONENT_IDS.values()), tuple(INSTALL_COMPONENT_IDS.values()))
+    if len(candidates) not in {len(item) for item in allowed_sets}:
         return _invalid_plan()
 
     try:
@@ -227,7 +228,11 @@ def build_uninstall_plan(
     if executable_identity[2] != stat.S_IFREG:
         return _invalid_plan()
 
-    expected = tuple(COMPONENT_IDS.values())
+    observed_components = {candidate.component_id for candidate in candidates}
+    try:
+        expected = next(item for item in allowed_sets if set(item) == observed_components)
+    except StopIteration:
+        return _invalid_plan()
     by_component: dict[str, UninstallCandidate] = {}
     for candidate in candidates:
         if candidate.component_id in by_component:

@@ -114,17 +114,20 @@ def test_each_profile_is_described_and_fully_read_back_before_next_install(tmp_p
         validate_collection=native.validate_collection,
     )
 
-    first, second = (worker.profile_name for worker in plan.workers)
+    first, second, third = (worker.profile_name for worker in plan.workers)
     assert result.status is InstallWorkflowStatus.SUCCEEDED
-    assert len(result.confirmed_created) == 2
-    assert len(result.verified_compensable) == 2
+    assert len(result.confirmed_created) == 3
+    assert len(result.verified_compensable) == 3
     assert native.events.index(f"read-description:{first}") < native.events.index(
         f"install:{second}"
     )
     assert native.events.index(
         f"describe:{first}:{plan.workers[0].description}"
     ) < native.events.index(f"info:{first}")
-    assert native.events.index(f"read-description:{second}") < len(native.events) - 1
+    assert native.events.index(f"read-description:{second}") < native.events.index(
+        f"install:{third}"
+    )
+    assert native.events.index(f"read-description:{third}") < len(native.events) - 1
     assert native.events[-1] == "collection"
 
 
@@ -237,5 +240,5 @@ def test_collection_failure_keeps_all_per_item_readbacks(tmp_path: Path) -> None
     )
 
     assert result.status is InstallWorkflowStatus.COLLECTION_FAILED
-    assert len(result.confirmed_created) == 2
-    assert len(result.verified_compensable) == 2
+    assert len(result.confirmed_created) == 3
+    assert len(result.verified_compensable) == 3

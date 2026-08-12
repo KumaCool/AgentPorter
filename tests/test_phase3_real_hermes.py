@@ -220,7 +220,7 @@ def test_real_hermes_second_install_failure_compensates_verified_first_profile(
 
     result = _transaction(plan, native, executor, env, runner)
 
-    first, second = plan.workers
+    first, second, _orchestrator = plan.workers
     assert result.status is InstallTransactionStatus.INSTALLATION_FAILED_COMPENSATED
     assert result.install.status is InstallWorkflowStatus.ATTEMPT_NO_REMNANT
     assert [item.worker.profile_name for item in result.install.verified_compensable] == [
@@ -244,7 +244,7 @@ def test_real_hermes_nonzero_after_first_install_is_uncertain_and_never_product_
 
     result = _transaction(plan, native, executor, env, runner)
 
-    first, second = plan.workers
+    first, second, _orchestrator = plan.workers
     assert result.install.status is InstallWorkflowStatus.UNCERTAIN_REMNANT
     assert result.install.verified_compensable == ()
     assert result.status is InstallTransactionStatus.COMPENSATION_INCOMPLETE

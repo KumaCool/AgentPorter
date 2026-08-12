@@ -127,17 +127,15 @@ def _run(
 def test_compensates_in_reverse_order_with_native_argv_and_double_readback(tmp_path: Path) -> None:
     detection, readbacks = _fixtures(tmp_path)
     targets = [item.snapshot.path for item in readbacks]
-    executor = FakeExecutor(
-        [_outcome(CommandStatus.SUCCEEDED, 0), _outcome(CommandStatus.SUCCEEDED, 0)], targets
-    )
+    executor = FakeExecutor([_outcome(CommandStatus.SUCCEEDED, 0) for _ in readbacks], targets)
 
     result = _run(detection, readbacks, executor)
 
     assert result.status == "compensated"
-    assert [item.status for item in result.items] == ["deleted", "deleted"]
+    assert [item.status for item in result.items] == ["deleted"] * len(readbacks)
     assert [call[0] for call in executor.calls] == [
-        (str(detection.executable), "profile", "delete", readbacks[1].snapshot.basename, "--yes"),
-        (str(detection.executable), "profile", "delete", readbacks[0].snapshot.basename, "--yes"),
+        (str(detection.executable), "profile", "delete", item.snapshot.basename, "--yes")
+        for item in reversed(readbacks)
     ]
     assert all(
         call_env["HERMES_HOME"] == str(detection.hermes_home) for _, call_env in executor.calls

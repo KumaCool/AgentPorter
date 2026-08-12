@@ -17,11 +17,12 @@ import yaml
 from pydantic import ValidationError
 
 from .hermes import DetectionError, HermesDetection, ProfileEntryKind
-from .identity import COMPONENT_IDS, INITIAL_PROFILE_NAMES
+from .identity import COMPONENT_IDS, INITIAL_PROFILE_NAMES, INSTALL_COMPONENT_IDS
 from .manifest import load_manifest
 from .models import WorkersManifest
 from .render import DISTRIBUTION_OWNED, render_staging
 from .security import StagingViolation, scan_staging
+from .uninstall_discovery import DiscoveryResult, DiscoveryStatus
 
 PlanStatus = Literal["ready", "configuration-required", "unsupported", "conflict", "invalid"]
 RuntimeConfiguration = Literal[
@@ -149,7 +150,7 @@ def _worker_plans(
         plans.append(
             WorkerInstallPlan(
                 portable_id=portable_id,
-                component_id=COMPONENT_IDS[portable_id],
+                component_id=INSTALL_COMPONENT_IDS[portable_id],
                 profile_name=INITIAL_PROFILE_NAMES[portable_id],
                 display_name=worker.display_name,
                 model=worker.model,
@@ -413,6 +414,7 @@ def plan_installation(
     installation_id_factory: Callable[[], UUID] = uuid4,
     staging_scanner: Callable[[Path], object] = scan_staging,
     provider_selection: Mapping[str, str] | None = None,
+    existing_installation: DiscoveryResult | None = None,
 ) -> InstallPlan:
     try:
         manifest = load_manifest(manifest_path)
@@ -420,6 +422,34 @@ def plan_installation(
     except (OSError, UnicodeError, yaml.YAMLError, ValidationError, ValueError):
         return _base_plan(detection, status="invalid", reason="manifest is invalid")
     workers = _worker_plans(manifest, selected)
+    installation_id_override: str | None = None
+    if existing_installation is not None:
+        legacy_components = set(tuple(COMPONENT_IDS.values())[:2])
+        if (
+            existing_installation.status is not DiscoveryStatus.READY
+            or existing_installation.findings
+            or {target.component_id for target in existing_installation.targets}
+            != legacy_components
+            or len({target.installation_id for target in existing_installation.targets}) != 1
+        ):
+            return _base_plan(
+                detection,
+                status="conflict",
+                reason="legacy installation is not upgradable",
+            )
+        installation_id_override = existing_installation.targets[0].installation_id
+        workers = tuple(
+            worker for worker in workers if worker.portable_id == "agentporter_orchestrator"
+        )
+        manifest = manifest.model_copy(
+            update={
+                "workers": {
+                    key: value
+                    for key, value in manifest.workers.items()
+                    if key == "agentporter_orchestrator"
+                }
+            }
+        )
     if not detection.capabilities.supports_required_profile_commands:
         return _base_plan(
             detection,
@@ -454,7 +484,7 @@ def plan_installation(
 
     staging_dir: Path | None = None
     staging_identity: StagingIdentity | None = None
-    installation_id = str(installation_id_factory())
+    installation_id = installation_id_override or str(installation_id_factory())
     try:
         staging_parent.mkdir(parents=True, exist_ok=True)
         staging_dir = Path(tempfile.mkdtemp(prefix="agentporter-", dir=staging_parent))

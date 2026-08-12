@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 import yaml
 from pydantic import ValidationError
 
-from .identity import COMPONENT_IDS, INITIAL_PROFILE_NAMES, PRODUCT_ID
+from .identity import INITIAL_PROFILE_NAMES, INSTALL_COMPONENT_IDS, PRODUCT_ID
 from .models import MarkerV1
 from .render import DISTRIBUTION_OWNED, DISTRIBUTION_VERSION
 
@@ -222,13 +222,17 @@ def _validate_distribution(data: object, profile_name: str) -> None:
             raise ValueError(key)
 
 
-def _validate_config(data: object) -> None:
+def _validate_config(data: object, profile_name: str) -> None:
     if not isinstance(data, dict):
         raise ValueError("config shape")
     config = cast(dict[object, object], data)
     if not all(isinstance(key, str) for key in config):
         raise ValueError("config shape")
-    if set(config) != {"model", "agent"}:
+    expected = {"model", "agent"}
+    orchestrator = profile_name == INITIAL_PROFILE_NAMES["agentporter_orchestrator"]
+    if orchestrator:
+        expected |= {"kanban", "platform_toolsets"}
+    if set(config) != expected:
         raise ValueError("config shape")
     model = config["model"]
     agent = config["agent"]
@@ -248,12 +252,18 @@ def _validate_config(data: object) -> None:
         raise ValueError("agent shape")
     if set(typed_agent) != {"reasoning_effort"}:
         raise ValueError("agent shape")
+    if orchestrator:
+        from .render import ORCHESTRATOR_CONFIG
+
+        if config["kanban"] != ORCHESTRATOR_CONFIG:
+            raise ValueError("kanban shape")
+        if config["platform_toolsets"] != {"cli": ["kanban"]}:
+            raise ValueError("platform toolsets shape")
 
 
 def scan_staging(staging_root: Path) -> tuple[()]:
     if not _descriptor_scan_supported():
         _fail("unsafe-path", Path("."))
-    expected_profiles = set(INITIAL_PROFILE_NAMES.values())
     actual_profiles: set[str] = set()
     installation_ids: set[str] = set()
     try:
@@ -275,7 +285,7 @@ def scan_staging(staging_root: Path) -> tuple[()]:
                         "symlink" if stat.S_ISLNK(profile_before.st_mode) else "unexpected-path"
                     )
                     _fail(category, relative)
-                if profile_name not in expected_profiles:
+                if profile_name not in INITIAL_PROFILE_NAMES.values():
                     _fail("unexpected-path", relative)
                 profile_fd = _open_verified_directory(entry, profile_before)
             except OSError:
@@ -315,7 +325,7 @@ def scan_staging(staging_root: Path) -> tuple[()]:
                     os.close(profile_fd)
             try:
                 _validate_distribution(parsed["distribution.yaml"], profile_name)
-                _validate_config(parsed["config.yaml"])
+                _validate_config(parsed["config.yaml"], profile_name)
                 marker = MarkerV1.model_validate_json(snapshots["agentporter-profile.json"])
                 portable_id = next(
                     key
@@ -324,7 +334,7 @@ def scan_staging(staging_root: Path) -> tuple[()]:
                 )
                 if (
                     marker.product_id != PRODUCT_ID
-                    or marker.component_id != COMPONENT_IDS[portable_id]
+                    or marker.component_id != INSTALL_COMPONENT_IDS[portable_id]
                 ):
                     raise ValueError("marker identity")
                 installation_ids.add(marker.installation_id)
@@ -335,7 +345,11 @@ def scan_staging(staging_root: Path) -> tuple[()]:
     finally:
         if root_fd is not None:
             os.close(root_fd)
-    if actual_profiles != expected_profiles:
+    allowed_profile_sets = {
+        frozenset(INITIAL_PROFILE_NAMES.values()),
+        frozenset({INITIAL_PROFILE_NAMES["agentporter_orchestrator"]}),
+    }
+    if frozenset(actual_profiles) not in allowed_profile_sets:
         _fail("unexpected-path", Path("."))
     if len(installation_ids) != 1:
         _fail("invalid-schema", Path("."))

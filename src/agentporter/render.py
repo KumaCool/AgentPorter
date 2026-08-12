@@ -7,8 +7,17 @@ from uuid import UUID
 
 import yaml
 
-from .identity import COMPONENT_IDS, INITIAL_PROFILE_NAMES, PRODUCT_ID
+from .identity import INITIAL_PROFILE_NAMES, INSTALL_COMPONENT_IDS, PRODUCT_ID
 from .models import HermesProfileName, MarkerV1, WorkersManifest
+
+ORCHESTRATOR_ID = "agentporter_orchestrator"
+ORCHESTRATOR_CONFIG = {
+    "auto_decompose": False,
+    "max_in_progress_per_profile": 1,
+    "dispatch_interval_seconds": 10,
+    "orchestrator_profile": "agentporter-orchestrator",
+    "auto_subscribe_on_create": True,
+}
 
 DISTRIBUTION_VERSION = "0.1.3"
 DISTRIBUTION_OWNED = ("SOUL.md", "config.yaml", "agentporter-profile.json")
@@ -55,11 +64,17 @@ def render_staging(
         model_config = {"default": worker.model}
         if worker.provider is not None:
             model_config["provider"] = worker.provider
-        config = {"model": model_config, "agent": {"reasoning_effort": worker.reasoning_effort}}
+        config: dict[str, object] = {
+            "model": model_config,
+            "agent": {"reasoning_effort": worker.reasoning_effort},
+        }
+        if portable_id == ORCHESTRATOR_ID:
+            config["kanban"] = dict(ORCHESTRATOR_CONFIG)
+            config["platform_toolsets"] = {"cli": ["kanban"]}
         marker = MarkerV1(
             schema_version=1,
             product_id=PRODUCT_ID,
-            component_id=COMPONENT_IDS[portable_id],
+            component_id=INSTALL_COMPONENT_IDS[portable_id],
             installation_id=canonical_installation_id,
             distribution_version=DISTRIBUTION_VERSION,
         )

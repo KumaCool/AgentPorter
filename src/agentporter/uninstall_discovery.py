@@ -12,7 +12,7 @@ from typing import Final, cast
 
 from pydantic import ValidationError
 
-from .identity import COMPONENT_IDS, PRODUCT_ID
+from .identity import COMPONENT_IDS, INSTALL_COMPONENT_IDS, PRODUCT_ID
 from .models import MarkerV1
 
 MARKER_NAME: Final = "agentporter-profile.json"
@@ -326,7 +326,7 @@ def discover_installation(profiles_root: Path) -> DiscoveryResult:
                 assert marker is not None
                 if marker.product_id != PRODUCT_ID:
                     continue
-                if marker.component_id not in COMPONENT_IDS.values():
+                if marker.component_id not in INSTALL_COMPONENT_IDS.values():
                     findings.append(
                         _finding(FindingCode.UNKNOWN_COMPONENT, marker_path, "unknown component")
                     )
@@ -357,7 +357,8 @@ def discover_installation(profiles_root: Path) -> DiscoveryResult:
     if not matching and not findings:
         return DiscoveryResult(DiscoveryStatus.ALREADY_ABSENT, (), ())
 
-    expected = set(COMPONENT_IDS.values())
+    current = set(INSTALL_COMPONENT_IDS.values())
+    legacy = set(COMPONENT_IDS.values())
     by_installation: dict[str, list[Target]] = defaultdict(list)
     for target in matching:
         by_installation[target.marker.installation_id].append(target)
@@ -372,8 +373,8 @@ def discover_installation(profiles_root: Path) -> DiscoveryResult:
                     f"duplicate component {component_id} in installation {installation_id}",
                 )
             )
-        missing = expected - set(counts)
-        if missing:
+        observed = set(counts)
+        if observed != legacy and observed != current:
             findings.append(
                 _finding(
                     FindingCode.INCOMPLETE,
@@ -384,8 +385,8 @@ def discover_installation(profiles_root: Path) -> DiscoveryResult:
     complete = [
         installation_id
         for installation_id, targets in by_installation.items()
-        if len(targets) == len(expected)
-        and {target.marker.component_id for target in targets} == expected
+        if {target.marker.component_id for target in targets} in (legacy, current)
+        and len(targets) == len({target.marker.component_id for target in targets})
     ]
     if len(complete) > 1:
         findings.append(

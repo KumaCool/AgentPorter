@@ -23,7 +23,11 @@ def test_repository_manifest_is_closed_and_typed() -> None:
     assert isinstance(manifest, WorkersManifest)
     assert manifest.version == 1
     assert manifest.project == "agentporter"
-    assert list(manifest.workers) == ["luna_worker", "codex_5_3_small_worker"]
+    assert list(manifest.workers) == [
+        "luna_worker",
+        "codex_5_3_small_worker",
+        "agentporter_orchestrator",
+    ]
     assert manifest.workers["luna_worker"].tier == "bounded"
     assert manifest.workers["codex_5_3_small_worker"].provider is None
 

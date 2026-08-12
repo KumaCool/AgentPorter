@@ -108,10 +108,7 @@ def test_deletes_each_target_in_plan_order_with_exact_native_argv(tmp_path: Path
 
     names = [target.current_name for target in plan.targets]
     assert result.status is UninstallExecutionStatus.DELETED
-    assert [item.status for item in result.items] == [
-        UninstallItemStatus.DELETED,
-        UninstallItemStatus.DELETED,
-    ]
+    assert [item.status for item in result.items] == [UninstallItemStatus.DELETED] * len(names)
     assert validations == names
     assert calls == [(str(executable), "profile", "delete", name, "--yes") for name in names]
 

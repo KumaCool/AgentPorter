@@ -48,7 +48,7 @@ def candidates(tmp_path: Path) -> tuple[Candidate, Candidate]:
     root = home / "profiles"
     installation_id = str(uuid4())
     result = []
-    for index, (portable_id, component_id) in enumerate(COMPONENT_IDS.items(), start=1):
+    for index, (portable_id, component_id) in enumerate(tuple(COMPONENT_IDS.items())[:2], start=1):
         name = f"renamed-{portable_id.replace('_', '-')}"
         result.append(
             Candidate(

@@ -21,7 +21,7 @@ import yaml
 import agentporter
 import agentporter.application as install_application
 from agentporter.execution import CommandExecutor
-from agentporter.identity import COMPONENT_IDS, INITIAL_PROFILE_NAMES, PRODUCT_ID
+from agentporter.identity import INITIAL_PROFILE_NAMES, INSTALL_COMPONENT_IDS, PRODUCT_ID
 from agentporter.models import MarkerV1, WorkersManifest
 from agentporter.render import DISTRIBUTION_VERSION
 from agentporter.uninstall_application import UninstallerStatus
@@ -29,7 +29,11 @@ from agentporter.uninstall_application import UninstallerStatus
 HERMES = Path("/usr/local/lib/hermes-agent/venv/bin/hermes")
 MANIFEST = Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml"
 uninstall_entry = importlib.import_module("agentporter.uninstall_entry")
-RENAMED = ("phase5-renamed-luna", "phase5-renamed-codex")
+RENAMED = (
+    "phase5-renamed-luna",
+    "phase5-renamed-codex",
+    "phase5-renamed-orchestrator",
+)
 REAL_RUN_INSTALLER = install_application.run_installer
 REAL_RUN_UNINSTALLER = uninstall_entry.run_uninstaller
 GNU_TIME = Path("/usr/bin/time")
@@ -42,21 +46,26 @@ def _expected_families() -> tuple[str, ...]:
         "profile-info",
         "profile-describe",
     )
+    installed_readback = (
+        "profile-info",
+        "profile-show",
+        "profile-describe",
+    )
     return (
         *install_worker,
         *install_worker,
+        *install_worker,
         "profile-list",
-        "profile-info",
-        "profile-show",
-        "profile-describe",
-        "profile-info",
-        "profile-show",
-        "profile-describe",
+        *installed_readback,
+        *installed_readback,
+        *installed_readback,
         "kanban-create-help",
+        "profile-rename",
         "profile-rename",
         "profile-rename",
         "profile-list",
         "kanban-assignees-json",
+        "profile-delete",
         "profile-delete",
         "profile-delete",
         "profile-list",
@@ -311,10 +320,22 @@ def _assert_exact_static_readback(env: Mapping[str, str], names: Sequence[str]) 
         expected_model: dict[str, str] = {"default": worker.model}
         if worker.provider is not None:
             expected_model["provider"] = worker.provider
-        assert config == {
+        expected_config: dict[str, object] = {
             "model": expected_model,
             "agent": {"reasoning_effort": worker.reasoning_effort},
         }
+        if portable_id == "agentporter_orchestrator":
+            expected_config.update(
+                kanban={
+                    "auto_decompose": False,
+                    "max_in_progress_per_profile": 1,
+                    "dispatch_interval_seconds": 10,
+                    "orchestrator_profile": "agentporter-orchestrator",
+                    "auto_subscribe_on_create": True,
+                },
+                platform_toolsets={"cli": ["kanban"]},
+            )
+        assert config == expected_config
         soul_lines = [
             worker.instructions.rstrip(),
             "",
@@ -340,7 +361,7 @@ def _assert_exact_static_readback(env: Mapping[str, str], names: Sequence[str]) 
         assert isinstance(distribution["source"], str)
         assert isinstance(distribution["installed_at"], str)
         assert marker.product_id == PRODUCT_ID
-        assert marker.component_id == COMPONENT_IDS[portable_id]
+        assert marker.component_id == INSTALL_COMPONENT_IDS[portable_id]
         assert marker.distribution_version == DISTRIBUTION_VERSION
         installation_ids.add(marker.installation_id)
     assert len(installation_ids) == 1
@@ -370,7 +391,7 @@ def test_formal_entries_real_hermes_cold_hot_acceptance_and_resource_baseline(
 
             install_output, install_seconds = _install_formally(monkeypatch, env, runner)
             assert "Model calls: false" in install_output
-            assert len(runner.profile_install_seconds) == 2
+            assert len(runner.profile_install_seconds) == 3
 
             foreign_cwd = cycle_root / "different-project" / "nested"
             foreign_cwd.mkdir(parents=True)
@@ -543,7 +564,7 @@ def test_closed_grammar_rejects_mismatched_description_and_nested_staging_source
     staging.mkdir()
     runner.watch_staging(staging)
     pairs = sorted(_profile_description_pairs())
-    assert len(pairs) == 2
+    assert len(pairs) == 3
 
     with pytest.raises(AssertionError):
         _command_family(

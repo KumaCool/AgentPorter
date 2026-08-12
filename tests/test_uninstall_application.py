@@ -21,7 +21,7 @@ REQUIRED = frozenset({"install", "delete", "describe", "list", "info"})
 
 def _write_installation(root: Path) -> tuple[str, ...]:
     names = ("batch-renamed-luna", "batch-renamed-orion")
-    for name, component_id in zip(names, COMPONENT_IDS.values(), strict=True):
+    for name, component_id in zip(names, tuple(COMPONENT_IDS.values())[:2], strict=True):
         profile = root / name
         profile.mkdir(parents=True)
         (profile / "agentporter-profile.json").write_text(
