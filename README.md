@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
 
 AgentPorter is an open-source deployment kit for a reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) multi-agent Worker team. It installs role-specific Profiles in one run and is evolving toward verified task decomposition and routing through Hermes-native Kanban orchestration.
 
-> **Current capability:** v0.1.1 safely installs and uninstalls the two-Profile Worker foundation. It writes routing descriptions and Hermes can enumerate both assignees, but AgentPorter has not yet configured or accepted automatic decomposition, dispatcher execution, or live Worker routing. That is the next implementation plan—not a current release claim.
+> **Current capability:** v0.1.2 safely installs and uninstalls the two-Profile Worker foundation. It writes routing descriptions and Hermes can enumerate both assignees, but AgentPorter has not yet configured or accepted automatic decomposition, dispatcher execution, or live Worker routing. That is the next implementation plan—not a current release claim.
 
 ## One-line install (POSIX)
 
@@ -31,7 +31,7 @@ If the command is not on `PATH`, run:
 
 Uninstall deletes the Worker Profiles installed by AgentPorter, including their local data and later customization, so back them up before confirming. It does not remove AgentPorter's private Python environment. See the [installation guide](docs/04-installation-and-troubleshooting.md) for the inspect-first flow, PATH, trust boundary, and complete uninstall details.
 
-## What v0.1.1 installs
+## What v0.1.2 installs
 
 One launch installs the repository's current two-Profile Worker foundation:
 

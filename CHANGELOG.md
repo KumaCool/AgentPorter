@@ -9,6 +9,12 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Reframed AgentPorter around one-command deployment of a role-specific multi-agent Worker team; the one-shot installer is the delivery foundation, not the complete product.
 - Added the Hermes-native Kanban orchestration and task-routing implementation plan, with truthful separation between installed Profiles, static routing metadata, dispatcher readiness, and live routing acceptance.
 
+## [0.1.2] - 2026-08-12
+
+### Fixed
+
+- Added bounded retries and a 15-second connection timeout to both release-asset downloads so transient GitHub connection failures are retried instead of hanging for the operating system's full TCP timeout. Failed downloads still leave no installation or staging residue.
+
 ## [0.1.1] - 2026-08-12
 
 ### Fixed
@@ -33,6 +39,7 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 First supported public release.
 
-[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/KumaCool/AgentPorter/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/KumaCool/AgentPorter/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/KumaCool/AgentPorter/releases/tag/v0.1.0

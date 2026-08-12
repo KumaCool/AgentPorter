@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "install.sh"
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 WHEEL_NAME = f"agentporter-{VERSION}-py3-none-any.whl"
 
 
@@ -27,6 +27,7 @@ def _fake_tools(
         tools / "curl",
         f"""#!/bin/sh
 set -eu
+printf 'curl-argv %s\n' "$*" >> "$CALL_LOG"
 url=''
 out=''
 while [ "$#" -gt 0 ]; do
@@ -154,6 +155,12 @@ def test_bootstrap_downloads_verifies_installs_and_runs(tmp_path: Path) -> None:
     assert "-m pip install --disable-pip-version-check" in calls
     assert "--force-reinstall" not in calls
     assert calls.count("curl ") == 2
+    curl_argv = [line for line in calls.splitlines() if line.startswith("curl-argv ")]
+    assert len(curl_argv) == 2
+    assert all("--connect-timeout 15" in line for line in curl_argv)
+    assert all("--retry 3" in line for line in curl_argv)
+    assert all("--retry-delay 2" in line for line in curl_argv)
+    assert all("--retry-all-errors" not in line for line in curl_argv)
     assert "agentporter \n" in calls
     for entry in ("agentporter", "agentporter-uninstall"):
         shebang = (

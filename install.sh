@@ -1,10 +1,10 @@
 #!/bin/sh
-# AgentPorter v0.1.1 release bootstrap for POSIX systems.
+# AgentPorter v0.1.2 release bootstrap for POSIX systems.
 set -eu
 
-VERSION=0.1.1
-RELEASE_BASE_URL=https://github.com/KumaCool/AgentPorter/releases/download/v0.1.1
-WHEEL=agentporter-0.1.1-py3-none-any.whl
+VERSION=0.1.2
+RELEASE_BASE_URL=https://github.com/KumaCool/AgentPorter/releases/download/v0.1.2
+WHEEL=agentporter-0.1.2-py3-none-any.whl
 CHECKSUM=${WHEEL}.sha256
 
 fail() {
@@ -40,7 +40,7 @@ mkdir -p "$PRODUCT_ROOT" "$BIN_HOME" || fail 'could not create installation dire
 [ -d "$BIN_HOME" ] && [ ! -L "$BIN_HOME" ] \
     || fail 'binary installation parent must be a real directory'
 
-STAGING=$(mktemp -d "${PRODUCT_ROOT}/.0.1.1-stage.XXXXXX") \
+STAGING=$(mktemp -d "${PRODUCT_ROOT}/.0.1.2-stage.XXXXXX") \
     || fail 'could not create a private staging directory'
 chmod 700 "$STAGING" || fail 'could not secure the staging directory'
 PUBLISHED=0
@@ -58,12 +58,14 @@ if [ "${AGENTPORTER_BOOTSTRAP_TESTING:-}" = 1 ]; then
 fi
 # shellcheck disable=SC2086 -- fixed allowlisted environment words.
 $CURL_ENV curl --fail --location --proto '=https' --proto-redir '=https' \
-    --tlsv1.2 --silent --show-error \
+    --tlsv1.2 --connect-timeout 15 --retry 3 --retry-delay 2 \
+    --silent --show-error \
     -o "$STAGING/$WHEEL" "$RELEASE_BASE_URL/$WHEEL" \
     || fail 'wheel download failed'
 # shellcheck disable=SC2086 -- fixed allowlisted environment words.
 $CURL_ENV curl --fail --location --proto '=https' --proto-redir '=https' \
-    --tlsv1.2 --silent --show-error \
+    --tlsv1.2 --connect-timeout 15 --retry 3 --retry-delay 2 \
+    --silent --show-error \
     -o "$STAGING/$CHECKSUM" "$RELEASE_BASE_URL/$CHECKSUM" \
     || fail 'checksum download failed'
 
