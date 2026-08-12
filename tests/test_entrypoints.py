@@ -179,6 +179,66 @@ def test_successful_bootstrap_uninstall_removes_the_published_package(
     ]
 
 
+def test_activation_entry_forwards_only_minimal_noncredential_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    activation = importlib.import_module("agentporter.activation_entry")
+    from agentporter.activation_application import ActivationStatus
+
+    captured: dict[str, str] = {}
+    sentinel = "activation-sentinel-secret"
+    monkeypatch.setenv("AUDIT_PROVIDER_API_KEY", sentinel)
+    monkeypatch.setenv("PATH", "/safe/bin")
+    monkeypatch.setenv("HOME", "/safe/home")
+    monkeypatch.setenv("HERMES_HOME", "/safe/hermes")
+    monkeypatch.setenv("LANG", "C.UTF-8")
+
+    def fake_activator(env: dict[str, str]) -> object:
+        captured.update(env)
+        return SimpleNamespace(status=ActivationStatus.ACTIVATED)
+
+    monkeypatch.setattr(activation, "run_activator", fake_activator)
+
+    activation.main()
+
+    assert captured == {
+        "HOME": "/safe/home",
+        "HERMES_HOME": "/safe/hermes",
+        "LANG": "C.UTF-8",
+        "PATH": "/safe/bin",
+    }
+    assert sentinel not in captured.values()
+
+
+@pytest.mark.parametrize(
+    ("status", "successful"),
+    [
+        ("activated", True),
+        ("credential-required", True),
+        ("cancelled", False),
+        ("stale", False),
+        ("failed", False),
+        ("compensation-incomplete", False),
+    ],
+)
+def test_activation_entry_exit_contract(
+    monkeypatch: pytest.MonkeyPatch, status: str, successful: bool
+) -> None:
+    activation = importlib.import_module("agentporter.activation_entry")
+    from agentporter.activation_application import ActivationStatus
+
+    def return_activation(env: dict[str, str]) -> object:
+        return SimpleNamespace(status=ActivationStatus(status))
+
+    monkeypatch.setattr(activation, "run_activator", return_activation)
+
+    if successful:
+        activation.main()
+    else:
+        with pytest.raises(SystemExit, match=status):
+            activation.main()
+
+
 def test_failed_profile_uninstall_never_removes_the_package(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

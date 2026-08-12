@@ -30,6 +30,7 @@ dev = ["pytest>=9,<10", "pyright>=1.1.411,<2", "ruff>=0.12,<1"]
 
 [project.scripts]
 agentporter = "agentporter:main"
+agentporter-activate = "agentporter.activation_entry:main"
 agentporter-uninstall = "agentporter.uninstall_entry:main"
 
 [tool.setuptools]

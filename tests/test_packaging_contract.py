@@ -69,10 +69,11 @@ def test_installer_uses_packaged_manifest(monkeypatch: pytest.MonkeyPatch) -> No
     )
 
 
-def test_project_declares_install_and_uninstall_console_scripts() -> None:
+def test_project_declares_install_activation_and_uninstall_console_scripts() -> None:
     scripts = _project()["project"]["scripts"]  # type: ignore[index]
     assert scripts == {
         "agentporter": "agentporter:main",
+        "agentporter-activate": "agentporter.activation_entry:main",
         "agentporter-uninstall": "agentporter.uninstall_entry:main",
     }
 
@@ -96,6 +97,7 @@ def test_built_wheel_contains_resource_and_both_console_entries(tmp_path: Path) 
         entry_points = archive.read("agentporter-0.1.3.dist-info/entry_points.txt").decode()
 
     assert "agentporter = agentporter:main" in entry_points
+    assert "agentporter-activate = agentporter.activation_entry:main" in entry_points
     assert "agentporter-uninstall = agentporter.uninstall_entry:main" in entry_points
 
 
