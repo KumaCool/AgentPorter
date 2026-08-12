@@ -186,6 +186,35 @@ def test_compare_is_repeated_immediately_before_each_write(tmp_path: Path) -> No
     assert "base_url" not in first_loaded["model"]
 
 
+def test_drift_at_final_config_publication_is_preserved_and_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+    target = plan.bindings[0]
+    config = target.profile_path / "config.yaml"
+    exchange = activation._exchange_names
+    injected = False
+
+    def drift_then_exchange(directory_fd: int, left: str, right: str) -> None:
+        nonlocal injected
+        if not injected and right == "config.yaml":
+            injected = True
+            loaded = yaml.safe_load(config.read_text(encoding="utf-8"))
+            loaded["concurrent"] = "KEEP"
+            config.write_text(yaml.safe_dump(loaded), encoding="utf-8")
+        exchange(directory_fd, left, right)
+
+    monkeypatch.setattr(activation, "_exchange_names", drift_then_exchange)
+    result = apply_activation(plan, input_fn=lambda _: plan.confirmation_phrase)
+
+    assert result.status is ActivationStatus.COMPENSATION_INCOMPLETE
+    assert result.residue_count == 1
+    loaded = yaml.safe_load(config.read_text(encoding="utf-8"))
+    assert loaded["concurrent"] == "KEEP"
+    assert "provider" not in loaded["model"]
+
+
 def test_profile_replacement_with_identical_config_is_stale_and_untouched(tmp_path: Path) -> None:
     found, discovery = _installation(tmp_path)
     plan = build_activation_plan(discovery, found, _inputs())
@@ -389,12 +418,14 @@ def test_second_receipt_failure_restores_both_existing_receipts_and_configs(
     original = activation._write_receipt
     calls = 0
 
-    def fail_second(target: ActivationTargetPlan, readback: ConfigSnapshot) -> None:
+    def fail_second(
+        target: ActivationTargetPlan, readback: ConfigSnapshot
+    ) -> activation._ReceiptSnapshot:
         nonlocal calls
         calls += 1
         if calls == 2:
             raise OSError("receipt fault")
-        original(target, readback)
+        return original(target, readback)
 
     monkeypatch.setattr(activation, "_write_receipt", fail_second)
     result = apply_activation(plan, input_fn=lambda _: plan.confirmation_phrase)
@@ -404,6 +435,37 @@ def test_second_receipt_failure_restores_both_existing_receipts_and_configs(
         item.profile_path.joinpath("config.yaml").read_bytes() for item in plan.bindings
     ] == before_configs
     assert [path.read_bytes() for path in receipts] == before_receipts
+
+
+def test_absent_receipt_restore_preserves_concurrent_replacement_and_reports_residue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+    receipt = plan.bindings[0].profile_path / "local/agentporter/runtime-binding.json"
+    original = activation._write_receipt
+    calls = 0
+    concurrent = b'{"concurrent":"KEEP"}\n'
+
+    def replace_first_then_fail_second(
+        target: ActivationTargetPlan, readback: ConfigSnapshot
+    ) -> activation._ReceiptSnapshot:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            published = original(target, readback)
+            replacement = receipt.with_suffix(".replacement")
+            replacement.write_bytes(concurrent)
+            replacement.replace(receipt)
+            return published
+        raise OSError("receipt fault")
+
+    monkeypatch.setattr(activation, "_write_receipt", replace_first_then_fail_second)
+    result = apply_activation(plan, input_fn=lambda _: plan.confirmation_phrase)
+
+    assert result.status is ActivationStatus.COMPENSATION_INCOMPLETE
+    assert result.residue_count == 1
+    assert receipt.read_bytes() == concurrent
 
 
 def test_restore_refuses_whole_file_drift_and_preserves_unrelated_key(
@@ -444,6 +506,33 @@ def test_atomic_config_replacement_preserves_owner_and_private_mode(tmp_path: Pa
     )
     info = config.stat()
     assert (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) == (65534, 65534, 0o600)
+
+
+def test_receipt_directory_fchmod_failure_closes_opened_directory_fd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+    target = plan.bindings[0]
+    real_fchmod = activation.os.fchmod
+    calls = 0
+    receipt_fd: int | None = None
+
+    def fail_receipt_fchmod(descriptor: int, mode: int) -> None:
+        nonlocal calls, receipt_fd
+        calls += 1
+        if calls == 2:
+            receipt_fd = descriptor
+            raise OSError("fchmod fault")
+        real_fchmod(descriptor, mode)
+
+    monkeypatch.setattr(activation.os, "fchmod", fail_receipt_fchmod)
+    with pytest.raises(OSError, match="fchmod fault"):
+        activation._receipt_directory_fd(target)
+
+    assert receipt_fd is not None
+    with pytest.raises(OSError):
+        os.fstat(receipt_fd)
 
 
 class _Writer(TextIO):

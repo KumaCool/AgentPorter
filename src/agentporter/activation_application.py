@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ctypes
+import errno
 import hashlib
 import json
 import os
@@ -109,11 +111,15 @@ def _safe_profile_fd(path: Path) -> int:
     if stat.S_ISLNK(before.st_mode) or not stat.S_ISDIR(before.st_mode):
         raise ValueError("profile must be a safe directory")
     descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    opened = os.fstat(descriptor)
-    if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+    try:
+        opened = os.fstat(descriptor)
+        if (opened.st_dev, opened.st_ino) == (before.st_dev, before.st_ino):
+            return descriptor
+    except BaseException:
         os.close(descriptor)
-        raise ValueError("profile changed while opening")
-    return descriptor
+        raise
+    os.close(descriptor)
+    raise ValueError("profile changed while opening")
 
 
 def _read_config(path: Path) -> ConfigSnapshot:
@@ -188,11 +194,54 @@ def _same_config(current: ConfigSnapshot, expected: ConfigSnapshot) -> bool:
     )
 
 
+def _named_file_identity_digest(directory_fd: int, name: str) -> tuple[int, int, str]:
+    descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            raise ValueError("publication target is not a regular file")
+        chunks: list[bytes] = []
+        total = 0
+        while chunk := os.read(descriptor, 65536):
+            total += len(chunk)
+            if total > 1024 * 1024:
+                raise ValueError("publication target exceeds size limit")
+            chunks.append(chunk)
+        rebound = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        if (rebound.st_dev, rebound.st_ino) != (opened.st_dev, opened.st_ino):
+            raise ValueError("publication target changed during read")
+        return opened.st_dev, opened.st_ino, _digest(b"".join(chunks))
+    finally:
+        os.close(descriptor)
+
+
+def _exchange_names(directory_fd: int, left: str, right: str) -> None:
+    """Atomically exchange two names, or fail closed when the OS has no CAS rename."""
+    libc = ctypes.CDLL(None, use_errno=True)
+    try:
+        renameat2 = libc.renameat2
+    except AttributeError as error:
+        raise ValueError("atomic name exchange is unavailable") from error
+    renameat2.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    ]
+    renameat2.restype = ctypes.c_int
+    if renameat2(directory_fd, os.fsencode(left), directory_fd, os.fsencode(right), 2) != 0:
+        code = ctypes.get_errno()
+        if code in {errno.ENOSYS, errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP}:
+            raise ValueError("atomic name exchange is unavailable")
+        raise OSError(code, os.strerror(code))
+
+
 def _atomic_write(path: Path, payload: bytes, expected: ConfigSnapshot) -> ConfigSnapshot:
     profile_fd = _safe_profile_fd(path)
     temporary = f".agentporter-config.{secrets.token_hex(16)}.tmp"
     temp_fd: int | None = None
-    created: tuple[int, int] | None = None
+    created: tuple[int, int, str] | None = None
     try:
         current = _read_config(path)
         if not _same_config(current, expected):
@@ -204,7 +253,7 @@ def _atomic_write(path: Path, payload: bytes, expected: ConfigSnapshot) -> Confi
             dir_fd=profile_fd,
         )
         temp_info = os.fstat(temp_fd)
-        created = (temp_info.st_dev, temp_info.st_ino)
+        created = (temp_info.st_dev, temp_info.st_ino, _digest(payload))
         os.fchown(temp_fd, expected.uid, expected.gid)
         os.fchmod(temp_fd, 0o600)
         view = memoryview(payload)
@@ -214,10 +263,19 @@ def _atomic_write(path: Path, payload: bytes, expected: ConfigSnapshot) -> Confi
         os.fsync(temp_fd)
         os.close(temp_fd)
         temp_fd = None
-        # Revalidate the named source immediately before publication.
-        if not _same_config(_read_config(path), expected):
+        expected_identity = (expected.device, expected.inode, expected.digest)
+        # Bind the last comparison and publication to one directory descriptor. The
+        # exchange makes any drift in the remaining window observable at `temporary`.
+        if _named_file_identity_digest(profile_fd, "config.yaml") != expected_identity:
             raise ValueError("config changed before publication")
-        os.replace(temporary, "config.yaml", src_dir_fd=profile_fd, dst_dir_fd=profile_fd)
+        _exchange_names(profile_fd, temporary, "config.yaml")
+        displaced = _named_file_identity_digest(profile_fd, temporary)
+        if displaced != expected_identity:
+            published = _named_file_identity_digest(profile_fd, "config.yaml")
+            if published == created:
+                _exchange_names(profile_fd, temporary, "config.yaml")
+            raise ValueError("config changed at publication")
+        os.unlink(temporary, dir_fd=profile_fd)
         created = None
         os.chmod("config.yaml", 0o600, dir_fd=profile_fd, follow_symlinks=False)
         os.fsync(profile_fd)
@@ -227,8 +285,7 @@ def _atomic_write(path: Path, payload: bytes, expected: ConfigSnapshot) -> Confi
             os.close(temp_fd)
         if created is not None:
             with suppress(FileNotFoundError):
-                leftover = os.stat(temporary, dir_fd=profile_fd, follow_symlinks=False)
-                if (leftover.st_dev, leftover.st_ino) == created:
+                if _named_file_identity_digest(profile_fd, temporary) == created:
                     os.unlink(temporary, dir_fd=profile_fd)
         os.close(profile_fd)
 
@@ -399,6 +456,8 @@ def _restore(attempted: list[ActivationTargetPlan]) -> int:
 class _ReceiptSnapshot:
     exists: bool
     content: bytes = field(default=b"", repr=False)
+    device: int = field(default=0, repr=False)
+    inode: int = field(default=0, repr=False)
     uid: int = 0
     gid: int = 0
     mode: int = 0
@@ -407,6 +466,7 @@ class _ReceiptSnapshot:
 def _receipt_directory_fd(target: ActivationTargetPlan) -> int:
     profile_fd = _safe_profile_fd(target.profile_path)
     local_fd: int | None = None
+    directory_fd: int | None = None
     try:
         profile_info = os.fstat(profile_fd)
         if (profile_info.st_dev, profile_info.st_ino) != (
@@ -432,12 +492,15 @@ def _receipt_directory_fd(target: ActivationTargetPlan) -> int:
             bound_directory.st_dev,
             bound_directory.st_ino,
         ):
-            os.close(directory_fd)
             raise ValueError("receipt directory changed")
         os.fchmod(local_fd, 0o700)
         os.fchmod(directory_fd, 0o700)
-        return directory_fd
+        result = directory_fd
+        directory_fd = None
+        return result
     finally:
+        if directory_fd is not None:
+            os.close(directory_fd)
         if local_fd is not None:
             os.close(local_fd)
         os.close(profile_fd)
@@ -467,7 +530,13 @@ def _receipt_snapshot(target: ActivationTargetPlan) -> _ReceiptSnapshot:
         ) != (opened.st_dev, opened.st_ino):
             raise ValueError("receipt changed during snapshot")
         return _ReceiptSnapshot(
-            True, b"".join(chunks), opened.st_uid, opened.st_gid, stat.S_IMODE(opened.st_mode)
+            True,
+            b"".join(chunks),
+            opened.st_dev,
+            opened.st_ino,
+            opened.st_uid,
+            opened.st_gid,
+            stat.S_IMODE(opened.st_mode),
         )
     finally:
         if descriptor is not None:
@@ -477,7 +546,7 @@ def _receipt_snapshot(target: ActivationTargetPlan) -> _ReceiptSnapshot:
 
 def _publish_receipt(
     target: ActivationTargetPlan, data: bytes, *, uid: int, gid: int, mode: int
-) -> None:
+) -> _ReceiptSnapshot:
     directory_fd = _receipt_directory_fd(target)
     temporary = f".runtime-binding.{secrets.token_hex(16)}.tmp"
     descriptor: int | None = None
@@ -505,6 +574,7 @@ def _publish_receipt(
         )
         created = None
         os.fsync(directory_fd)
+        return _receipt_snapshot(target)
     finally:
         if descriptor is not None:
             os.close(descriptor)
@@ -516,7 +586,7 @@ def _publish_receipt(
         os.close(directory_fd)
 
 
-def _write_receipt(target: ActivationTargetPlan, readback: ConfigSnapshot) -> None:
+def _write_receipt(target: ActivationTargetPlan, readback: ConfigSnapshot) -> _ReceiptSnapshot:
     payload = {
         **target.binding.safe_receipt().as_dict(),
         "config_digest": readback.digest,
@@ -525,7 +595,7 @@ def _write_receipt(target: ActivationTargetPlan, readback: ConfigSnapshot) -> No
     }
     data = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
     existing = _receipt_snapshot(target)
-    _publish_receipt(
+    return _publish_receipt(
         target,
         data,
         uid=existing.uid if existing.exists else os.geteuid(),
@@ -534,10 +604,28 @@ def _write_receipt(target: ActivationTargetPlan, readback: ConfigSnapshot) -> No
     )
 
 
-def _restore_receipts(snapshots: list[tuple[ActivationTargetPlan, _ReceiptSnapshot]]) -> int:
+def _same_receipt(current: _ReceiptSnapshot, expected: _ReceiptSnapshot) -> bool:
+    return (
+        current.exists
+        and expected.exists
+        and current.content == expected.content
+        and current.device == expected.device
+        and current.inode == expected.inode
+    )
+
+
+def _restore_receipts(
+    snapshots: list[tuple[ActivationTargetPlan, _ReceiptSnapshot, _ReceiptSnapshot | None]],
+) -> int:
     residue = 0
-    for target, snapshot in reversed(snapshots):
+    for target, snapshot, published in reversed(snapshots):
+        if published is None:
+            continue
         try:
+            current = _receipt_snapshot(target)
+            if not _same_receipt(current, published):
+                residue += 1
+                continue
             if snapshot.exists:
                 _publish_receipt(
                     target, snapshot.content, uid=snapshot.uid, gid=snapshot.gid, mode=snapshot.mode
@@ -545,8 +633,7 @@ def _restore_receipts(snapshots: list[tuple[ActivationTargetPlan, _ReceiptSnapsh
             else:
                 directory_fd = _receipt_directory_fd(target)
                 try:
-                    with suppress(FileNotFoundError):
-                        os.unlink("runtime-binding.json", dir_fd=directory_fd)
+                    os.unlink("runtime-binding.json", dir_fd=directory_fd)
                     os.fsync(directory_fd)
                 finally:
                     os.close(directory_fd)
@@ -580,9 +667,11 @@ def apply_activation(
 
     attempted: list[ActivationTargetPlan] = []
     readbacks: list[ConfigSnapshot] = []
-    receipt_snapshots: list[tuple[ActivationTargetPlan, _ReceiptSnapshot]] = []
+    receipt_snapshots: list[
+        tuple[ActivationTargetPlan, _ReceiptSnapshot, _ReceiptSnapshot | None]
+    ] = []
     try:
-        receipt_snapshots = [(target, _receipt_snapshot(target)) for target in plan.bindings]
+        receipt_snapshots = [(target, _receipt_snapshot(target), None) for target in plan.bindings]
         for index, target in enumerate(plan.bindings):
             current = _read_config(target.profile_path)
             if not _target_is_bound(target) or not _same_config(current, target.original_config):
@@ -599,8 +688,10 @@ def apply_activation(
             ):
                 raise ValueError("activation readback mismatch")
             readbacks.append(readback)
-        for target, readback in zip(plan.bindings, readbacks, strict=True):
-            _write_receipt(target, readback)
+        for index, (target, readback) in enumerate(zip(plan.bindings, readbacks, strict=True)):
+            published = _write_receipt(target, readback)
+            original = receipt_snapshots[index][1]
+            receipt_snapshots[index] = (target, original, published)
     except Exception:
         residue = _restore(attempted) + _restore_receipts(receipt_snapshots)
         status = ActivationStatus.COMPENSATION_INCOMPLETE if residue else ActivationStatus.FAILED
