@@ -13,6 +13,7 @@ import sys
 from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
@@ -22,7 +23,12 @@ import yaml
 
 from .hermes import HermesDetection
 from .identity import COMPONENT_IDS
-from .runtime_binding import CredentialGrantKind, CredentialState, RuntimeBindingPlan
+from .runtime_binding import (
+    CredentialGrantKind,
+    CredentialState,
+    RuntimeBindingPlan,
+    binding_fingerprint,
+)
 from .runtime_probe import ProbeResult
 from .uninstall_discovery import DiscoveryResult, DiscoveryStatus, Target
 
@@ -35,6 +41,8 @@ class ActivationStatus(StrEnum):
     FAILED = "failed"
     COMPENSATION_INCOMPLETE = "compensation-incomplete"
     CANARY_FAILED = "canary-failed"
+    CANARY_REQUIRED = "canary-required"
+    PROBE_UNSUPPORTED = "probe-unsupported"
 
 
 @dataclass(frozen=True, slots=True)
@@ -547,7 +555,13 @@ def _receipt_snapshot(target: ActivationTargetPlan) -> _ReceiptSnapshot:
 
 
 def _publish_receipt(
-    target: ActivationTargetPlan, data: bytes, *, uid: int, gid: int, mode: int
+    target: ActivationTargetPlan,
+    data: bytes,
+    *,
+    uid: int,
+    gid: int,
+    mode: int,
+    expected: _ReceiptSnapshot | None = None,
 ) -> _ReceiptSnapshot:
     directory_fd = _receipt_directory_fd(target)
     temporary = f".runtime-binding.{secrets.token_hex(16)}.tmp"
@@ -571,9 +585,22 @@ def _publish_receipt(
         os.fsync(descriptor)
         os.close(descriptor)
         descriptor = None
-        os.replace(
-            temporary, "runtime-binding.json", src_dir_fd=directory_fd, dst_dir_fd=directory_fd
-        )
+        if expected is None:
+            os.replace(
+                temporary, "runtime-binding.json", src_dir_fd=directory_fd, dst_dir_fd=directory_fd
+            )
+        else:
+            expected_identity = (expected.device, expected.inode, _digest(expected.content))
+            if (
+                _named_file_identity_digest(directory_fd, "runtime-binding.json")
+                != expected_identity
+            ):
+                raise _ReceiptDrift("receipt changed before publication")
+            _exchange_names(directory_fd, temporary, "runtime-binding.json")
+            if _named_file_identity_digest(directory_fd, temporary) != expected_identity:
+                _exchange_names(directory_fd, temporary, "runtime-binding.json")
+                raise _ReceiptDrift("receipt changed at publication")
+            os.unlink(temporary, dir_fd=directory_fd)
         created = None
         os.fsync(directory_fd)
         return _receipt_snapshot(target)
@@ -606,23 +633,49 @@ def _write_receipt(target: ActivationTargetPlan, readback: ConfigSnapshot) -> _R
     )
 
 
-def _write_canary_receipt(target: ActivationTargetPlan, result: ProbeResult) -> _ReceiptSnapshot:
-    existing = _receipt_snapshot(target)
+class _ReceiptDrift(ValueError):
+    pass
+
+
+def _write_canary_receipt(
+    target: ActivationTargetPlan, result: ProbeResult, existing: _ReceiptSnapshot
+) -> _ReceiptSnapshot:
+    if not _same_receipt(_receipt_snapshot(target), existing):
+        raise _ReceiptDrift("receipt changed before canary publication")
     if not existing.exists:
         raise ValueError("binding receipt is missing")
-    loaded = json.loads(existing.content)
-    if not isinstance(loaded, dict):
+    loaded_object: object = json.loads(existing.content)
+    if not isinstance(loaded_object, dict):
         raise ValueError("binding receipt is invalid")
+    loaded = cast(dict[str, object], loaded_object)
     safe_summary = {
         "status": result.status,
         "api_calls": result.api_calls,
         "tool_calls": result.tool_calls,
         "fallback_used": result.fallback_used,
+        "response_contract_passed": result.response_contract_passed,
     }
     loaded["canary_status"] = "passed" if result.status == "runtime-ready" else "failed"
     loaded["canary_reason_code"] = result.status
     loaded["canary_evidence_digest"] = _digest(
         json.dumps(safe_summary, sort_keys=True, separators=(",", ":")).encode()
+    )
+    now = datetime.now(UTC)
+    loaded.update(
+        {
+            "probe_started_at": now.isoformat(),
+            "probe_finished_at": now.isoformat(),
+            "fresh_until": (now + timedelta(minutes=5)).isoformat(),
+            "hermes_version": target.binding.hermes_version,
+            "config_digest": target.binding.config_digest,
+            "binding_fingerprint": binding_fingerprint(target.binding),
+            "actual_model": result.actual_model if result.status == "runtime-ready" else None,
+            "actual_provider": result.actual_provider if result.status == "runtime-ready" else None,
+            "api_calls": result.api_calls if result.status == "runtime-ready" else 0,
+            "tool_calls_observed": result.tool_calls if result.status == "runtime-ready" else 0,
+            "fallback_used": result.fallback_used,
+            "response_contract_passed": result.response_contract_passed,
+        }
     )
     data = (json.dumps(loaded, sort_keys=True, separators=(",", ":")) + "\n").encode()
     return _publish_receipt(
@@ -631,6 +684,7 @@ def _write_canary_receipt(target: ActivationTargetPlan, result: ProbeResult) -> 
         uid=existing.uid,
         gid=existing.gid,
         mode=0o600,
+        expected=existing,
     )
 
 
@@ -745,22 +799,34 @@ def apply_activation(
     if any(target.binding.credential_state != "operator-authorized" for target in plan.bindings):
         return ActivationResult(ActivationStatus.CREDENTIAL_REQUIRED, items)
     if probe_runner is None:
-        return ActivationResult(ActivationStatus.ACTIVATED, items)
+        return ActivationResult(ActivationStatus.CANARY_REQUIRED, items)
 
     # Binding publication commits before canaries begin. Canary receipt updates
     # form a separate transaction and never roll back authorized configuration.
-    results = tuple(probe_runner(target.binding) for target in plan.bindings)
     canary_snapshots: list[
         tuple[ActivationTargetPlan, _ReceiptSnapshot, _ReceiptSnapshot | None]
     ] = [(target, _receipt_snapshot(target), None) for target in plan.bindings]
+    results_list: list[ProbeResult] = []
+    for target in plan.bindings:
+        try:
+            results_list.append(probe_runner(target.binding))
+        except Exception:
+            results_list.append(ProbeResult("response-contract-failed"))
+        except BaseException:
+            raise
+    results = tuple(results_list)
     try:
         for index, (target, result) in enumerate(zip(plan.bindings, results, strict=True)):
-            published = _write_canary_receipt(target, result)
+            published = _write_canary_receipt(target, result, canary_snapshots[index][1])
             canary_snapshots[index] = (target, canary_snapshots[index][1], published)
-    except Exception:
+    except Exception as error:
         residue = _restore_receipts(canary_snapshots)
+        if isinstance(error, _ReceiptDrift):
+            residue += 1
         status = ActivationStatus.COMPENSATION_INCOMPLETE if residue else ActivationStatus.FAILED
         return ActivationResult(status, items, residue)
+    if all(result.status == "probe-unsupported" for result in results):
+        return ActivationResult(ActivationStatus.PROBE_UNSUPPORTED, items)
     status = (
         ActivationStatus.ACTIVATED
         if all(result.status == "runtime-ready" for result in results)

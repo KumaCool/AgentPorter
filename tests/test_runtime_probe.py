@@ -1,4 +1,5 @@
 import stat
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -64,6 +65,25 @@ def test_success_requires_nonce_and_exact_runtime_route() -> None:
     assert result.api_calls == 1
     assert result.tool_calls == 0
     assert result.fallback_used is False
+    assert result.response_contract_passed is True
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {},
+        {"actual_model": "gpt-5.6-luna", "actual_provider": "custom", "api_calls": 0},
+        {
+            "actual_model": "gpt-5.6-luna",
+            "actual_provider": "custom",
+            "api_calls": 1,
+            "response_contract_passed": False,
+        },
+    ],
+)
+def test_runtime_ready_probe_result_cannot_be_forged(kwargs: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        ProbeResult("runtime-ready", **kwargs)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(
@@ -144,6 +164,26 @@ def test_timeout_result_also_cleans_temporary_evidence() -> None:
     assert result.status == "probe-timeout"
     assert observed_directory is not None
     assert not observed_directory.exists()
+
+
+def test_hanging_supported_runner_is_killed_by_hard_timeout(tmp_path: Path) -> None:
+    marker = tmp_path / "runner-started"
+
+    def runner(_nonce: str, _directory: Path) -> ProbeObservation:
+        marker.write_text("started", encoding="utf-8")
+        while True:
+            time.sleep(1)
+
+    started = time.monotonic()
+    result = run_runtime_probe(
+        expected_model="gpt-5.6-luna",
+        expected_provider="custom",
+        runner=runner,
+        timeout_seconds=0.1,
+    )
+    assert result.status == "probe-timeout"
+    assert time.monotonic() - started < 2
+    assert marker.read_text(encoding="utf-8") == "started"
 
 
 def test_public_hermes_v020_seam_is_unsupported_without_tool_call_proof() -> None:

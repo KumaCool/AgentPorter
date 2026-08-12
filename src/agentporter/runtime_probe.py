@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import multiprocessing
 import secrets
 import tempfile
 from collections.abc import Callable
@@ -66,6 +67,22 @@ class ProbeResult:
     api_calls: int = 0
     tool_calls: int = 0
     fallback_used: bool = False
+    response_contract_passed: bool = False
+
+    def __post_init__(self) -> None:
+        if self.api_calls < 0 or self.tool_calls < 0:
+            raise ValueError("call counts cannot be negative")
+        if self.status == "runtime-ready" and (
+            not self.actual_model
+            or not self.actual_provider
+            or self.api_calls != 1
+            or self.tool_calls != 0
+            or self.fallback_used
+            or not self.response_contract_passed
+        ):
+            raise ValueError("runtime-ready result violates the closed probe contract")
+        if self.status != "runtime-ready" and self.response_contract_passed:
+            raise ValueError("failure result cannot pass response contract")
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,17 +92,8 @@ class ProbeCapability:
 
 
 def negotiate_hermes_probe(
-    *,
-    version: str,
-    help_text: str,
-    command_runner: Callable[[tuple[str, ...]], object],
+    *, version: str, help_text: str, command_runner: Callable[[tuple[str, ...]], object]
 ) -> ProbeCapability:
-    """Fail closed unless a public seam proves every canary invariant.
-
-    Hermes 0.20 ``-z --usage-file`` proves model, provider, and API-call count,
-    but neither disables all tools nor reports tool-call/fallback counts. A
-    normal prompt is therefore not a safe substitute and no command is run.
-    """
     del version, help_text, command_runner
     return ProbeCapability(False, "probe-unsupported")
 
@@ -104,27 +112,61 @@ def classify_probe_failure(failure: ProbeFailure) -> ProbeFailureReason:
     return "response-contract-failed"
 
 
+def _isolated_observation(
+    runner: Callable[[str, Path], ProbeObservation], nonce: str, directory: Path, timeout: float
+) -> ProbeObservation | None:
+    context = multiprocessing.get_context("fork")
+    receiving, sending = context.Pipe(duplex=False)
+
+    def invoke() -> None:
+        try:
+            sending.send(runner(nonce, directory))
+        except Exception:
+            sending.send(None)
+        finally:
+            sending.close()
+
+    process = context.Process(target=invoke)
+    process.start()
+    sending.close()
+    process.join(timeout)
+    if process.is_alive():
+        process.kill()
+        process.join()
+        receiving.close()
+        return None
+    value = receiving.recv() if receiving.poll() else None
+    receiving.close()
+    return value if isinstance(value, ProbeObservation) else ProbeObservation()
+
+
 def run_runtime_probe(
     *,
     expected_model: str,
     expected_provider: str,
     runner: Callable[[str, Path], ProbeObservation],
     supported: bool = True,
+    timeout_seconds: float | None = None,
 ) -> ProbeResult:
-    """Run one injected canary in a 0700 temporary directory, always cleaning it."""
     if not supported:
         return ProbeResult("probe-unsupported")
+    if timeout_seconds is not None and timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be positive")
     nonce = secrets.token_hex(16)
     with tempfile.TemporaryDirectory(prefix="agentporter-probe-") as raw_directory:
         directory = Path(raw_directory)
         directory.chmod(0o700)
-        observation = runner(nonce, directory)
-
-    if observation.timed_out or observation.http_status is not None:
-        status = classify_probe_failure(
-            ProbeFailure(http_status=observation.http_status, timed_out=observation.timed_out)
+        observation = (
+            runner(nonce, directory)
+            if timeout_seconds is None
+            else _isolated_observation(runner, nonce, directory, timeout_seconds)
         )
-        return ProbeResult(status)
+    if observation is None:
+        return ProbeResult("probe-timeout")
+    if observation.timed_out or observation.http_status is not None:
+        return ProbeResult(
+            classify_probe_failure(ProbeFailure(observation.http_status, observation.timed_out))
+        )
     if (
         observation.fallback_used
         or observation.actual_model != expected_model
@@ -155,6 +197,7 @@ def run_runtime_probe(
         observation.api_calls,
         observation.tool_calls,
         observation.fallback_used,
+        True,
     )
 
 
@@ -166,7 +209,6 @@ def probe_readiness_evidence(
     freshness: timedelta = timedelta(minutes=5),
     supported: bool = True,
 ) -> ReadinessEvidence:
-    """Run a canary and convert only its bounded summary to readiness evidence."""
     if freshness <= timedelta(0):
         raise ValueError("freshness must be positive")
     started = now()
@@ -179,14 +221,14 @@ def probe_readiness_evidence(
     finished = now()
     ready = result.status == "runtime-ready"
     safe_binding = RuntimeBinding(
-        portable_id=binding.portable_id,
-        component_id=binding.component_id,
-        current_profile_name=binding.current_profile_name,
-        expected_model=binding.expected_model,
-        expected_provider=binding.provider_id,
-        provider_source_kind="profile-config",
-        binding_fingerprint=binding_fingerprint(binding),
-        config_digest=binding.config_digest,
+        binding.portable_id,
+        binding.component_id,
+        binding.current_profile_name,
+        binding.expected_model,
+        binding.provider_id,
+        "profile-config",
+        binding_fingerprint(binding),
+        binding.config_digest,
     )
     return ReadinessEvidence(
         status=result.status,

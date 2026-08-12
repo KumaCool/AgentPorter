@@ -15,6 +15,8 @@ from .activation_application import (
     build_activation_plan,
 )
 from .hermes import HermesDetection, detect_hermes
+from .runtime_binding import RuntimeBindingPlan
+from .runtime_probe import ProbeResult, negotiate_hermes_probe
 from .uninstall_application import minimal_process_environment
 from .uninstall_discovery import discover_installation
 
@@ -52,7 +54,19 @@ def run_activator(
             state,  # type: ignore[arg-type]
         )
     plan = build_activation_plan(discovery, found, inputs)
-    kwargs: dict[str, object] = {"input_fn": input_fn}
+    capability = negotiate_hermes_probe(
+        version=found.version, help_text="", command_runner=lambda _argv: None
+    )
+
+    def unsupported_probe(_binding: RuntimeBindingPlan) -> ProbeResult:
+        if capability.supported:
+            return ProbeResult("response-contract-failed")
+        return ProbeResult("probe-unsupported")
+
+    kwargs: dict[str, object] = {
+        "input_fn": input_fn,
+        "probe_runner": unsupported_probe,
+    }
     if output is not None:
         kwargs["output"] = output
     return apply_activation(plan, **kwargs)  # type: ignore[arg-type]

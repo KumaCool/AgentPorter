@@ -122,7 +122,7 @@ def test_apply_activation_confirms_once_then_writes_and_reads_back_without_cli(
         command_observer=argv_calls.append,
     )
 
-    assert result.status is ActivationStatus.ACTIVATED
+    assert result.status is ActivationStatus.CANARY_REQUIRED
     assert len(prompts) == 1
     assert argv_calls == []
     assert all(item.readback_passed for item in result.items)
@@ -304,6 +304,7 @@ def test_authorized_activation_probes_each_worker_without_cross_fallback_and_upd
             binding.provider_id,
             api_calls=1,
             tool_calls=0,
+            response_contract_passed=True,
         )
 
     result = apply_activation(
@@ -324,6 +325,97 @@ def test_authorized_activation_probes_each_worker_without_cross_fallback_and_upd
         "runtime-ready",
     ]
     assert all("error" not in item for item in payloads)
+    successful = payloads[1]
+    assert successful["actual_model"] == plan.bindings[1].binding.expected_model
+    assert successful["actual_provider"] == "custom-provider"
+    assert successful["api_calls"] == 1
+    assert successful["tool_calls_observed"] == 0
+    assert successful["fallback_used"] is False
+    assert successful["response_contract_passed"] is True
+    assert successful["hermes_version"] == "0.20.0"
+    assert successful["config_digest"]
+    assert successful["binding_fingerprint"]
+    assert successful["probe_started_at"]
+    assert successful["probe_finished_at"]
+    assert successful["fresh_until"]
+    assert SECRET_ENDPOINT not in json.dumps(successful)
+
+
+def test_probe_exceptions_are_safe_per_worker_failures_without_raw_text(tmp_path: Path) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+    calls: list[str] = []
+
+    def probe(binding: RuntimeBindingPlan) -> ProbeResult:
+        calls.append(binding.component_id)
+        if len(calls) == 1:
+            raise RuntimeError("RAW_PROVIDER_SECRET " + SECRET_ENDPOINT)
+        return ProbeResult("authentication-failed")
+
+    result = apply_activation(plan, input_fn=lambda _: plan.confirmation_phrase, probe_runner=probe)
+    assert result.status is ActivationStatus.CANARY_FAILED
+    assert calls == [item.component_id for item in plan.bindings]
+    receipts = [
+        (item.profile_path / "local/agentporter/runtime-binding.json").read_text()
+        for item in plan.bindings
+    ]
+    assert all(
+        "RAW_PROVIDER_SECRET" not in value and SECRET_ENDPOINT not in value for value in receipts
+    )
+
+
+@pytest.mark.parametrize(
+    "interrupt", [KeyboardInterrupt("probe"), SystemExit(9), _StopActivation("probe")]
+)
+def test_probe_control_flow_preserves_identity_and_publishes_no_fake_terminal_receipt(
+    tmp_path: Path, interrupt: BaseException
+) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+
+    with pytest.raises(type(interrupt)) as caught:
+        apply_activation(
+            plan,
+            input_fn=lambda _: plan.confirmation_phrase,
+            probe_runner=lambda _binding: (_ for _ in ()).throw(interrupt),
+        )
+    assert caught.value is interrupt
+    for item in plan.bindings:
+        receipt = json.loads(
+            (item.profile_path / "local/agentporter/runtime-binding.json").read_text()
+        )
+        assert receipt["canary_status"] == "required"
+
+
+def test_canary_receipt_cas_preserves_concurrent_drift_and_reports_residue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+    receipt = plan.bindings[0].profile_path / "local/agentporter/runtime-binding.json"
+    original = activation._write_canary_receipt
+    injected = False
+
+    def drift(
+        target: ActivationTargetPlan,
+        result: ProbeResult,
+        expected: activation._ReceiptSnapshot,
+    ) -> activation._ReceiptSnapshot:
+        nonlocal injected
+        if not injected:
+            injected = True
+            receipt.write_text('{"concurrent":"KEEP"}\n', encoding="utf-8")
+        return original(target, result, expected)
+
+    monkeypatch.setattr(activation, "_write_canary_receipt", drift)
+    result = apply_activation(
+        plan,
+        input_fn=lambda _: plan.confirmation_phrase,
+        probe_runner=lambda _binding: ProbeResult("authentication-failed"),
+    )
+    assert result.status is ActivationStatus.COMPENSATION_INCOMPLETE
+    assert result.residue_count >= 1
+    assert json.loads(receipt.read_text()) == {"concurrent": "KEEP"}
 
 
 def test_safe_receipt_is_private_atomic_and_inside_user_owned_local(tmp_path: Path) -> None:
@@ -332,7 +424,7 @@ def test_safe_receipt_is_private_atomic_and_inside_user_owned_local(tmp_path: Pa
 
     result = apply_activation(plan, input_fn=lambda _: plan.confirmation_phrase)
 
-    assert result.status is ActivationStatus.ACTIVATED
+    assert result.status is ActivationStatus.CANARY_REQUIRED
     for binding in plan.bindings:
         receipt = binding.profile_path / "local" / "agentporter" / "runtime-binding.json"
         assert receipt.is_file()
@@ -430,7 +522,7 @@ def test_preexisting_fixed_temp_names_are_never_unlinked(tmp_path: Path) -> None
 
     assert (
         apply_activation(plan, input_fn=lambda _: plan.confirmation_phrase).status
-        is ActivationStatus.ACTIVATED
+        is ActivationStatus.CANARY_REQUIRED
     )
     assert [path.read_text() for path in sentinels] == ["owned elsewhere"] * len(sentinels)
 
@@ -442,7 +534,7 @@ def test_second_receipt_failure_restores_both_existing_receipts_and_configs(
     first_plan = build_activation_plan(discovery, found, _inputs())
     assert (
         apply_activation(first_plan, input_fn=lambda _: first_plan.confirmation_phrase).status
-        is ActivationStatus.ACTIVATED
+        is ActivationStatus.CANARY_REQUIRED
     )
     before_configs = [
         item.profile_path.joinpath("config.yaml").read_bytes() for item in first_plan.bindings
@@ -542,7 +634,7 @@ def test_atomic_config_replacement_preserves_owner_and_private_mode(tmp_path: Pa
 
     assert (
         apply_activation(plan, input_fn=lambda _: plan.confirmation_phrase).status
-        is ActivationStatus.ACTIVATED
+        is ActivationStatus.CANARY_REQUIRED
     )
     info = config.stat()
     assert (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) == (65534, 65534, 0o600)
