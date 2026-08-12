@@ -12,7 +12,7 @@ from .application import run_installer
 from .transaction import InstallTransactionStatus
 from .workflow import WorkflowStatus
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 _ENTRY_ENV_ALLOWLIST = frozenset(
     {

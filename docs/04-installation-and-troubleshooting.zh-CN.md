@@ -2,7 +2,7 @@
 
 [English](04-installation-and-troubleshooting.md) | 简体中文
 
-AgentPorter v0.1.2 是 Hermes 多代理工作组一次性安装基础的当前受支持修复版本。仓库已经具备离线契约测试，并在隔离环境中对 Hermes v0.20.0 做过真实验收；这个版本只是**已观察版本**，不是承诺的最低版本或通用兼容范围。
+AgentPorter v0.1.3 是 Hermes 多代理工作组一次性安装基础的当前候选版本；在托管的 v0.1.3 制品完成回读验收前，v0.1.2 仍是最新受支持的公开版本。仓库已经具备离线契约测试，并在隔离环境中对 Hermes v0.20.0 做过真实验收；这个版本只是**已观察版本**，不是承诺的最低版本或通用兼容范围。
 
 ## curl 一键安装（POSIX）
 
@@ -28,13 +28,13 @@ Linux 的真实 Hermes 验收证据最强。macOS 和 Windows 纳入离线 CI �
 
 ## 从发布制品安装
 
-如需手动安装已下载的 v0.1.2 wheel，请先验证发布校验和并建立隔离环境：
+如需手动安装已下载的 v0.1.3 wheel，请先验证发布校验和并建立隔离环境：
 
 ```bash
 python -m venv .venv
 # POSIX: source .venv/bin/activate
 # Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install agentporter-0.1.2-py3-none-any.whl
+python -m pip install agentporter-0.1.3-py3-none-any.whl
 agentporter
 ```
 
@@ -57,7 +57,7 @@ python install.py
 
 终端状态会区分：成功、取消、预检失败、安装失败且补偿完成、补偿不完整、回读失败。只有明确成功结果才表示安装成功；不能根据部分 Profile 目录存在就推断成功。
 
-AgentPorter v0.1.2 安装两个专用 Worker Profile。它不会覆盖现有 Profile、复制供应商凭据、调用模型、安装常驻服务或创建任务数据库。Profile 内凭据和其他运行数据仍由 Hermes 与用户管理。
+AgentPorter v0.1.3 安装两个专用 Worker Profile。它不会覆盖现有 Profile、复制供应商凭据、调用模型、安装常驻服务或创建任务数据库。Profile 内凭据和其他运行数据仍由 Hermes 与用户管理。
 
 当前版本**不会**配置自动分解、启动 gateway dispatcher、创建 Kanban 任务或证明真实任务路由。上述能力由[多代理编排与路由计划](plan/02-multi-agent-orchestration.md)负责。
 
@@ -101,7 +101,7 @@ agentporter-uninstall
 
    ```bash
    python scripts/verify_release.py \
-     --version 0.1.2 \
+     --version 0.1.3 \
      --dependency 'pydantic<3,>=2' \
      --dependency 'PyYAML<7,>=6' \
      --entry-point 'agentporter=agentporter:main' \
@@ -114,4 +114,4 @@ agentporter-uninstall
 6. 上传前检查校验和、提交身份、标签、变更日志、许可证、README 与验证器输出；只发布已经验证的同一字节序列。
 7. 下载托管制品，重新计算校验和并重跑验证。仅有标签或上传成功不构成验收。
 
-示例资源路径是 v0.1.2 发布契约。托管发布验收还会下载全部公开制品、重新计算校验和、重跑验证器，并检查公开的 `latest/download/install.sh` 端点。
+示例资源路径是 v0.1.3 发布契约。托管发布验收还会下载全部公开制品、重新计算校验和、重跑验证器，并检查公开的 `latest/download/install.sh` 端点。

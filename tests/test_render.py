@@ -36,7 +36,7 @@ def test_render_staging_produces_minimal_valid_artifacts_for_both_workers(tmp_pa
             MarkerV1.model_validate_json((item.directory / "agentporter-profile.json").read_text())
         )
         assert distribution["name"] == item.profile_name
-        assert distribution["version"] == "0.1.2"
+        assert distribution["version"] == "0.1.3"
         assert distribution["distribution_owned"] == [
             "SOUL.md",
             "config.yaml",

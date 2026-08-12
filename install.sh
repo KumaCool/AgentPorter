@@ -1,10 +1,10 @@
 #!/bin/sh
-# AgentPorter v0.1.2 release bootstrap for POSIX systems.
+# AgentPorter v0.1.3 release bootstrap for POSIX systems.
 set -eu
 
-VERSION=0.1.2
-RELEASE_BASE_URL=https://github.com/KumaCool/AgentPorter/releases/download/v0.1.2
-WHEEL=agentporter-0.1.2-py3-none-any.whl
+VERSION=0.1.3
+RELEASE_BASE_URL=https://github.com/KumaCool/AgentPorter/releases/download/v0.1.3
+WHEEL=agentporter-0.1.3-py3-none-any.whl
 CHECKSUM=${WHEEL}.sha256
 
 fail() {
@@ -40,7 +40,7 @@ mkdir -p "$PRODUCT_ROOT" "$BIN_HOME" || fail 'could not create installation dire
 [ -d "$BIN_HOME" ] && [ ! -L "$BIN_HOME" ] \
     || fail 'binary installation parent must be a real directory'
 
-STAGING=$(mktemp -d "${PRODUCT_ROOT}/.0.1.2-stage.XXXXXX") \
+STAGING=$(mktemp -d "${PRODUCT_ROOT}/.0.1.3-stage.XXXXXX") \
     || fail 'could not create a private staging directory'
 chmod 700 "$STAGING" || fail 'could not secure the staging directory'
 PUBLISHED=0

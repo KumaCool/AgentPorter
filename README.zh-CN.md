@@ -4,7 +4,7 @@
 
 AgentPorter 是一个开源的 [Hermes Agent](https://hermes-agent.nousresearch.com/) 多代理工作组部署方案：一次安装多个职责明确的 Worker Profile，并逐步接通 Hermes 原生 Kanban 的任务分解与合理路由。
 
-> **当前能力：** v0.1.2 已安全交付双 Profile 安装/卸载基础，并写入 routing description；Hermes 能只读枚举两个 assignee。但 AgentPorter 尚未配置或验收自动分解、dispatcher 执行和真实 Worker 路由。这是下一阶段计划，不是当前发布能力。
+> **候选版本能力：** v0.1.3 正在准备安全交付双 Profile 安装/卸载基础，并写入 routing description；Hermes 能只读枚举两个 assignee。但 AgentPorter 尚未配置或验收自动分解、dispatcher 执行和真实 Worker 路由。这是下一阶段计划，不是当前发布能力。
 
 ## curl 一键安装（POSIX）
 
@@ -31,7 +31,7 @@ agentporter-uninstall
 
 卸载会删除 AgentPorter 安装的 Worker Profile 及其中的本地数据和后续自定义；确认前请先备份。Profile 删除成功（或已不存在）后，通过发布版引导脚本安装的卸载器还会删除自身的精确公开入口和对应版本私有 Python 环境。从可信源码检出运行的 `python uninstall.py` 只删除 Profile，绝不删除源码仓库或其虚拟环境。检查后执行方式、PATH、信任边界与完整卸载说明见[安装指南](docs/04-installation-and-troubleshooting.zh-CN.md)。
 
-## v0.1.2 安装内容
+## v0.1.3 安装内容
 
 一次运行会安装仓库当前的双 Profile Worker 基础：
 

@@ -12,7 +12,7 @@ from agentporter.self_cleanup import (
     execute_cleanup_plan,
 )
 
-VERSION = "0.1.2"
+VERSION = "0.1.3"
 
 
 def _published_layout(tmp_path: Path) -> tuple[Path, Path, Path, Path]:

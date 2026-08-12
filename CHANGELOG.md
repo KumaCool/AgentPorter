@@ -4,6 +4,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [0.1.3] - Release candidate
+
 ### Changed
 
 - Reframed AgentPorter around one-command deployment of a role-specific multi-agent Worker team; the one-shot installer is the delivery foundation, not the complete product.
@@ -43,7 +45,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 First supported public release.
 
-[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/KumaCool/AgentPorter/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/KumaCool/AgentPorter/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/KumaCool/AgentPorter/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/KumaCool/AgentPorter/releases/tag/v0.1.0

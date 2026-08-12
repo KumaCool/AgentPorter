@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "install.sh"
-VERSION = "0.1.2"
+VERSION = "0.1.3"
 WHEEL_NAME = f"agentporter-{VERSION}-py3-none-any.whl"
 
 
@@ -53,9 +53,8 @@ printf 'python3 %s\n' "$*" >> "$CALL_LOG"
 if [ "${1-}" = '-c' ]; then
   case "$2" in
     *hashlib*) printf '%s\n' "$FAKE_ACTUAL_CHECKSUM" ;;
-    *pathlib*) exec /usr/bin/python3 "$@" ;;
-    *agentporter*) printf '{VERSION}\n' ;;
-    *path.write_bytes*) exec /usr/bin/python3 "$@" ;;
+    *"import agentporter"*) printf '{VERSION}\n' ;;
+    *) exec /usr/bin/python3 "$@" ;;
   esac
   exit 0
 fi
