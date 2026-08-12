@@ -1,16 +1,16 @@
-# AgentPorter Worker 验证与基准计划
+# AgentPorter Worker 验证与基准计划（Plan 03）
 
 ## 1. 状态、目的与权威边界
 
 - **状态：** 方案已获用户授权落地；评测执行器、任务集、基线和真实运行结果均未实现；
-- **目的：** 在 AgentPorter 第一版完成后，独立验证两个已安装 Hermes Worker 的路由、边界行为、任务质量、时延、资源消耗、成本和稳定性；
-- **前置条件：** [实施计划](01-implementation-plan.md) 的 Phase 1–6 已完成，正式安装入口已经通过 [INS/UN/GATE 权威矩阵](../03-installation-and-uninstall-design.md#7-验收矩阵)；
-- **非交付门禁：** 本计划不参与安装成功、静态配置有效、补偿完成或卸载结果判定，也不阻止第一版安装器交付；
-- **模型调用边界：** Plan 01 的安装、读回、补偿、卸载和集成验收始终零模型调用。本计划是安装完成后的独立、显式授权操作，允许真实模型调用并产生费用。
+- **目的：** 在 AgentPorter 安装基础和编排主链完成后，独立验证已部署 Hermes Worker 的边界行为、路由质量、任务质量、时延、资源消耗、成本和稳定性；
+- **前置条件：** [安装基础](01-installation-foundation.md) 的 Phase 1–6 已完成，且 [多代理编排与路由计划](02-multi-agent-orchestration.md) 已关闭确定性端到端主链；
+- **后置质量门禁：** 本计划不参与安装、补偿或卸载结果判定，但依赖 Plan 02 产品主链；它衡量质量、成本和稳定性，不能替代路由接通；
+- **模型调用边界：** Plan 01 的安装基础始终零模型调用；Plan 02 的离线/静态部署同样零模型调用，只有其显式授权端到端验收允许真实运行。本计划在两者关闭后独立执行，允许真实模型调用并产生费用。
 
-依赖关系是单向的：Plan 01 不依赖 Plan 02；Plan 02 依赖 Plan 01 已完成并拥有可隔离复制的已验证 AgentPorter 安装集合。
+依赖关系是单向的：Plan 01 安装基础 → Plan 02 编排与路由主链 → 本 Plan 03 质量与性能评测。本计划必须使用已关闭 Plan 02 的候选与可隔离复制的完整工作组。
 
-本文是 Worker 评测任务集、度量方法、报告格式和后置验收步骤的唯一计划来源，不重新定义 Worker tier、安装身份或卸载资格。Worker 行为语义仍由 [可移植 Worker 规范](../01-portable-worker-spec.md) 定义；安装事务和结果状态仍由 [安装、卸载与验收设计](../03-installation-and-uninstall-design.md) 定义。
+本文是 Worker 评测任务集、度量方法、报告格式和后置验收步骤的唯一计划来源，不重新定义 Worker tier、安装身份、编排路由合同或卸载资格。Worker 行为语义仍由 [可移植 Worker 规范](../01-portable-worker-spec.md) 定义；安装事务和结果状态仍由 [安装、卸载与验收设计](../03-installation-and-uninstall-design.md) 定义。
 
 ## 2. 不变量与禁止副作用
 
@@ -33,13 +33,13 @@
 
 ### 3.1 Plan 01 交付证据（只引用，不重开）
 
-执行本计划时，Plan 01 必须已经在其自身权威链中关闭安装、静态读回、补偿、卸载、Hermes 集成以及安装器性能/资源基线。本计划届时只在最终报告中引用 Plan 01 的候选 SHA、门禁结论和已脱敏证据索引，不复制其场景、阈值、算法或关闭标准，也不重跑、不降级、不重新判定 `INS-*`、`UN-*` 或 `GATE-*`。当前这些实现和验收尚未开始。
+执行本计划时，Plan 01 必须已关闭安装基础，Plan 02 必须已关闭确定性任务分解、路由、dispatcher 和父子任务主链。本计划届时只在最终报告中引用 Plan 01 的候选 SHA、门禁结论和已脱敏证据索引，不复制其场景、阈值、算法或关闭标准，也不重跑、不降级、不重新判定 `INS-*`、`UN-*` 或 `GATE-*`。Plan 01 已关闭；Plan 02 与本计划的实现和验收尚未开始。
 
-若 Plan 01 未完成、证据不可验证或候选 SHA 不匹配，本计划在任何模型调用前以 `prerequisite-failed` 停止。Plan 02 的 `passed` 只表示 Worker 评测通过，不能弥补、覆盖或替代 Plan 01 失败。
+若 Plan 01 或 Plan 02 未完成、证据不可验证或候选 SHA 不匹配，本计划在任何模型调用前以 `prerequisite-failed` 停止。Plan 03 的 `passed` 只表示 Worker 质量与性能评测通过，不能弥补、覆盖或替代 Plan 01 安装失败或 Plan 02 编排主链失败。
 
 ### 3.2 Worker 真实行为、质量与运行性能
 
-这一层只在 Plan 01 全部关闭后按本计划运行：
+这一层只在 Plan 01 安装基础与 Plan 02 编排主链全部关闭后按本计划运行：
 
 - 把 AgentPorter 当前渲染的请求模型/provider 保持不变作为 Worker 候选事实；运行前后读回实际模型/provider，并将不匹配归类为 `inconclusive`，不得以覆盖参数改写候选；
 - `bounded` 与 `mechanical` tier 行为；
@@ -161,7 +161,7 @@ budget:
 
 每轮 release benchmark 使用同一任务集运行：
 
-1. **AgentPorter Worker：** 安装后的真实 Profile；
+1. **AgentPorter Worker：** 通过 Plan 02 编排主链部署并验证的真实 Profile；
 2. **同模型中性对照：** 相同模型、provider、reasoning、工具集和预算，但不使用 AgentPorter Worker 指令；
 3. **tier 对照：** 同一有界机械任务可分别交给 Luna 与 Small Worker比较质量/效率，但不要求 Luna 拒绝；需要架构或产品判断的任务必须由 Small Worker 拒绝。路由正确率另行验证机械任务优先选择 Small。
 
@@ -256,7 +256,7 @@ Worker 评测使用独立状态，不复用安装/卸载状态：
 
 - `passed`：无硬失败，且该层声明的质量/稳定性阈值均满足；
 - `failed`：存在硬失败或确定性验收失败；
-- `prerequisite-failed`：Plan 01 未关闭、证据索引不可验证或候选 SHA 不匹配，零模型调用；
+- `prerequisite-failed`：Plan 01/Plan 02 未关闭、证据索引不可验证或候选 SHA 不匹配，零模型调用；
 - `inconclusive`：样本、凭证、模型、judge 或环境不足，不能得出结论；
 - `inconclusive-baseline`：首轮真实结果只用于建立并复审阈值，除零容忍安全门禁外不宣称质量/性能通过；
 - `control-unavailable`：无法建立符合隔离约束的同模型中性对照；
@@ -267,11 +267,12 @@ Worker 评测使用独立状态，不复用安装/卸载状态：
 报告必须并列展示：
 
 ```text
-AgentPorter delivery result: installed / configuration-required / ...
+Profile installation result: installed / compensation-incomplete / ...
+Orchestration result: orchestration-configured / dispatcher-not-running / live-routing-passed / ...
 Worker evaluation result: passed / failed / inconclusive / ...
 ```
 
-前者来自 Plan 01；后者来自本计划。任何 Worker 分数不得把 `configuration-required` 改为 `ready`，也不得证明安装补偿或卸载安全。
+第一项来自 Plan 01，第二项来自 Plan 02，第三项来自本计划。任何 Worker 分数不得把 `configuration-required` 改为 `ready`，不得把 `live-routing-unverified` 改为 `live-routing-passed`，也不得证明安装补偿或卸载安全。
 
 ## 10. 实施顺序与交付门禁
 
@@ -293,7 +294,7 @@ Worker evaluation result: passed / failed / inconclusive / ...
 
 ### Phase C：Smoke 与对照可达性
 
-1. 仅在 Plan 01 完成后执行真实 Worker 单次 smoke；
+1. 仅在 Plan 01 与 Plan 02 完成后执行真实 Worker 单次 smoke；
 2. 证明符合隔离约束的中性对照可建立；
 3. 运行少量 tier 交叉任务并验证路由/直接委派语义；
 4. 核验原始记录、脱敏、统计和状态分层；
@@ -315,12 +316,12 @@ Worker evaluation result: passed / failed / inconclusive / ...
 - 临时 HOME/HERMES_HOME、非特权 OS sandbox、最小子进程环境、宿主凭证 sentinel guard、默认拒绝网络、无默认 Profile 写入和名称无关发现测试；
 - 输出、added-line、fixture 和候选基线隐私扫描；
 - Markdown 链接、格式、lint、type、测试和 `git diff --check`；
-- 独立语义复审，确认本计划未进入安装器产品接口、Plan 01 模型禁令或安装结果状态机。
+- 独立语义复审，确认本计划未回灌 Plan 01 安装状态机、未替代 Plan 02 编排主链，也未越过两者的模型调用授权边界。
 
 ## 11. 提交和发布纪律
 
 - 本计划及其后续实现通过对应门禁后可直接 commit，不再要求逐次用户确认；
 - push、真实模型 benchmark 和可能产生费用的运行仍须分别获得用户明确授权；
-- 文档状态、实现状态、真实调用状态和基线状态必须分别记录；
+- 评测报告同时携带 Plan 01 安装结果、Plan 02 编排结果和本 Plan 03 质量结果，三者不得互相升级状态；
 - 原始输出或包含用户数据的报告不得提交；
 - 不因 benchmark 工具存在而宣称 Worker 已验证，只有指定候选的真实结果可支持该声明。

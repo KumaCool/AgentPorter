@@ -1,6 +1,6 @@
 # Contributing to AgentPorter
 
-AgentPorter is implemented; source snapshots remain unsupported, and release support begins only after hosted-artifact acceptance. Contributions must preserve its one-shot, fail-closed Hermes Profile installation and independent uninstall model.
+AgentPorter v0.1.0 implements the fail-closed Profile installation foundation; the product roadmap now continues with Hermes-native multi-agent orchestration and task routing. Contributions must preserve the one-shot installation and independent uninstall safety contracts while keeping new orchestration work inside the approved Plan 02 boundaries.
 
 ## Before you start
 
@@ -44,7 +44,7 @@ After packaging is reconciled, build into an empty temporary directory and run `
 
 ## Safety invariants
 
-Changes must preserve the [install/uninstall design](docs/03-installation-and-uninstall-design.md): complete preflight and preview before writes; no overwrite; current-transaction-only compensation; name-independent marker identity; explicit uninstall warning and confirmation; collection and per-target revalidation; native deletion; unrelated configuration preservation.
+Changes must preserve the [install/uninstall design](docs/03-installation-and-uninstall-design.md) and the [multi-agent orchestration plan](docs/plan/02-multi-agent-orchestration.md): complete preflight and preview before writes; no overwrite; current-transaction-only compensation; name-independent marker identity; explicit uninstall warning and confirmation; collection and per-target revalidation; native deletion; unrelated configuration preservation.
 
 Update user, security, design, and changelog documentation when behavior or release contracts change. Pull requests must state scope, test evidence, compatibility impact, security impact, and whether real-Hermes acceptance was performed.
 

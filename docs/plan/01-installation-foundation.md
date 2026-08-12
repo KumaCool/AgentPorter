@@ -1,20 +1,20 @@
-# AgentPorter 实施计划
+# AgentPorter 安装基础实施记录
 
 ## 1. 状态与权威来源
 
-- **产品方向：** Hermes-first 已确认；
-- **设计与计划：** Plan 01、合并设计与独立 Plan 02 均已确认；
+- **历史范围：** 本文记录 v0.1.0 安装/卸载基础，当前产品主线已转入 [Plan 02 多代理编排与路由](02-multi-agent-orchestration.md)；
+- **设计与计划：** 安装/卸载设计已经关闭；后续编排实施与 Worker 基准分别由 Plan 02、Plan 03 负责；
 - **代码与测试：** Phase 1–6 实现已完成：原生分发契约、集合预检与确认、正式安装/静态读回/有限补偿、名称无关独立卸载、临时根 Hermes v0.20 正式入口/资源/规模/故障验收及开源产品化均已通过本地门禁；
-- **真实 Hermes 验收与发布：** 已完成隔离临时根下正式安装、跨目录读回、批量 rename、正式卸载、冷/热资源基线和 120 次故障循环；Kanban 证据限于 parser 与只读 assignee 枚举，未运行 Worker/模型；v0.1.0 已通过远程跨平台 CI，完成版本标签、GitHub Release、公开 `latest` 入口与托管制品下载回验；
+- **真实 Hermes 验收与发布：** 已完成隔离临时根下正式安装、跨目录读回、批量 rename、正式卸载、冷/热资源基线和 120 次故障循环；Kanban 证据限于 parser 与只读 assignee 枚举，未创建卡片、运行 dispatcher 或触发 Worker/模型，因此不证明自动任务分配；v0.1.0 已通过远程跨平台 CI，完成版本标签、GitHub Release、公开 `latest` 入口与托管制品下载回验；
 - **Codex CLI Adapter：** 仅保留未来边界，不在当前计划内；Hermes Profile `codex-5-3-small-worker` 仍属于第一版 Worker 集。
 
-实施只解释阶段顺序，不重新定义产品语义。文档职责和权威关系见 [合并设计的文档分工](../03-installation-and-uninstall-design.md#1-文档职责与当前状态)；本计划的 Phase 只提供或关闭对应验收证据，其中所有 GATE 仅由 Phase 6 最终关闭。
+本文保留已发布基础层的阶段证据，不再代表完整产品实施顺序。文档职责和权威关系见 [合并设计的文档分工](../03-installation-and-uninstall-design.md#1-文档职责与当前状态)；本计划的 Phase 只提供或关闭对应验收证据，其中所有 GATE 仅由 Phase 6 最终关闭。
 
-## 2. 第一版完成定义
+## 2. v0.1.0 安装基础完成定义
 
 在受支持 Hermes 环境中：
 
-主安装器、独立 `uninstall.py`、Hermes 集成验收和开源产物全部满足 [INS/UN/GATE 权威矩阵](../03-installation-and-uninstall-design.md#7-验收矩阵)。安装完成后的真实 Worker 行为与性能评测由 [Plan 02](02-agent-validation-and-benchmark.md) 独立执行，不阻止本计划交付，也不能改写安装结果。
+主安装器、独立 `uninstall.py`、Hermes 集成验收和开源产物全部满足 [INS/UN/GATE 权威矩阵](../03-installation-and-uninstall-design.md#7-验收矩阵)。这只关闭 Profile 工作组的安全交付基础，不关闭任务自动分解、合理路由、dispatcher 执行或 Worker 真实行为。上述产品主链由 [Plan 02](02-multi-agent-orchestration.md) 接续，质量与性能由 [Plan 03](03-agent-validation-and-benchmark.md) 后置评测。
 
 ## 3. Phase 1：领域模型、检测与纯渲染
 
@@ -70,7 +70,7 @@
 
 ## 6. Phase 4：名称无关独立卸载
 
-**当前状态：** 名称无关发现、封印计划、完整警告、绑定确认、集合/逐项重验、原生删除、双重读回、独立入口及临时根 Hermes v0.20 批量改名卸载演练已完成并通过本阶段集中语义复审。Phase 5–6 最终 GATE 仍保持开放。
+**历史关闭状态：** 名称无关发现、封印计划、完整警告、绑定确认、集合/逐项重验、原生删除、双重读回、独立入口及临时根 Hermes v0.20 批量改名卸载演练已完成并通过本阶段集中语义复审；当时留待 Phase 5–6 关闭的最终 GATE 后续已由 Phase 6 统一关闭。
 
 ### RED/GREEN
 
@@ -88,7 +88,7 @@
 
 ## 7. Phase 5：Hermes 集成验收
 
-**当前状态：** 正式安装/卸载入口的临时根 Hermes v0.20 冷热周期、跨目录读回、批量改名、资源基线，2/10/100/1000 合成根扫描和 120 次故障循环已实现并通过机械门禁及本阶段集中语义复审。Phase 6 最终 GATE 仍保持开放。Kanban 证据限于真实 CLI parser 与只读 assignee 枚举，未创建卡片或触发 Worker/模型运行。
+**历史关闭状态：** 正式安装/卸载入口的临时根 Hermes v0.20 冷热周期、跨目录读回、批量改名、资源基线，2/10/100/1000 合成根扫描和 120 次故障循环已实现并通过机械门禁及本阶段集中语义复审；当时留待 Phase 6 关闭的最终 GATE 后续已统一关闭。Kanban 证据限于真实 CLI parser 与只读 assignee 枚举，未创建卡片或触发 Worker/模型运行。
 
 1. 在干净临时 Hermes 根执行正式安装入口；
 2. 使用原生命令读回 Profile、description、config、SOUL 和标记；
@@ -103,7 +103,7 @@
 
 这些性能数据在第一版建立可重复基线，不在没有基线时虚构绝对时延阈值；安全语义仍按权威 `INS/UN/GATE` 判定。当前开发机证据与最低支持版本声明必须分开记录。静态验收不得声称模型运行成功。
 
-本 Phase 不运行 [Plan 02](02-agent-validation-and-benchmark.md) 的真实模型任务；后者只能在本计划全部关闭后独立启动。
+本 Phase 不创建 Kanban 卡片、不运行 dispatcher，也不执行 [Plan 03](03-agent-validation-and-benchmark.md) 的真实模型任务。Plan 02 必须先完成编排接线与确定性端到端验收，Plan 03 才可启动统计性评测。
 
 ### 验收映射
 
@@ -133,4 +133,4 @@ Phase 6 对 [权威矩阵中的 `GATE-01`–`GATE-09`](../03-installation-and-un
 - 提交前扫描 staged/index 中的秘密、个人路径和环境值，并验证公开 Git 身份；
 - 通过交付门禁后可直接 commit，不再要求逐次用户确认；push 仍需用户明确授权；
 - 获批 push 后验证本地与远程 SHA 一致；
-- Codex CLI Adapter、升级、修复、后台服务和其它生命周期能力不得进入当前实现。
+- Codex CLI Adapter、升级、修复和自研后台服务不得回灌本历史基础层；后续编排只复用 Hermes 原生 Kanban/gateway/dispatcher。

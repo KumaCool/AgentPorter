@@ -2,9 +2,9 @@
 
 [English](README.md) | 简体中文
 
-AgentPorter 是一个开源、一次性运行的安装器，用于安装可复用的 [Hermes Agent](https://hermes-agent.nousresearch.com/) Worker Profile。
+AgentPorter 是一个开源的 [Hermes Agent](https://hermes-agent.nousresearch.com/) 多代理工作组部署方案：一次安装多个职责明确的 Worker Profile，并逐步接通 Hermes 原生 Kanban 的任务分解与合理路由。
 
-> **发布状态：** v0.1.0 是首个受支持版本，已通过本地、对抗性、打包、制品、远程跨平台 CI、托管制品回验及隔离 Hermes v0.20.0 验收，全程未调用模型。Hermes v0.20.0 是已经实际验收的目标，不代表承诺的最低版本。
+> **当前能力：** v0.1.0 已安全交付双 Profile 安装/卸载基础，并写入 routing description；Hermes 能只读枚举两个 assignee。但 AgentPorter 尚未配置或验收自动分解、dispatcher 执行和真实 Worker 路由。这是下一阶段计划，不是当前发布能力。
 
 ## curl 一键安装（POSIX）
 
@@ -31,14 +31,25 @@ agentporter-uninstall
 
 卸载会删除 AgentPorter 安装的 Worker Profile 及其中的本地数据和后续自定义；确认前请先备份。该命令不会删除 AgentPorter 自身的独立 Python 环境。检查后执行方式、PATH、信任边界与完整卸载说明见[安装指南](docs/04-installation-and-troubleshooting.zh-CN.md)。
 
-## 安装内容
+## v0.1.0 安装内容
 
-一次运行会安装仓库定义的完整双 Profile Worker 集：
+一次运行会安装仓库当前的双 Profile Worker 基础：
 
 - `luna_worker`：在父 Agent 已明确目标、范围、约束和验收标准后，执行有边界的实现与分析任务；
 - `codex-5-3-small-worker`：负责范围更窄、严格机械化的委派任务。
 
-每个 Profile 都包含 Hermes 原生配置、指令、路由描述以及一个非秘密的所有权标记。AgentPorter 只编排 Hermes Profile 原生能力，不替代 Hermes 的存储、队列、worktree 或供应商配置。
+每个 Profile 都包含 Hermes 原生配置、指令、路由描述以及一个非秘密的所有权标记。AgentPorter 组合 Hermes 原生能力，不替代 Profile 存储、Kanban 任务库、decomposer、dispatcher、worktree 或供应商配置。
+
+## 产品方向：先部署工作组，再合理分配任务
+
+项目重点不只是复制 Profile 文件。完整产品应让用户提交任务后，由 AgentPorter 的专用 orchestrator 调用 Hermes 分解器取得候选、在写入任务前按职责验证，再由 Hermes 在合适的 workspace 中执行，并返回可验证的交接结果。
+
+当前版本只完成了该流程的安全安装基础。缺失的编排主线已经正式纳入：
+
+- [计划索引与当前状态](docs/plan/00-index.md)
+- [多代理编排与路由实施计划](docs/plan/02-multi-agent-orchestration.md)
+
+在该计划通过真实验收前，请使用 Hermes 原生 Kanban 手动指定任务；不要把 Profile 安装或 description 读回当作自动路由已经可用。
 
 ## 安全边界
 
@@ -102,7 +113,7 @@ agentporter-uninstall
 ## 仓库结构
 
 - `src/agentporter/resources/workers.yaml`：打包内唯一权威 Worker 定义及模型偏好；
-- `install.py`、`uninstall.py` 与 `src/agentporter/`：一次性安装和受保护的独立卸载实现；
+- `install.py`、`uninstall.py` 与 `src/agentporter/`：当前一次性工作组部署基础和受保护的独立卸载实现；
 - `tests/`：单元、文件系统、事务、压力和隔离真实 Hermes 验收测试；
 - `scripts/verify_release.py`：fail-closed 的源码、wheel 和 sdist 发布契约验证器；
 - `docs/`：架构、Worker 格式、适配器映射、生命周期设计、实施计划和用户指南。
@@ -113,8 +124,10 @@ agentporter-uninstall
 - [可移植 Worker 规范](docs/01-portable-worker-spec.md)
 - [Hermes Adapter 设计](docs/02-platform-adapters.md)
 - [安装、卸载与验收矩阵](docs/03-installation-and-uninstall-design.md)
-- [实施计划](docs/plan/01-implementation-plan.md)
-- [安装后 Worker 验证与基准计划](docs/plan/02-agent-validation-and-benchmark.md)
+- [计划索引](docs/plan/00-index.md)
+- [v0.1.0 安装基础实施记录](docs/plan/01-installation-foundation.md)
+- [多代理编排与路由实施计划](docs/plan/02-multi-agent-orchestration.md)
+- [编排接通后的 Worker 验证与基准计划](docs/plan/03-agent-validation-and-benchmark.md)
 - [变更日志](CHANGELOG.md)
 
 这些详细设计和计划记录的是工程契约及验收历史，并不构成对所有环境的通用生产就绪声明。首个版本不包含 Codex CLI 平台适配器；Worker 名称也不代表已经支持 Codex CLI。

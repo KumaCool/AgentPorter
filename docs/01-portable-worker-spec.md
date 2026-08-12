@@ -1,5 +1,7 @@
 # 可移植 Worker 规范
 
+> **当前状态：** v0.1.0 schema 只定义两个执行 Worker，已用于安装基础。面向工作组自动分解与路由的 `role/routing/execution` 扩展由 [Plan 02](plan/02-multi-agent-orchestration.md) 设计并实现；下文不得被理解为编排主链已接通。
+
 ## 1. 权威文件
 
 打包资源 `src/agentporter/resources/workers.yaml` 是第一版 Worker 集的唯一权威输入：
@@ -123,8 +125,12 @@ output: [返回格式]
 
 `SOUL.md` 是行为指令，不是文件系统隔离机制。
 
-## 6. Artifact 验证边界
+## 6. 编排扩展边界
+
+当前 `tier + description + instructions` 足以渲染两个有职责差异的 Profile，也足以让 Hermes roster 暴露静态 routing description，但不足以单独冻结完整工作组编排。Plan 02 已决定加入专用 orchestrator；只有该新组件可以采用扩展后的角色、路由、workspace、toolset 和 skill 字段，v0.1.0 两个 Worker 的 marker schema 与 distribution version 不回写。新 orchestrator 必须拥有永久 component ID、继续使用当前可解析的 `MarkerV1`，并按与 legacy 双组件共享的 installation ID 进入兼容发现、补偿和卸载矩阵；不得通过复制同质 Profile 或仅修改名称扩充数量。
+
+## 7. Artifact 验证边界
 
 本规范只要求打包内 `workers.yaml`、distribution、config、SOUL 和 marker 的 schema/映射可验证。安装状态、补偿、模型调用边界和独立卸载均由 [安装、卸载与验收设计](03-installation-and-uninstall-design.md) 定义。
 
-安装完成后的真实 tier、路由、正确拒绝、任务质量和性能只由独立 [Worker 验证与基准计划](plan/02-agent-validation-and-benchmark.md) 评测；该结果不反向修改本规范或安装状态。
+任务分解、assignee 选择与 dispatcher 主链由 [Plan 02](plan/02-multi-agent-orchestration.md) 验证；真实 tier、正确拒绝、任务质量和性能由后置 [Worker 验证与基准计划](plan/03-agent-validation-and-benchmark.md) 评测。两者均不能反向把静态安装状态改写为运行成功。

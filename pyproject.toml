@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agentporter"
 dynamic = ["version"]
-description = "Hermes-first portable Worker profile installer"
+description = "Deploy a role-specific Hermes multi-agent Worker team"
 readme = "README.md"
 license = "MIT"
 authors = [{name = "AgentPorter contributors"}]

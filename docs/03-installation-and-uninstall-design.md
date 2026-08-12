@@ -2,29 +2,30 @@
 
 ## 1. 文档职责与当前状态
 
-本文是 AgentPorter **安装事务、名称无关身份、独立卸载和验收语义的唯一权威设计**。
+本文是 AgentPorter **Profile 工作组安装事务、名称无关身份、独立卸载和安装基础验收语义的唯一权威设计**。它是多代理产品的生命周期基础，不再承担完整产品定位或任务编排设计。
 
-- **设计状态：** 安装/卸载设计与独立 Plan 02 均已确认；
-- **代码状态：** Phase 1–4 的安装、静态读回、有限补偿、名称无关卸载发现、封印计划、确认、集合/逐项重验、原生删除与双重读回均已实现；
-- **真实验收：** 已在临时根下完成 Hermes v0.20 双 Profile 安装、description/artifact 读回、批量改名、确认后变化阻断、partial-delete 和完整卸载演练；Phase 5 完整 INS/UN/GATE 验收仍未执行；
-- **安装入口：** 一次性启动，无子命令、平台参数、静默模式或后台服务；
-- **卸载入口：** 独立 `uninstall.py`，不是命令体系或长期管理界面。
+- **设计/代码/验收状态：** v0.1.0 的安装、静态读回、有限补偿、名称无关独立卸载及完整 INS/UN/GATE 已实现、验收并发布；
+- **安装入口：** 一次启动，无子命令、平台参数、静默模式或后台服务；
+- **卸载入口：** 独立 `uninstall.py`，不是命令体系或长期管理界面；
+- **能力边界：** 现有证据只证明两个 Worker Profile 可安全安装、读回和卸载；Kanban 仅验证 parser 与只读 assignee 枚举，未创建任务、运行 dispatcher 或调用 Worker/模型；
+- **后续产品主线：** 自动分解、按职责路由和多 Worker 执行由 [Plan 02](plan/02-multi-agent-orchestration.md) 定义。
 
 文档分工：
 
-- [方案总览](00-solution-overview.md)：产品定位、架构和非目标；
+- [方案总览](00-solution-overview.md)：工作组部署与任务路由的产品定位；
 - [Worker 规范](01-portable-worker-spec.md)：打包内 `workers.yaml` 与派生文件格式；
-- [Hermes Adapter](02-platform-adapters.md)：Hermes v0.20 原生能力映射；
+- [Hermes Adapter](02-platform-adapters.md)：Hermes Profile 与原生编排能力映射；
 - **本文：** 安装、补偿、卸载、验证及安全边界；
-- [实施计划](plan/01-implementation-plan.md)：安装器、卸载器、测试和发布阶段；
-- [Worker 验证与基准计划](plan/02-agent-validation-and-benchmark.md)：Plan 01 完成后的独立真实代理评测，不参与本文安装/卸载状态。
+- [安装基础实施记录](plan/01-installation-foundation.md)：v0.1.0 安装器、卸载器、测试和发布证据；
+- [多代理编排与路由计划](plan/02-multi-agent-orchestration.md)：当前产品主线；
+- [Worker 验证与基准计划](plan/03-agent-validation-and-benchmark.md)：编排接通后的真实代理质量与性能评测。
 
 ## 2. 共同不变量
 
 1. 主安装器一次运行完成预检、计划、确认、安装、读回、有限补偿并退出；安装器和独立卸载器均不提供子命令或静默模式。
 2. 不覆盖任一预先存在的 Profile，不修改 `default`。
 3. 不复制或发布 `.env`、`auth.json`、API key、私有 base URL、记忆、会话、日志或状态数据库。
-4. 第一版安装器、静态读回、补偿、卸载及 Plan 01 集成验收不发起模型请求；静态安装成功不代表模型运行成功。Plan 01 完成后另行显式运行的 [Worker 基准](plan/02-agent-validation-and-benchmark.md) 不属于这些路径。
+4. 第一版安装器、静态读回、补偿、卸载及 Plan 01 集成验收不发起模型请求；静态安装成功不代表模型运行成功。Plan 01 完成后另行显式运行的 [Worker 基准](plan/03-agent-validation-and-benchmark.md) 不属于这些路径。
 5. **安装失败补偿和日后主动卸载是两种删除语义。** 补偿只处理当前安装事务中可证明新建的目标；卸载会删除后来产生的 Profile-local 数据，必须重新发现、警告并确认。
 6. 原始/当前 Profile 名、Portable ID、Display name 和 description 均不构成所有权身份。
 7. 名称无关 marker 是唯一组件/安装身份；Hermes distribution info 中的 source 只可作为当前安装期的辅助事务证据，不能单独建立身份，也永不参与日后卸载资格。
@@ -274,7 +275,9 @@ Hermes v0.20 的 `profile delete` 仅按名称执行，没有原子 identity-con
 
 ## 6. 安装后的职责边界
 
-临时 staging 会被删除，而 Hermes 记录的本地 source 随后失效，因此第一版不承诺原生 `profile update`。升级和修复由用户通过 Hermes 原生能力承担；AgentPorter 只提供一次性安装器和上述独立卸载脚本。
+临时 staging 会被删除，而 Hermes 记录的本地 source 随后失效，因此 v0.1.0 不承诺原生 `profile update`。现有代码只提供工作组 Profile 的一次性安装入口和独立卸载脚本；它没有创建 Kanban 任务、配置自动分解、运行 dispatcher 或启动 gateway。
+
+这不再是 AgentPorter 的完整产品边界。后续 [Plan 02](plan/02-multi-agent-orchestration.md) 将在不回退本安装/卸载合同的前提下，复用 Hermes 原生 Kanban/decomposer/dispatcher 接通任务分解与路由。Plan 02 新增 orchestrator 时不得回写 v0.1.0 两个 Worker 的 marker schema 或 distribution version；新组件继续使用当前可解析的 `MarkerV1`，并记录包含它的新产品发布版本。安装/升级/卸载必须兼容两种完整集合：legacy 双组件，以及按同一 installation ID 附加 orchestrator 的三组件；任何 partial、未知 component、重复、旧组件 drift 或无法解释的版本组合继续 fail closed。三组件卸载默认保留共享 Kanban boards/tasks，运行中的 orchestrator gateway/dispatcher 或 running tasks 会阻断删除。
 
 ## 7. 验收矩阵
 

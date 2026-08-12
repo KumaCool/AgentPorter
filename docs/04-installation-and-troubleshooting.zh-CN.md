@@ -2,7 +2,7 @@
 
 [English](04-installation-and-troubleshooting.md) | 简体中文
 
-AgentPorter v0.1.0 是该 Hermes 优先一次性安装器的首个受支持版本。仓库已经具备离线契约测试，并在隔离环境中对 Hermes v0.20.0 做过真实验收；这个版本只是**已观察版本**，不是承诺的最低版本或通用兼容范围。
+AgentPorter v0.1.0 是 Hermes 多代理工作组一次性安装基础的首个受支持版本。仓库已经具备离线契约测试，并在隔离环境中对 Hermes v0.20.0 做过真实验收；这个版本只是**已观察版本**，不是承诺的最低版本或通用兼容范围。
 
 ## curl 一键安装（POSIX）
 
@@ -57,7 +57,9 @@ python install.py
 
 终端状态会区分：成功、取消、预检失败、安装失败且补偿完成、补偿不完整、回读失败。只有明确成功结果才表示安装成功；不能根据部分 Profile 目录存在就推断成功。
 
-AgentPorter 安装两个专用 Worker Profile。它不会覆盖现有 Profile、复制供应商凭据、调用模型、安装常驻服务或保存任务数据库。Profile 内凭据和其他运行数据仍由 Hermes 与用户管理。
+AgentPorter v0.1.0 安装两个专用 Worker Profile。它不会覆盖现有 Profile、复制供应商凭据、调用模型、安装常驻服务或创建任务数据库。Profile 内凭据和其他运行数据仍由 Hermes 与用户管理。
+
+当前版本**不会**配置自动分解、启动 gateway dispatcher、创建 Kanban 任务或证明真实任务路由。上述能力由[多代理编排与路由计划](plan/02-multi-agent-orchestration.md)负责。
 
 ## 独立卸载
 

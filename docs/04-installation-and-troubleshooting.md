@@ -2,7 +2,7 @@
 
 English | [简体中文](04-installation-and-troubleshooting.zh-CN.md)
 
-AgentPorter v0.1.0 is the first supported release of this Hermes-first one-shot installer. The repository has offline contract tests and isolated real-Hermes evidence for v0.20.0; that observed version is **not** a promised minimum or universal compatibility range.
+AgentPorter v0.1.0 is the first supported release of the one-shot installation foundation for the Hermes multi-agent Worker team. The repository has offline contract tests and isolated real-Hermes evidence for v0.20.0; that observed version is **not** a promised minimum or universal compatibility range.
 
 ## One-line POSIX install
 
@@ -57,7 +57,9 @@ The source checkout and artifact must come from a commit you trust. Do not run f
 
 Terminal statuses distinguish success, cancellation, preflight failure, install failure with compensation, incomplete compensation, and readback failure. Treat anything other than the explicit success result as not installed or requiring inspection; never infer success from some profile directories being present.
 
-AgentPorter installs two dedicated Worker Profiles. It does not overwrite existing profiles, copy provider credentials, invoke a model, install a daemon, or keep a task database. Profile-local credentials and other runtime data remain managed by Hermes and the user.
+AgentPorter v0.1.0 installs two dedicated Worker Profiles. It does not overwrite existing profiles, copy provider credentials, invoke a model, install a daemon, or create a task database. Profile-local credentials and runtime data remain managed by Hermes and the user.
+
+This release does **not** configure automatic decomposition, start the gateway dispatcher, create Kanban tasks, or prove live task routing. Those capabilities are tracked in the [multi-agent orchestration plan](plan/02-multi-agent-orchestration.md).
 
 ## Independent uninstall
 

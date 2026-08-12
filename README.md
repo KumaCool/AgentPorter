@@ -2,9 +2,9 @@
 
 English | [简体中文](README.zh-CN.md)
 
-AgentPorter is an open-source, one-shot installer for reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) Worker Profiles.
+AgentPorter is an open-source deployment kit for a reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) multi-agent Worker team. It installs role-specific Profiles in one run and is evolving toward verified task decomposition and routing through Hermes-native Kanban orchestration.
 
-> **Release status:** v0.1.0 is the first supported release. It passed local, adversarial, packaging, artifact, remote cross-platform CI, hosted-asset readback, and isolated Hermes v0.20.0 acceptance gates without model calls. Hermes v0.20.0 is an observed acceptance target, not a promised minimum.
+> **Current capability:** v0.1.0 safely installs and uninstalls the two-Profile Worker foundation. It writes routing descriptions and Hermes can enumerate both assignees, but AgentPorter has not yet configured or accepted automatic decomposition, dispatcher execution, or live Worker routing. That is the next implementation plan—not a current release claim.
 
 ## One-line install (POSIX)
 
@@ -31,14 +31,25 @@ If the command is not on `PATH`, run:
 
 Uninstall deletes the Worker Profiles installed by AgentPorter, including their local data and later customization, so back them up before confirming. It does not remove AgentPorter's private Python environment. See the [installation guide](docs/04-installation-and-troubleshooting.md) for the inspect-first flow, PATH, trust boundary, and complete uninstall details.
 
-## What it installs
+## What v0.1.0 installs
 
-One launch installs the repository's complete two-Profile Worker set:
+One launch installs the repository's current two-Profile Worker foundation:
 
 - `luna_worker` — bounded implementation and analysis after the parent fixes goal, scope, constraints, and acceptance;
 - `codex-5-3-small-worker` — narrower, strictly mechanical delegation.
 
-Each Profile contains Hermes-native configuration, instructions, routing description, and a non-secret ownership marker. AgentPorter orchestrates Hermes Profile primitives; it does not replace Hermes storage, queues, worktrees, or provider configuration.
+Each Profile contains Hermes-native configuration, instructions, routing description, and a non-secret ownership marker. AgentPorter composes Hermes primitives instead of replacing Profile storage, the Kanban task database, the decomposer, dispatcher, worktrees, or provider configuration.
+
+## Product direction: deploy a team, then route work
+
+The product goal is not merely to copy Profile files. A complete AgentPorter deployment should let a user submit a task, have a dedicated AgentPorter orchestrator obtain Hermes decomposition candidates, validate role and assignee policy before any task write, let Hermes execute approved children in appropriate workspaces, and return verifiable handoffs.
+
+The current release provides only the safe installation foundation for that flow. The repository now tracks the missing orchestration work explicitly:
+
+- [Plan index and current product status](docs/plan/00-index.md)
+- [Multi-agent orchestration and routing plan](docs/plan/02-multi-agent-orchestration.md)
+
+Until that plan passes live acceptance, use Hermes-native Kanban manually and do not treat Profile installation or description readback as proof of automatic routing.
 
 ## Safety boundary
 
@@ -80,7 +91,7 @@ Offline CI runs the complete portable suite and package/release contracts on Lin
 ## Repository map
 
 - `src/agentporter/resources/workers.yaml` — packaged authoritative Worker definitions and requested model preferences;
-- `install.py`, `uninstall.py`, and `src/agentporter/` — one-shot install and guarded independent uninstall;
+- `install.py`, `uninstall.py`, and `src/agentporter/` — the current one-shot deployment foundation and guarded independent uninstall;
 - `tests/` — unit, filesystem, transaction, stress, and isolated real-Hermes acceptance;
 - `scripts/verify_release.py` — fail-closed source/wheel/sdist contract verifier;
 - `docs/` — architecture, Worker format, adapter mapping, lifecycle design, plans, and user guides.
@@ -91,8 +102,10 @@ Design and evidence:
 - [Portable Worker specification](docs/01-portable-worker-spec.md)
 - [Hermes adapter design](docs/02-platform-adapters.md)
 - [Install/uninstall design and acceptance matrix](docs/03-installation-and-uninstall-design.md)
-- [Implementation plan](docs/plan/01-implementation-plan.md)
-- [Post-install Worker validation plan](docs/plan/02-agent-validation-and-benchmark.md)
+- [Plan index](docs/plan/00-index.md)
+- [v0.1.0 installation foundation record](docs/plan/01-installation-foundation.md)
+- [Multi-agent orchestration and routing plan](docs/plan/02-multi-agent-orchestration.md)
+- [Post-orchestration Worker validation plan](docs/plan/03-agent-validation-and-benchmark.md)
 - [Changelog](CHANGELOG.md)
 
 The detailed design and plan documents are engineering history and contracts, not universal production-readiness claims. “Codex” platform support is outside the first release; the Worker name does not imply a Codex CLI adapter.
