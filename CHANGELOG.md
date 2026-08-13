@@ -4,6 +4,10 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+### Documentation
+
+- Approved and documented the next functional version's role-based Worker identities and configurable inference bindings. The target preserves all three permanent component UUIDs and role boundaries, migrates model-derived default names to bounded/mechanical names without overwriting user-renamed Profiles, and requires explicit per-Profile model/provider/endpoint bindings with readiness invalidation on change. No implementation or live model operation is included in this documentation change.
+
 ## [0.1.8] - 2026-08-14
 
 ### Fixed

@@ -4,15 +4,15 @@
 
 | 维度 | 当前证据状态 |
 |---|---|
-| installation | 0.1.4 已正式发布；fresh 三 Profile 与 legacy 双 Worker → 三 Profile 生命周期通过离线及隔离 Hermes v0.20 验证，本机 curl 安装和三 Profile读回成功。 |
-| public entries | 0.1.4 私有环境包含三个 entry point，但公共 bin 目录只发布 `agentporter-uninstall`；`agentporter` / `agentporter-activate` 公共入口缺失。 |
-| binding | 0.1.4 配置事务离线通过，但已发布正式入口固定为 `probe-unsupported`，未形成“安装 → 激活 → 真实调用”接续。 |
-| credential | 两 Worker未配置可用 provider/endpoint/Profile-local 凭据；AgentPorter仍不得读取、复制或持久化秘密。 |
-| live call | 实际调用在网络请求前以 `No inference provider configured` 失败；`config check=0` 只是静态假绿。 |
+| installation | 0.1.8 已正式发布；三 Profile 生命周期、三公共入口和 bootstrap 事务已纳入发布合同。 |
+| public entries | bootstrap 已发布 `agentporter`、`agentporter-activate`、`agentporter-uninstall` 三个公共入口。 |
+| binding | custom Provider 配置继承与受控 binding 已实现；真实凭据可用性仍须由单独授权的 one-shot 证明。 |
+| credential | 凭据与 Provider 定义仍由 Hermes Profile/操作者持有；AgentPorter 不得在输出、argv、fingerprint 或 receipt 中披露秘密。 |
+| live call | 0.1.8 发布不声称已执行带凭据的真实 canary；`config check=0` 仍只证明静态配置。 |
 | route proof | Hermes v0.20 `--usage-file`可报告 model/provider/api_calls，但不报告 tool_calls/fallback；未来成功调用应分层为 `live-call-passed + route-proof-incomplete`。 |
 | dispatcher | 专用 orchestrator静态配置已读回；未启动 Gateway，未验收 live dispatcher/Kanban。 |
 
-当前实施主线是[0.1.5 运行激活与真实调用闭环设计](05-runtime-activation-and-live-call-design.md)及[Plan 05](plan/05-runtime-activation-and-live-call-closure.md)。方案只修改AgentPorter：认证/one-shot使用Hermes公共CLI，非秘密provider/endpoint binding使用AgentPorter受控配置事务；不得修改或import Hermes源码。
+0.1.5–0.1.8 已交付运行激活基础。下一功能版本的已批准主线是[职责型 Worker 身份与自定义推理绑定设计](06-role-identities-and-configurable-model-binding-design.md)及[Plan 06](plan/06-role-identities-and-configurable-model-binding.md)：保持永久 component UUID 与 Worker 职责不变，将模型语义名称迁移为职责型名称，并让三个 Profile 的 model/provider/endpoint 由用户显式配置。当前仅完成文档，尚未开发；不得修改或 import Hermes 源码。
 
 ## 1. 产品定位
 
@@ -22,9 +22,9 @@ AgentPorter 的核心产品是 **Hermes 多代理工作组的一键部署与任�
 
 当前状态分层如下：
 
-- **已发布版本（v0.1.4）：** 三 Profile 生命周期、双 Worker绑定事务和离线派发/观察合同已发布；本机 curl安装读回通过。
-- **已确认产品缺口：** 公共 `agentporter` / `agentporter-activate` 未发布；两个 Worker缺 provider/endpoint/Profile-local凭据，真实调用失败；正式 probe固定为 unsupported。
-- **当前实施主线：** [0.1.5 运行激活与真实调用闭环设计](05-runtime-activation-and-live-call-design.md)和[Plan 05](plan/05-runtime-activation-and-live-call-closure.md)。
+- **已发布版本（v0.1.8）：** 三 Profile 生命周期、三公共入口、custom Provider binding 和离线派发/观察合同已发布。
+- **仍待真实验收：** 带凭据的真实 canary、完整 route proof、Gateway/Kanban mutation、通知接续和 live routing。
+- **下一功能版本：** [职责型 Worker 身份与自定义推理绑定设计](06-role-identities-and-configurable-model-binding-design.md)和[Plan 06](plan/06-role-identities-and-configurable-model-binding.md)已批准并落地，代码尚未实现。
 - **证据边界：** Hermes v0.20 可通过 usage报告 model/provider/api_calls，但不提供 tool_calls/fallback证明；成功调用最多先达到 `live-call-passed + route-proof-incomplete`。
 - **仍不受支持：** revision-safe Kanban mutation和完整 live routing；不得声称 `operational`。
 
@@ -32,6 +32,8 @@ AgentPorter 的核心产品是 **Hermes 多代理工作组的一键部署与任�
 
 - `luna_worker`：在目标、范围、约束和验收均已冻结时执行有界实现或分析；
 - `codex-5-3-small-worker`：只执行严格更简单、更机械的工作。
+
+以上仍是 0.1.8 当前实现事实。下一功能版本将以不变的 component UUID 把两个执行角色分别投影为 `bounded_worker` / `agentporter-bounded-worker` 与 `mechanical_worker` / `agentporter-mechanical-worker`；用户已经自行修改的 Profile 名保持不变。名称迁移不会改变职责，也不会自动重建或删除 Profile。
 
 Plan 02 已冻结下列兼容设计，Phase A 先以 RED 和当前代码取证证明其可实现性：新增 orchestrator 取得独立永久 component ID，并继续使用当前可解析的 `MarkerV1`；既有两个 Worker 的 marker schema 与 v0.1.0 distribution version 不回写；完整无歧义的 v0.1.0 双组件集合可按同一 installation ID 附加第三组件；空环境直接安装三组件；legacy 双组件和当前三组件都可由卸载器识别。升级失败采用 drift-safe compare-before-restore：无漂移时恢复并补偿本事务新增 orchestrator，发生漂移则保留用户新值与承载它的 orchestrator Profile 并报告 residue；旧 Worker 始终不删除。卸载三组件默认保留共享 Kanban boards/tasks，并在专用 gateway/dispatcher、任何非终态任务或 owner 不明时 fail closed。具体 RED 与状态矩阵见 [Plan 02 Phase A](plan/02-multi-agent-orchestration.md#phase-a兼容路由与事务合同先-red)。
 
@@ -65,7 +67,7 @@ AgentPorter 负责定义和部署工作组、配置专用 orchestrator 控制面
 
 ## 3. 权威输入与产物
 
-`src/agentporter/resources/workers.yaml` 当前是 Worker 语义的权威输入，并由 Hermes Adapter 派生为两个 Profile。字段 schema 和 artifact 规则见 [Worker 规范](01-portable-worker-spec.md)，Hermes 映射与读回见 [Hermes Adapter](02-platform-adapters.md)。
+`src/agentporter/resources/workers.yaml` 当前是 Worker 语义和固定模型请求的权威输入。下一功能版本将拆分该权威：清单只拥有职责，model/provider/endpoint 来自用户显式 sealed binding。字段 schema 和 artifact 规则见 [Worker 规范](01-portable-worker-spec.md)，目标设计见[职责型 Worker 身份与自定义推理绑定设计](06-role-identities-and-configurable-model-binding-design.md)，Hermes 映射与读回见 [Hermes Adapter](02-platform-adapters.md)。
 
 面向编排的后续 schema 必须继续以 Worker 定义为单一角色来源，并显式补齐：
 
@@ -89,6 +91,7 @@ AgentPorter 负责定义和部署工作组、配置专用 orchestrator 控制面
 8. **安装/卸载安全合同继续有效。** 现有名称无关 marker、预检、有限补偿和独立卸载设计仍是工作组生命周期基础。
 9. **运行控制面必须可归因。** 写任何 orchestrator 配置前枚举全部 Profile gateway、machine-global dispatcher lock、standalone dispatcher 与全部共享 board 状态；其他 owner、owner 不明或含非终态任务的 board 时零写入。专用 orchestrator 只有在后续显式启动并读回 PID、Profile config、singleton ownership 和目标 board DB 后，才算 dispatcher-ready。
 10. **Codex CLI 仍不在范围内。** `codex-5-3-small-worker` 是 Hermes Profile 名称与模型请求，不代表已提供 Codex CLI Adapter。
+11. **角色身份与推理绑定分离。** 下一功能版本以固定 component UUID 识别组件，以 bounded/mechanical/orchestrator 表达职责，以当前 Profile 名寻址，以用户选择的 model/provider/endpoint 表达运行绑定；四者不得互相推导。
 
 ## 5. 安装、编排与验收边界
 
@@ -133,4 +136,6 @@ AgentPorter 负责定义和部署工作组、配置专用 orchestrator 控制面
 - [多代理编排与路由实施计划](plan/02-multi-agent-orchestration.md)：历史设计与当前离线合同；最终状态以 [Plan 04](plan/04-runtime-readiness-closure-implementation.md) 为准；
 - [Worker 验证与基准计划](plan/03-agent-validation-and-benchmark.md)：运行激活闭环后的真实代理质量、性能、成本和稳定性评测；
 - [0.1.5 运行激活与真实调用闭环设计](05-runtime-activation-and-live-call-design.md)：公共入口、凭据接续、真实 one-shot、分层 readiness 与升级/卸载边界；
-- [0.1.5 运行激活与真实调用闭环计划](plan/05-runtime-activation-and-live-call-closure.md)：当前批准的实施主线。
+- [0.1.5 运行激活与真实调用闭环计划](plan/05-runtime-activation-and-live-call-closure.md)：0.1.5–0.1.8 运行激活基础的实施记录；
+- [职责型 Worker 身份与自定义推理绑定设计](06-role-identities-and-configurable-model-binding-design.md)：下一功能版本的命名、身份迁移、自定义模型与兼容权威；
+- [职责型 Worker 身份与自定义推理绑定计划](plan/06-role-identities-and-configurable-model-binding.md)：设计已批准，尚未开发的下一功能版本实施计划。

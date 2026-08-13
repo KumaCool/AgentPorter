@@ -16,6 +16,8 @@
 
 > **当前状态：** 0.1.4 schema已正式发布，定义两个执行 Worker和一个专用 orchestrator；三组件生命周期已验证，但公共 activation与真实调用尚未闭合。0.1.5只通过 AgentPorter适配 Hermes公共能力修复，不修改 Hermes源码。
 
+> **下一 schema 方向：** [职责型 Worker 身份与自定义推理绑定设计](06-role-identities-and-configurable-model-binding-design.md)已批准但尚未实现。新写入将使用 `bounded_worker`、`mechanical_worker`、`agentporter_orchestrator`；固定 component UUID 不变；角色清单不再写死 model，实际 model/provider/endpoint 由用户显式 sealed binding 提供。以下第一版 schema 仍是 0.1.8 当前事实。
+
 ## 1. 权威文件
 
 打包资源 `src/agentporter/resources/workers.yaml` 是第一版 Worker 集的唯一权威输入：
@@ -58,6 +60,16 @@ Hermes Profile 名必须满足当前 Hermes 原生约束：
 | `codex_5_3_small_worker` | `codex-5-3-small-worker` |
 
 映射只用于安装计划、初始目标寻址和结果展示，不构成所有权身份；事务与补偿规则见 [安装、卸载与验收设计](03-installation-and-uninstall-design.md)。
+
+下一功能版本的目标初始映射为：
+
+| 固定职责 | 新 Portable ID | 新 Hermes Profile | 兼容身份 |
+|---|---|---|---|
+| 有边界实现与分析 | `bounded_worker` | `agentporter-bounded-worker` | 保留原执行 Worker component UUID |
+| 机械化委派 | `mechanical_worker` | `agentporter-mechanical-worker` | 保留原机械 Worker component UUID |
+| 编排控制面 | `agentporter_orchestrator` | `agentporter-orchestrator` | 保留 orchestrator component UUID |
+
+旧 Portable ID/旧默认名只作为兼容读取与迁移别名。用户已自行修改的 Profile 名不得被自动覆盖。
 
 ## 3. Tier 语义
 
@@ -125,6 +137,8 @@ output: [返回格式]
 - 后续经批准的最小工具配置。
 
 不得渲染 API key、token、私有 base URL、个人路径、默认工作目录、网关凭证或默认 Profile 的无关配置。
+
+下一功能版本不得从角色清单直接渲染固定 `model.default`。若 Hermes 安装 schema 要求该字段，渲染前必须取得用户对该 Profile 的显式 model 选择，并将 model/provider/endpoint 作为同一不可变 binding 纳入确认、读回与 readiness；禁止占位模型、仓库默认模型或跨 Profile 隐式继承。
 
 ### `SOUL.md`
 
