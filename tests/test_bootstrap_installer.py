@@ -67,6 +67,12 @@ case "${AGENTPORTER_TEST_INTERRUPT_AFTER_MOVE:-}:$destination" in
   prepared:*/.0.1.5-upgrade-journal)
     if grep -q '"state": "PREPARED"' "$destination"; then kill -KILL "$PPID"; fi
     ;;
+  agentporter-published:*/.0.1.5-upgrade-journal)
+    if grep -q '"state": "AGENTPORTER_PUBLISHED"' "$destination" \
+        && [ -L "$XDG_BIN_HOME/agentporter" ]; then
+      kill -KILL "$PPID"
+    fi
+    ;;
 esac
 """,
     )
@@ -732,3 +738,42 @@ def test_committed_restart_rejects_same_target_public_link_replacement(tmp_path:
     assert public.is_symlink()
     assert displaced.is_symlink()
     assert journal.read_bytes() == before
+
+
+def test_uncommitted_restart_rejects_same_target_public_link_replacement_without_writes(
+    tmp_path: Path,
+) -> None:
+    old_root, old_public = _seed_v1_upgrade(tmp_path)
+    checksum = hashlib.sha256(b"wheel-bytes").hexdigest()
+    interrupted = _run(
+        tmp_path,
+        checksum=checksum,
+        extra_env={"AGENTPORTER_TEST_INTERRUPT_AFTER_MOVE": "agentporter-published"},
+    )
+    assert interrupted.returncode == -9
+
+    public = tmp_path / "bin" / "agentporter"
+    target = os.readlink(public)
+    displaced = public.with_name("transaction-owned-agentporter")
+    public.rename(displaced)
+    public.symlink_to(target)
+    journal = tmp_path / "data" / "agentporter" / ".0.1.5-upgrade-journal"
+    new_root = tmp_path / "data" / "agentporter" / VERSION
+    before = {
+        path: (path.lstat().st_dev, path.lstat().st_ino)
+        for path in (old_root, old_public, new_root, journal, displaced, public)
+    }
+    journal_before = journal.read_bytes()
+    calls_before = (tmp_path / "calls.log").read_text(encoding="utf-8").count("curl ")
+
+    restarted = _run(tmp_path, checksum=checksum)
+
+    assert restarted.returncode != 0
+    assert "partial/mixed interrupted upgrade" in restarted.stderr
+    assert journal.read_bytes() == journal_before
+    assert (tmp_path / "calls.log").read_text(encoding="utf-8").count("curl ") == calls_before
+    assert public.is_symlink()
+    assert os.readlink(public) == target
+    assert displaced.is_symlink()
+    for path, identity in before.items():
+        assert (path.lstat().st_dev, path.lstat().st_ino) == identity

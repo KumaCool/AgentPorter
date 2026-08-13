@@ -84,7 +84,9 @@ expected = {name: install_root / "venv/bin" / name for name in names}
 for item in entries:
     public = bin_home / item["name"]
     current = observed(public)
-    new = current["type"] == "symlink" and current["target"] == str(expected[item["name"]])
+    new = (current["type"] == "symlink"
+           and current["target"] == str(expected[item["name"]])
+           and (item["type"] != "symlink" or sealed_matches(public, item, target=True)))
     original = sealed_matches(public, item, target=item["type"] == "symlink")
     if committed:
         if not original: reject()

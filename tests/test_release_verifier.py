@@ -370,6 +370,26 @@ def test_structured_secret_value_semantics_and_binary_fail_closed(
     assert any(binary.name in error and "non-UTF-8" in error for error in errors)
 
 
+@pytest.mark.parametrize("suffix", ["json", "yaml"])
+@pytest.mark.parametrize("value", [7, True, ["configured"], {"configured": True}])
+def test_structured_sensitive_keys_reject_nonempty_nonstring_values(
+    tmp_path: Path, suffix: str, value: object
+) -> None:
+    repo = _repository(tmp_path)
+    source = repo / "src" / "agentporter" / f"nonstring-secret.{suffix}"
+    if suffix == "json":
+        source.write_text(json.dumps({"token": value}), encoding="utf-8")
+    else:
+        import yaml
+
+        source.write_text(yaml.safe_dump({"token": value}), encoding="utf-8")
+    wheel, sdist = _artifacts(repo)
+
+    errors = verify_release(_contract(repo), [wheel, sdist])
+
+    assert any(source.name in error and "secret-like value" in error for error in errors)
+
+
 @pytest.mark.parametrize("secret_key", ["token", "api_key", "password"])
 def test_rejects_structured_json_secret_fields(tmp_path: Path, secret_key: str) -> None:
     repo = _repository(tmp_path)
@@ -414,17 +434,59 @@ def test_rejects_nested_structured_secrets_in_repository_and_archives(
 
 
 @pytest.mark.parametrize("suffix", ["json", "yaml"])
-@pytest.mark.parametrize("value", [None, "", "example", "changeme", "your-token-here"])
-def test_accepts_empty_and_benign_structured_secret_placeholders(
-    tmp_path: Path, suffix: str, value: str | None
+@pytest.mark.parametrize("secret_key", ["token", "api_key", "password"])
+def test_rejects_short_symbol_structured_secrets_in_repository_and_archives(
+    tmp_path: Path, suffix: str, secret_key: str
 ) -> None:
     repo = _repository(tmp_path)
     wheel, sdist = _artifacts(repo)
     if suffix == "json":
-        payload = __import__("json").dumps({"outer": {"token": value}}) + "\n"
+        payload = json.dumps({"outer": [{secret_key: "p@$$w0rd!"}]}) + "\n"
     else:
-        rendered = "null" if value is None else __import__("json").dumps(value)
-        payload = f"outer:\n  token: {rendered}\n"
+        payload = f'outer:\n  - {secret_key}: "p@$$w0rd!"\n'
+    source = repo / "src" / "agentporter" / f"short-secret.{suffix}"
+    source.write_text(payload, encoding="utf-8")
+    with zipfile.ZipFile(wheel, "a") as archive:
+        archive.writestr(f"agentporter/short-secret.{suffix}", payload)
+    member = tarfile.TarInfo(f"agentporter-0.1.0/src/agentporter/short-secret.{suffix}")
+    encoded = payload.encode()
+    member.size = len(encoded)
+    _rewrite_sdist(sdist, [(member, encoded)])
+
+    errors = verify_release(_contract(repo), [wheel, sdist])
+
+    assert any(error.startswith("repository:") and "secret-like value" in error for error in errors)
+    assert any(error.startswith(wheel.name) and "secret-like value" in error for error in errors)
+    assert any(error.startswith(sdist.name) and "secret-like value" in error for error in errors)
+
+
+@pytest.mark.parametrize("suffix", ["json", "yaml"])
+@pytest.mark.parametrize(
+    ("secret_key", "value"),
+    [
+        (key, value)
+        for key, label in (("token", "token"), ("api_key", "api-key"), ("password", "password"))
+        for value in (
+            None,
+            "",
+            "example",
+            "changeme",
+            "not configured",
+            f"your-{label}-here",
+            f"replace-with-your-{label}",
+        )
+    ],
+)
+def test_accepts_empty_and_benign_structured_secret_placeholders(
+    tmp_path: Path, suffix: str, secret_key: str, value: str | None
+) -> None:
+    repo = _repository(tmp_path)
+    wheel, sdist = _artifacts(repo)
+    if suffix == "json":
+        payload = json.dumps({"outer": {secret_key: value}}) + "\n"
+    else:
+        rendered = "null" if value is None else json.dumps(value)
+        payload = f"outer:\n  {secret_key}: {rendered}\n"
     source = repo / "src" / "agentporter" / f"placeholder.{suffix}"
     source.write_text(payload, encoding="utf-8")
     with zipfile.ZipFile(wheel, "a") as archive:
