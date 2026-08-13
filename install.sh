@@ -29,6 +29,8 @@ INSTALL_ROOT=${PRODUCT_ROOT}/${VERSION}
 OLD_ROOT=${PRODUCT_ROOT}/${PREVIOUS_VERSION}
 PUBLIC_ENTRIES="${BIN_HOME}/agentporter ${BIN_HOME}/agentporter-activate ${BIN_HOME}/agentporter-uninstall"
 UNINSTALL_LINK=${BIN_HOME}/agentporter-uninstall
+JOURNAL=${PRODUCT_ROOT}/.0.1.5-upgrade-journal
+OLD_QUARANTINE=${PRODUCT_ROOT}/.0.1.4-upgrade-quarantine
 INPUT_DEVICE=/dev/tty
 if [ "${AGENTPORTER_BOOTSTRAP_TESTING:-}" = 1 ]; then
     INPUT_DEVICE=${AGENTPORTER_TEST_INPUT_DEVICE:?test input device is required}
@@ -66,16 +68,98 @@ mkdir -p "$PRODUCT_ROOT" "$BIN_HOME" || fail 'could not create installation dire
 [ -d "$BIN_HOME" ] && [ ! -L "$BIN_HOME" ] \
     || fail 'binary installation parent must be a real directory'
 
+STATE=
+COMPENSATING=0
+journal_state() {
+    STATE=$1
+    [ "$UPGRADE" -eq 1 ] || return 0
+    tmp=${JOURNAL}.tmp.$$
+    printf '{"schema_version":1,"from":"%s","to":"%s","state":"%s"}\n' \
+        "$PREVIOUS_VERSION" "$VERSION" "$STATE" > "$tmp"
+    chmod 600 "$tmp"
+    mv "$tmp" "$JOURNAL"
+    if [ "${AGENTPORTER_BOOTSTRAP_FAIL_AFTER_STATE:-}" = "$STATE" ]; then
+        fail "injected failure after upgrade state $STATE"
+    fi
+    if [ "${AGENTPORTER_BOOTSTRAP_TESTING:-}" = 1 ] \
+            && [ "${AGENTPORTER_BOOTSTRAP_DRIFT_AFTER_STATE:-}" = "$STATE" ]; then
+        case "$STATE" in
+            UNINSTALLER_SWITCHED)
+                rm "$UNINSTALL_LINK"
+                printf 'external-occupant' > "$UNINSTALL_LINK"
+                fail "authority drift after upgrade state $STATE"
+                ;;
+        esac
+    fi
+}
+same_link() { [ -L "$1" ] && [ "$(readlink "$1")" = "$2" ]; }
+compensate_upgrade() {
+    [ "$UPGRADE" -eq 1 ] || return 0
+    [ "$STATE" != COMPLETE ] || return 0
+    [ "$COMPENSATING" -eq 0 ] || return 1
+    COMPENSATING=1
+    safe=1
+    new_uninstaller=${INSTALL_ROOT}/venv/bin/agentporter-uninstall
+    if ! same_link "$UNINSTALL_LINK" "$new_uninstaller" \
+            && ! same_link "$UNINSTALL_LINK" "$OLD_UNINSTALLER"; then safe=0; fi
+    for entry in agentporter-activate agentporter; do
+        public=${BIN_HOME}/${entry}; expected=${INSTALL_ROOT}/venv/bin/${entry}
+        if ! same_link "$public" "$expected" \
+                && { [ -e "$public" ] || [ -L "$public" ]; }; then safe=0; fi
+    done
+    if { [ -e "$OLD_ROOT" ] || [ -L "$OLD_ROOT" ]; } \
+            && { [ -e "$OLD_QUARANTINE" ] || [ -L "$OLD_QUARANTINE" ]; }; then safe=0; fi
+    if [ -d "$INSTALL_ROOT" ] && [ ! -L "$INSTALL_ROOT" ]; then
+        "$PYTHON" -c 'import json,pathlib,sys
+r=pathlib.Path(sys.argv[1])/"bootstrap-install.json"
+try: d=json.loads(r.read_bytes())
+except Exception: raise SystemExit(1)
+raise SystemExit(d.get("product")!="agentporter" or d.get("version")!="0.1.5")' \
+            "$INSTALL_ROOT" || safe=0
+    elif [ -e "$INSTALL_ROOT" ] || [ -L "$INSTALL_ROOT" ]; then safe=0; fi
+    if [ "$safe" -eq 0 ]; then
+        printf 'AgentPorter bootstrap: partial/mixed upgrade; residue retained: %s %s %s\n' \
+            "$OLD_ROOT" "$INSTALL_ROOT" "$JOURNAL" >&2
+        return 1
+    fi
+    if same_link "$UNINSTALL_LINK" "$new_uninstaller"; then
+        rm "$UNINSTALL_LINK" && ln -s "$OLD_UNINSTALLER" "$UNINSTALL_LINK"
+    fi
+    for entry in agentporter-activate agentporter; do
+        public=${BIN_HOME}/${entry}; expected=${INSTALL_ROOT}/venv/bin/${entry}
+        if same_link "$public" "$expected"; then rm "$public"; fi
+    done
+    if [ -d "$OLD_QUARANTINE" ] && [ ! -L "$OLD_QUARANTINE" ]; then
+        mv "$OLD_QUARANTINE" "$OLD_ROOT"
+    fi
+    if [ -d "$INSTALL_ROOT" ] && [ ! -L "$INSTALL_ROOT" ]; then rm -rf "$INSTALL_ROOT"; fi
+    if same_link "$UNINSTALL_LINK" "$OLD_UNINSTALLER" \
+            && [ -d "$OLD_ROOT" ] && [ ! -L "$OLD_ROOT" ]; then
+        rm -f "$JOURNAL"
+        printf 'AgentPorter bootstrap: upgrade compensated; restored the 0.1.4 installation\n' >&2
+    else
+        printf 'AgentPorter bootstrap: partial/mixed upgrade; residue retained: %s %s %s\n' \
+            "$OLD_ROOT" "$INSTALL_ROOT" "$JOURNAL" >&2
+    fi
+}
+
+STAGING=
+PUBLISHED=0
+cleanup() {
+    status=$?
+    if [ "$status" -ne 0 ]; then compensate_upgrade || :; fi
+    if [ "$PUBLISHED" -eq 0 ] && [ -n "$STAGING" ] \
+            && [ -d "$STAGING" ] && [ ! -L "$STAGING" ]; then
+        rm -rf "$STAGING"
+    fi
+    return "$status"
+}
+trap cleanup EXIT HUP INT TERM
+
+journal_state PREPARED
 STAGING=$(mktemp -d "${PRODUCT_ROOT}/.0.1.5-stage.XXXXXX") \
     || fail 'could not create a private staging directory'
 chmod 700 "$STAGING" || fail 'could not secure the staging directory'
-PUBLISHED=0
-cleanup() {
-    if [ "$PUBLISHED" -eq 0 ] && [ -d "$STAGING" ] && [ ! -L "$STAGING" ]; then
-        rm -rf "$STAGING"
-    fi
-}
-trap cleanup EXIT HUP INT TERM
 
 printf 'Downloading AgentPorter v%s release artifacts...\n' "$VERSION"
 CURL_ENV="env -i PATH=$PATH"
@@ -139,6 +223,7 @@ for module in $REQUIRED_MODULES; do
     "$VENV/bin/python" -c 'import importlib, sys; importlib.import_module(sys.argv[1])' "$module" \
         || fail 'installed package is missing a required runtime module'
 done
+journal_state STAGED_015_VERIFIED
 
 rm -f "$STAGING/$WHEEL" "$STAGING/$CHECKSUM"
 FINAL_VENV=${INSTALL_ROOT}/venv
@@ -167,8 +252,10 @@ path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
 path.chmod(0o600)' \
     "$STAGING/bootstrap-install.json" "$VERSION" $PUBLIC_ENTRIES \
     || fail 'could not write the bootstrap ownership receipt'
+journal_state RECEIPT_V2_STAGED
 mv "$STAGING" "$INSTALL_ROOT" || fail 'could not publish the verified installation'
 PUBLISHED=1
+journal_state AGENTPORTER_PUBLISHED
 VENV=${FINAL_VENV}
 [ -x "$VENV/bin/agentporter" ] || fail 'published package is missing the AgentPorter entry point'
 [ -x "$VENV/bin/agentporter-activate" ] || fail 'published package is missing the activation entry point'
@@ -181,8 +268,14 @@ for entry in $ENTRY_POINTS; do
     else
         ln -s "$VENV/bin/$entry" "$BIN_HOME/$entry" \
             || fail 'package was installed but a public entry point could not be published'
+        if [ "$entry" = agentporter ]; then
+            journal_state AGENTPORTER_PUBLISHED
+        else
+            journal_state ACTIVATE_PUBLISHED
+        fi
     fi
 done
+journal_state UNINSTALLER_SWITCHED
 for entry in $ENTRY_POINTS; do
     PUBLIC_ENTRY=$BIN_HOME/$entry
     [ -L "$PUBLIC_ENTRY" ] && [ "$(readlink "$PUBLIC_ENTRY")" = "$VENV/bin/$entry" ] \
@@ -192,9 +285,15 @@ for entry in $ENTRY_POINTS; do
         || fail 'published entry-point version readback failed'
     [ "$READBACK_VERSION" = "$VERSION" ] || fail 'published entry-point version readback failed'
 done
+journal_state ENTRY_SET_READBACK_PASSED
+journal_state RECEIPT_V2_COMMITTED
 if [ "$UPGRADE" -eq 1 ]; then
-    rm -rf "$OLD_ROOT" || fail 'upgraded package is active but the old root remains'
+    mv "$OLD_ROOT" "$OLD_QUARANTINE" || fail 'could not quarantine the old package root'
+    journal_state OLD_014_QUARANTINED
+    rm -rf "$OLD_QUARANTINE" || fail 'upgraded package is active but the old root remains'
 fi
+journal_state COMPLETE
+rm -f "$JOURNAL"
 
 printf '\nPackage installed and checksum verified. Starting the interactive AgentPorter plan.\n'
 printf 'No Hermes Profile will be written until you review and confirm that plan.\n\n'

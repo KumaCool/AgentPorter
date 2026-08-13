@@ -7,6 +7,8 @@ import stat
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "install.sh"
 VERSION = "0.1.5"
@@ -327,3 +329,79 @@ def test_bootstrap_upgrades_v1_install_and_preserves_external_profile_bytes(tmp_
     assert profile.stat().st_mtime_ns == before[1]
     for name in ("agentporter", "agentporter-activate", "agentporter-uninstall"):
         assert (tmp_path / "bin" / name).resolve().is_file()
+
+
+def _seed_v1_upgrade(tmp_path: Path) -> tuple[Path, Path]:
+    old_root = tmp_path / "data" / "agentporter" / PREVIOUS_VERSION
+    old_private = old_root / "venv" / "bin" / "agentporter-uninstall"
+    old_private.parent.mkdir(parents=True)
+    old_private.write_text("old-uninstaller", encoding="utf-8")
+    old_public = tmp_path / "bin" / "agentporter-uninstall"
+    old_public.parent.mkdir(parents=True)
+    old_public.symlink_to(old_private)
+    (old_root / "bootstrap-install.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "product": "agentporter",
+                "version": PREVIOUS_VERSION,
+                "public_entry": str(old_public),
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return old_root, old_public
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        "PREPARED",
+        "STAGED_015_VERIFIED",
+        "RECEIPT_V2_STAGED",
+        "AGENTPORTER_PUBLISHED",
+        "ACTIVATE_PUBLISHED",
+        "UNINSTALLER_SWITCHED",
+        "ENTRY_SET_READBACK_PASSED",
+        "RECEIPT_V2_COMMITTED",
+        "OLD_014_QUARANTINED",
+    ],
+)
+def test_upgrade_journal_compensates_each_failure_state(tmp_path: Path, state: str) -> None:
+    old_root, old_public = _seed_v1_upgrade(tmp_path)
+
+    result = _run(
+        tmp_path,
+        checksum=hashlib.sha256(b"wheel-bytes").hexdigest(),
+        extra_env={"AGENTPORTER_BOOTSTRAP_FAIL_AFTER_STATE": state},
+    )
+
+    assert result.returncode != 0
+    assert "compensated" in result.stderr
+    assert old_root.is_dir()
+    assert old_public.is_symlink()
+    assert old_public.resolve() == old_root / "venv" / "bin" / "agentporter-uninstall"
+    assert not os.path.lexists(tmp_path / "bin" / "agentporter")
+    assert not os.path.lexists(tmp_path / "bin" / "agentporter-activate")
+    assert not (tmp_path / "data" / "agentporter" / VERSION).exists()
+    assert not (tmp_path / "data" / "agentporter" / ".0.1.5-upgrade-journal").exists()
+
+
+def test_upgrade_compensation_preserves_occupied_drift_and_reports_partial(tmp_path: Path) -> None:
+    old_root, old_public = _seed_v1_upgrade(tmp_path)
+
+    result = _run(
+        tmp_path,
+        checksum=hashlib.sha256(b"wheel-bytes").hexdigest(),
+        extra_env={"AGENTPORTER_BOOTSTRAP_DRIFT_AFTER_STATE": "UNINSTALLER_SWITCHED"},
+    )
+
+    assert result.returncode != 0
+    assert "partial/mixed" in result.stderr
+    assert old_public.read_text(encoding="utf-8") == "external-occupant"
+    assert old_root.is_dir()
+    assert (tmp_path / "data" / "agentporter" / VERSION).is_dir()
+    journal = tmp_path / "data" / "agentporter" / ".0.1.5-upgrade-journal"
+    assert json.loads(journal.read_text(encoding="utf-8"))["state"] == "UNINSTALLER_SWITCHED"

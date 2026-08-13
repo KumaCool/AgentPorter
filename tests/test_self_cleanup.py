@@ -268,7 +268,7 @@ def test_cleanup_uses_receipt_when_xdg_environment_drifted(tmp_path: Path) -> No
 
 
 def test_v1_receipt_deletes_only_the_declared_legacy_entry(tmp_path: Path) -> None:
-    install_root, interpreter, _, public_entry = _published_layout(tmp_path, schema_version=1)
+    _, interpreter, _, public_entry = _published_layout(tmp_path, schema_version=1)
     plan = build_bootstrap_cleanup_plan(executable=interpreter, version=VERSION, env={})
 
     assert plan.status is CleanupPlanStatus.READY
@@ -289,3 +289,30 @@ def test_v2_receipt_rejects_wrong_or_reordered_entry_set(tmp_path: Path) -> None
     plan = build_bootstrap_cleanup_plan(executable=interpreter, version=VERSION, env={})
 
     assert plan.status is CleanupPlanStatus.UNSAFE
+
+
+def test_cleanup_does_not_restore_quarantine_over_rename_and_occupy_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_root, _, _, _ = _published_layout(tmp_path)
+    plan = build_bootstrap_cleanup_plan(
+        executable=install_root / "venv/bin/python", version=VERSION, env={}
+    )
+    original_rename = Path.rename
+
+    def occupy_after_isolation(path: Path, target: Path) -> Path:
+        result = original_rename(path, target)
+        if path == install_root:
+            install_root.mkdir()
+            (install_root / "external").write_text("keep", encoding="utf-8")
+            raise RuntimeError("injected")
+        return result
+
+    monkeypatch.setattr(Path, "rename", occupy_after_isolation)
+
+    with pytest.raises(RuntimeError, match="injected"):
+        execute_cleanup_plan(plan)
+
+    assert (install_root / "external").read_text(encoding="utf-8") == "keep"
+    assert plan.quarantine is not None
+    assert plan.quarantine.is_dir()
