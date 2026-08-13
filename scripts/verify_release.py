@@ -317,12 +317,55 @@ def verify_bootstrap(contract: ReleaseContract, wheel: Path, checksum: Path) -> 
         errors.append("bootstrap: install.sh must be executable")
     text = bootstrap.read_text(encoding="utf-8")
     version_match = re.search(r"(?m)^VERSION=([^\n]+)$", text)
+    release_url_match = re.search(r"(?m)^RELEASE_BASE_URL=([^\n]+)$", text)
     wheel_match = re.search(r"(?m)^WHEEL=([^\n]+)$", text)
+    entry_points_match = re.search(r"(?m)^ENTRY_POINTS='([^'\n]+)'$", text)
+    resources_match = re.search(r"(?m)^PACKAGED_RESOURCES='([^'\n]+)'$", text)
+    modules_match = re.search(r"(?m)^REQUIRED_MODULES='([^'\n]+)'$", text)
     expected_wheel = f"{contract.package}-{contract.version}-py3-none-any.whl"
+    expected_release_url = (
+        f"https://github.com/KumaCool/AgentPorter/releases/download/v{contract.version}"
+    )
     if version_match is None or version_match.group(1) != contract.version:
         errors.append("bootstrap: pinned version does not match release contract")
     if wheel_match is None or wheel_match.group(1) != expected_wheel:
         errors.append("bootstrap: pinned wheel does not match release contract")
+    if release_url_match is None or release_url_match.group(1) != expected_release_url:
+        errors.append("bootstrap: release URL does not match the exact GitHub release tag")
+    expected_entries = set(contract.entry_points)
+    actual_entries: set[str] = (
+        set(entry_points_match.group(1).split()) if entry_points_match else set()
+    )
+    if actual_entries != expected_entries or "for entry in $ENTRY_POINTS; do" not in text:
+        errors.append("bootstrap: entry-point rewrite does not match release contract")
+    expected_resources = {f"{contract.package}/{resource}" for resource in contract.resources}
+    actual_resources: set[str] = set(resources_match.group(1).split()) if resources_match else set()
+    if (
+        actual_resources != expected_resources
+        or "for resource in $PACKAGED_RESOURCES; do" not in text
+    ):
+        errors.append("bootstrap: packaged-resource readback does not match release contract")
+    expected_modules = {
+        f"{contract.package}.{module.removesuffix('.py').replace('/', '.')}"
+        for module in contract.required_modules
+    } or {contract.package}
+    actual_modules: set[str] = set(modules_match.group(1).split()) if modules_match else set()
+    if actual_modules != expected_modules or "for module in $REQUIRED_MODULES; do" not in text:
+        errors.append("bootstrap: required-module readback does not match release contract")
+    version_tokens = (
+        "import agentporter; print(agentporter.__version__)",
+        '[ "$INSTALLED_VERSION" = "$VERSION" ]',
+    )
+    if any(token not in text for token in version_tokens):
+        errors.append("bootstrap: installed-version readback semantics are incomplete")
+    resource_tokens = (
+        "target = files(package).joinpath(relative)",
+        "not target.is_file() or not target.read_bytes()",
+    )
+    if any(token not in text for token in resource_tokens):
+        errors.append("bootstrap: packaged-resource readback semantics are incomplete")
+    if "importlib.import_module(sys.argv[1])" not in text:
+        errors.append("bootstrap: required-module readback semantics are incomplete")
     expected_name = f"{wheel.name}.sha256"
     if checksum.name != expected_name:
         errors.append(f"bootstrap: checksum asset must be named {expected_name!r}")

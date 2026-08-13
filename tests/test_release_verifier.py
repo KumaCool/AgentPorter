@@ -131,7 +131,7 @@ def test_bootstrap_contract_accepts_exact_wheel_checksum(tmp_path: Path) -> None
     wheel, _ = _artifacts(repo)
     bootstrap = repo / "install.sh"
     bootstrap.write_text(
-        "#!/bin/sh\nVERSION=0.1.0\nWHEEL=agentporter-0.1.0-py3-none-any.whl\n",
+        _valid_bootstrap_text(),
         encoding="utf-8",
     )
     bootstrap.chmod(0o755)
@@ -140,6 +140,66 @@ def test_bootstrap_contract_accepts_exact_wheel_checksum(tmp_path: Path) -> None
     checksum.write_text(f"{digest}  {wheel.name}\n", encoding="ascii")
 
     assert verify_bootstrap(_contract(repo), wheel, checksum) == []
+
+
+def _valid_bootstrap_text() -> str:
+    return """#!/bin/sh
+VERSION=0.1.0
+RELEASE_BASE_URL=https://github.com/KumaCool/AgentPorter/releases/download/v0.1.0
+WHEEL=agentporter-0.1.0-py3-none-any.whl
+ENTRY_POINTS='agentporter'
+PACKAGED_RESOURCES='agentporter/resources/workers.yaml'
+REQUIRED_MODULES='agentporter'
+for entry in $ENTRY_POINTS; do
+    ENTRY=${VENV}/bin/${entry}
+done
+INSTALLED_VERSION=$(
+    "$VENV/bin/python" -c 'import agentporter; print(agentporter.__version__)'
+)
+[ "$INSTALLED_VERSION" = "$VERSION" ] || fail 'installed package version does not match the release'
+for resource in $PACKAGED_RESOURCES; do
+    target = files(package).joinpath(relative)
+    not target.is_file() or not target.read_bytes()
+done
+for module in $REQUIRED_MODULES; do
+    importlib.import_module(sys.argv[1])
+done
+"""
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "expected"),
+    [
+        ("v0.1.0\nWHEEL", "v0.1.9\nWHEEL", "release URL"),
+        ("github.com/KumaCool", "example.com/KumaCool", "release URL"),
+        (
+            "KumaCool/AgentPorter/releases/download",
+            "KumaCool/Other/releases/download",
+            "release URL",
+        ),
+        ("ENTRY_POINTS='agentporter'", "ENTRY_POINTS='wrong-entry'", "entry-point rewrite"),
+        ("PACKAGED_RESOURCES='agentporter/", "PACKAGED_RESOURCES='wrong/", "resource readback"),
+        ("REQUIRED_MODULES='agentporter'", "REQUIRED_MODULES='wrong'", "required-module readback"),
+        ("agentporter.__version__", "agentporter.wrong_version", "installed-version readback"),
+        ("target.is_file()", "target.is_dir()", "resource readback semantics"),
+        ("importlib.import_module", "importlib.find_spec", "module readback semantics"),
+    ],
+)
+def test_bootstrap_contract_rejects_adversarial_download_and_readback_mutations(
+    tmp_path: Path, old: str, new: str, expected: str
+) -> None:
+    repo = _repository(tmp_path)
+    wheel, _ = _artifacts(repo)
+    bootstrap = repo / "install.sh"
+    bootstrap.write_text(_valid_bootstrap_text().replace(old, new), encoding="utf-8")
+    bootstrap.chmod(0o755)
+    checksum = wheel.with_name(f"{wheel.name}.sha256")
+    digest = __import__("hashlib").sha256(wheel.read_bytes()).hexdigest()
+    checksum.write_text(f"{digest}  {wheel.name}\n", encoding="ascii")
+
+    errors = verify_bootstrap(_contract(repo), wheel, checksum)
+
+    assert any(expected in error for error in errors)
 
 
 def test_bootstrap_contract_rejects_mismatch_and_wrong_asset_name(tmp_path: Path) -> None:

@@ -12,11 +12,11 @@
 | route | v0.20 为 `mutation-unsupported`，在 Kanban adapter 调用前关闭，零 Kanban mutation 调用。 |
 | continuity | DispatchReceipt、任务级订阅、运行观察、结构性恢复合同仅离线通过；未验收真实投递/接续。 |
 
-`hermes config check` 仅证明静态配置可解析。无任务时 `notify-list == []` 正常；只有正式任务创建后，精确 task/subscription 读回与安全 `DispatchReceipt` 才是解锁 dispatch 的必要条件。本候选未发布、未 tag、未 push，不声称 `operational`、真实 canary 或 live routing passed。
+`hermes config check` 仅证明静态配置可解析。无任务时 `notify-list == []` 正常；只有正式任务创建后，精确 task/subscription 读回与安全 `DispatchReceipt` 才是解锁 dispatch 的必要条件。本候选未发布、未打标签，不声称 `operational`、真实 canary 或 live routing passed。
 
 ## 1. 状态与权威边界
 
-- **状态：** 新方案已落地为权威计划，代码实现与真实任务验收尚未开始；
+- **状态：** Phase A–F 离线实现完成；真实任务验收因 v0.20 live blocker 未执行；
 - **产品目标：** 先完成可验证的一键工作组静态部署；在用户另行显式启动并验收专用 orchestrator runtime 后，使经 AgentPorter 安全路由入口提交的任务由 Hermes 原生能力分解、路由并交给合适的 Worker；
 - **前置条件：** [安装基础实施记录](01-installation-foundation.md) 的 v0.1.0 安装/卸载合同保持通过；
 - **权威设计：** [方案总览](../00-solution-overview.md) 定义产品定位，[Worker 规范](../01-portable-worker-spec.md) 定义角色语义，[Hermes Adapter](../02-platform-adapters.md) 定义原生能力映射；
@@ -24,7 +24,7 @@
 
 本计划不重新实现 Hermes Kanban。当前官方 Hermes v0.20.0 已提供：共享 Kanban board、按 Profile description 的 decomposer、gateway 内置 dispatcher、named Profile assignee、任务依赖、workspace、阻塞/重试/完成及父任务回收。实现必须优先组合这些成熟原语。
 
-当前代码仍保留上述两 Worker 的严格两组件身份注册表；这只是 v0.1.0 历史基础，不表示 Plan 02 已实现 orchestrator 或可变 Worker 集。
+**Phase A 前历史基线：** 当时代码仅保留两 Worker 的严格两组件身份注册表；当前实现已升级为两 Worker 加专用 orchestrator 的三组件集合，并通过离线合同。
 
 ## 2. 语义不变量与禁止副作用
 

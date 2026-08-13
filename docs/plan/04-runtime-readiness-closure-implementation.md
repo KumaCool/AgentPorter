@@ -1,6 +1,6 @@
 # AgentPorter Runtime Readiness 与编排闭环落地计划
 
-> **For Hermes:** 使用 `continuous-plan-orchestration`、`parallel-development-convergence` 与 `test-driven-development` 持续执行；先冻结共享合同，再开两条隔离轨，focused tests 可并发，完整门禁串行。本文是实施计划，不代表任何代码或运行验收已经完成。
+> **For Hermes:** 使用 `continuous-plan-orchestration`、`parallel-development-convergence` 与 `test-driven-development` 持续执行；先冻结共享合同，再开两条隔离轨，focused tests 可并发，完整门禁串行。本文是实施与收口记录；Phase A–F 离线实现已完成，但不代表 live probe、Gateway 或真实路由验收完成。
 
 **Goal:** 修复 AgentPorter 0.1.3 的假绿：让两个 Worker 在不复制或泄露凭据的前提下获得可重放的显式推理绑定，通过真实模型 canary，并在正式任务创建时闭合 Kanban 并发、订阅、终态通知和结构性接续。
 
@@ -14,11 +14,11 @@
 
 ### 已确认事实
 
-- 历史事故基线为已发布 AgentPorter `0.1.3`；Phase F 形成 `0.1.4` 本地发布候选，不 tag、不发布、不 push。
+- 历史事故基线为已发布 AgentPorter `0.1.3`；Phase F 形成 `0.1.4` 本地发布候选，未发布、未打标签。
 - 两个 Worker 的 `config.yaml` 只有 `model.default` 和 `agent.reasoning_effort`；`model.provider`、`model.base_url` 均未设置。
 - 两个真实 one-shot 都以 `No inference provider configured`、退出码 `1` 失败。
 - `hermes config check` 返回 `0` 只证明配置可解析，不能证明主模型调用成功。
-- `src/agentporter/readiness.py` 目前只有纯领域合同；`runtime_probe.py`、运行绑定、派发/订阅读回、运行观察尚未实现。
+- **Phase A 前历史基线：** 当时 `readiness.py` 只有纯领域合同，`runtime_probe.py`、运行绑定、派发/订阅读回与运行观察尚未实现；当前这些模块和集成均已存在并通过离线合同。
 - Hermes v0.20 的 Profile Distribution **更新默认保留已有 `config.yaml`**；只有 fresh install 或显式 force-config 才覆盖。0.1.3 的“删除后重装”是 fresh install，因此会丢失人工修复。不能依赖手改完整 `config.yaml`。
 - `notify-list == []` 在尚无正式任务时是正常状态：Kanban 订阅是**任务级**记录，不应在安装时制造虚假全局订阅。真正缺口是“每次建卡后未做订阅读回”。
 - dispatcher 使用运行 Gateway 的 Profile 配置；不能把 Kanban 控制键散写到两个 Worker Profile 并期待影响当前 Gateway。
@@ -391,9 +391,9 @@ sdist/wheel build: passed
 
 ## Phase F：文档、打包、门禁与发布候选（已完成本地候选）
 
-**Status:** 0.1.4 本地发布候选已完成文档同步、打包契约与完整离线门禁。Hermes v0.20 probe 为 `probe-unsupported` 且零模型调用；Kanban 为 `mutation-unsupported` 且零 Kanban mutation 调用；未执行真实模型、Gateway、凭据或 Kanban 网络操作，未 tag、未发布、未 push。
+**Status:** 0.1.4 本地发布候选已完成文档同步、打包契约与完整离线门禁。Hermes v0.20 probe 为 `probe-unsupported` 且零模型调用；Kanban 为 `mutation-unsupported` 且零 Kanban mutation 调用；未执行真实模型、Gateway、凭据或 Kanban 网络操作，未发布、未打标签。
 
-**Phase F evidence:** TDD RED 为版本仍是 0.1.3、用户文档缺 0.1.4 七维状态、缺 activation/receipt 边界共 4 个预期失败；GREEN 为 focused 5 passed。最终门禁：offline pytest 527 passed（2 个既有 duplicate-archive adversarial fixture warnings）；Ruff format/check 通过；Pyright strict 0 errors/0 warnings；sdist/wheel build 通过；正式 release verifier 对 0.1.4 wheel/sdist、三 entry points、workers resource 与 activation/dispatch/runtime 必需模块验证通过；fresh wheel 隔离安装、0.1.4 import 与三 entry points 读回通过；Markdown links、added-line privacy、diff-check 通过。环境未安装 twine，因此 `twine check` 明确记为 unavailable，不伪称通过。
+**Phase F evidence:** 初始 TDD RED 为版本仍是 0.1.3、用户文档缺 0.1.4 七维状态、缺 activation/receipt 边界共 4 个预期失败；首轮 GREEN 为 focused 5 passed。closure repair 的机械 RED 为 9 个预期失败（错误 release URL host/path/tag、入口/resource/module 安装语义及文档状态冲突），随后补充 closed-grammar 语义 adversarial 覆盖；GREEN 为 focused 35 passed。最终完整离线门禁：pytest 679 passed、1 个预期 unsupported skip、2 个既有 duplicate-archive adversarial fixture warnings；Ruff format/check 通过；Pyright strict 0 errors/0 warnings；sdist/wheel build通过；正式 release verifier 对 0.1.4 wheel/sdist、精确 immutable release URL、三 entry points、workers resource 与 activation/dispatch/runtime 必需模块验证通过；fresh wheel 隔离安装、0.1.4 import 与三 entry points 读回通过；Markdown links、added-line privacy、diff-check 通过。环境未安装 twine，因此 `twine check` 明确记为 unavailable，不伪称通过。
 
 **Objective:** 使代码、计划索引、用户文档和发行契约一致。
 
@@ -531,7 +531,7 @@ git diff --check
 4. **外部 secret manager 共享引用依赖 Hermes 实际 Profile 作用域。** 实现前必须用最小非秘密 fixture 验证；不能仅凭文档假定共享行为。
 5. **订阅记录不等于投递成功。** 静态层只到 route-recorded；live acceptance 才能到 delivery-verified/creator-woken。
 6. **10 秒 dispatcher interval 只是恢复延迟上限之一。** 事件通知和结构性父任务恢复才是主链，不能靠缩短轮询冒充闭环。
-7. **当前 Worker 不可用。** 修复初期不能使用它们实现自身修复；先由主代理完成最小闭环，随后才能恢复双轨 Worker 开发。
+7. **Phase A 前历史基线：Worker 当时不可用。** 修复初期不能使用它们实现自身修复；当前离线闭环已完成，但 live probe 仍不受支持。
 
 ---
 

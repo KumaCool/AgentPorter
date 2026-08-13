@@ -6,6 +6,9 @@ VERSION=0.1.4
 RELEASE_BASE_URL=https://github.com/KumaCool/AgentPorter/releases/download/v0.1.4
 WHEEL=agentporter-0.1.4-py3-none-any.whl
 CHECKSUM=${WHEEL}.sha256
+ENTRY_POINTS='agentporter agentporter-activate agentporter-uninstall'
+PACKAGED_RESOURCES='agentporter/resources/workers.yaml'
+REQUIRED_MODULES='agentporter.activation_application agentporter.activation_entry agentporter.dispatch_application agentporter.dispatch_planning agentporter.kanban_runtime agentporter.runtime_observation agentporter.runtime_probe'
 
 fail() {
     printf 'AgentPorter bootstrap: %s\n' "$*" >&2
@@ -102,10 +105,21 @@ INSTALLED_VERSION=$(
     "$VENV/bin/python" -c 'import agentporter; print(agentporter.__version__)'
 ) || fail 'could not read back the installed package version'
 [ "$INSTALLED_VERSION" = "$VERSION" ] || fail 'installed package version does not match the release'
+for resource in $PACKAGED_RESOURCES; do
+    "$VENV/bin/python" -c 'from importlib.resources import files; import sys
+package, relative = sys.argv[1].split("/", 1)
+target = files(package).joinpath(relative)
+raise SystemExit(not target.is_file() or not target.read_bytes())' "$resource" \
+        || fail 'installed package is missing a required packaged resource'
+done
+for module in $REQUIRED_MODULES; do
+    "$VENV/bin/python" -c 'import importlib, sys; importlib.import_module(sys.argv[1])' "$module" \
+        || fail 'installed package is missing a required runtime module'
+done
 
 rm -f "$STAGING/$WHEEL" "$STAGING/$CHECKSUM"
 FINAL_VENV=${INSTALL_ROOT}/venv
-for entry in agentporter agentporter-activate agentporter-uninstall; do
+for entry in $ENTRY_POINTS; do
     ENTRY=${VENV}/bin/${entry}
     "$PYTHON" -c 'from pathlib import Path; import sys
 path = Path(sys.argv[1])

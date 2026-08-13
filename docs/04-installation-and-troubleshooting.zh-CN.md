@@ -2,7 +2,7 @@
 
 [English](04-installation-and-troubleshooting.md) | 简体中文
 
-AgentPorter v0.1.4 是 Hermes 多代理工作组一次性安装基础的当前受支持修复版本。仓库已经具备离线契约测试，并在隔离环境中对 Hermes v0.20.0 做过真实验收；这个版本只是**已观察版本**，不是承诺的最低版本或通用兼容范围。
+AgentPorter v0.1.4 是 Hermes 多代理工作组一次性安装基础的未发布、未打标签的发布候选。仓库已经具备离线契约测试，并在隔离环境中对 Hermes v0.20.0 做过真实验收；这个版本只是**已观察版本**，不是承诺的最低版本或通用兼容范围。
 
 ## curl 一键安装（POSIX）
 
@@ -13,7 +13,7 @@ curl --fail --location --proto '=https' --tlsv1.2 \
   https://github.com/KumaCool/AgentPorter/releases/latest/download/install.sh | sh
 ```
 
-GitHub 的 `latest` 端点选择发布版引导脚本；该脚本再固定并下载自身版本的 wheel 与 `.sha256` 文件，在私有同级暂存目录中完成校验、安装和版本回读，验证并将两个生成入口的 shebang 改写为最终虚拟环境路径，然后才原子发布版本化安装目录。之后在 `${XDG_BIN_HOME:-$HOME/.local/bin}` 建立 `agentporter-uninstall` 链接，并通过 `/dev/tty` 启动原有交互式安装器。已有安装目录或卸载入口时会拒绝覆盖。若用户取消或产品安装失败，已校验的软件包和卸载入口会保留，便于诊断或清理。日后成功卸载 Profile 后，该发布版卸载入口也会清除自身链接和对应版本私有 Python 环境。
+GitHub 的 `latest` 端点选择发布版引导脚本；该脚本再固定并下载自身版本的 wheel 与 `.sha256` 文件，在私有同级暂存目录中完成校验、安装和版本回读，验证并将三个生成入口的 shebang 改写为最终虚拟环境路径，然后才原子发布版本化安装目录。之后在 `${XDG_BIN_HOME:-$HOME/.local/bin}` 建立 `agentporter-uninstall` 链接，并通过 `/dev/tty` 启动原有交互式安装器。已有安装目录或卸载入口时会拒绝覆盖。若用户取消或产品安装失败，已校验的软件包和卸载入口会保留，便于诊断或清理。日后成功卸载 Profile 后，该发布版卸载入口也会清除自身链接和对应版本私有 Python 环境。
 
 校验和能防止意外损坏或托管错配，但它与 GitHub Release 账户并非独立信任源。wheel 声明的依赖仍由 pip 解析下载（仅允许二进制分发），Release 校验和不会独立认证这些依赖下载。如需更强来源保证，请先检查脚本，并核对发布证明与校验和。必要时将 `${XDG_BIN_HOME:-$HOME/.local/bin}` 加入 `PATH`。
 
@@ -40,6 +40,10 @@ agentporter
 
 `agentporter` 没有面向用户的参数或子命令。它会检测 Hermes、完整校验清单和目标集合、建立私有暂存区、一次性展示精确计划，并要求输入屏幕显示的确认短语。请逐项审核目标；取消或短语错误不会开始原生安装写入。
 
+## 发布候选引导脚本边界
+
+在托管的 v0.1.4 wheel、校验和与 `install.sh` assets 发布前，源码树中的 `install.sh` **不能作为用户安装入口执行**：它为正式发布预先固定到不可变的 `https://github.com/KumaCool/AgentPorter/releases/download/v0.1.4` assets。当前用户必须继续使用 `https://github.com/KumaCool/AgentPorter/releases/latest/download/install.sh`。发布时必须先上传不可变 assets，再从外部回读 v0.1.4 URL 和 `latest` alias，比较字节与校验和并重跑 verifier。
+
 ## 从源码运行
 
 ```bash
@@ -57,9 +61,9 @@ python install.py
 
 终端状态会区分：成功、取消、预检失败、安装失败且补偿完成、补偿不完整、回读失败。只有明确成功结果才表示安装成功；不能根据部分 Profile 目录存在就推断成功。
 
-AgentPorter v0.1.4 安装两个专用 Worker Profile。它不会覆盖现有 Profile、复制供应商凭据、调用模型、安装常驻服务或创建任务数据库。Profile 内凭据和其他运行数据仍由 Hermes 与用户管理。
+AgentPorter v0.1.4 安装两个专用 Worker Profile 和一个专用 orchestrator Profile；静态 orchestrator 配置已经安装并读回。它不会覆盖现有 Profile、复制供应商凭据、调用模型、安装常驻服务或创建任务数据库。Profile 内凭据和其他运行数据仍由 Hermes 与用户管理。
 
-当前版本**不会**配置自动分解、启动 gateway dispatcher、创建 Kanban 任务或证明真实任务路由。上述能力由[多代理编排与路由计划](plan/02-multi-agent-orchestration.md)负责。
+静态 orchestrator 配置已经安装并读回，但自动分解仍关闭；AgentPorter **不会**启动 Gateway、创建 Kanban 任务、启用 live routing 或证明真实任务路由。上述能力由[多代理编排与路由计划](plan/02-multi-agent-orchestration.md)负责。
 
 ## 独立卸载
 

@@ -2,7 +2,7 @@
 
 English | [简体中文](04-installation-and-troubleshooting.zh-CN.md)
 
-AgentPorter v0.1.4 is the current supported patch release of the one-shot installation foundation for the Hermes multi-agent Worker team. The repository has offline contract tests and isolated real-Hermes evidence for v0.20.0; that observed version is **not** a promised minimum or universal compatibility range.
+AgentPorter v0.1.4 is an unpublished, untagged release candidate of the one-shot installation foundation for the Hermes multi-agent Worker team. The repository has offline contract tests and isolated real-Hermes evidence for v0.20.0; that observed version is **not** a promised minimum or universal compatibility range.
 
 ## One-line POSIX install
 
@@ -13,7 +13,7 @@ curl --fail --location --proto '=https' --tlsv1.2 \
   https://github.com/KumaCool/AgentPorter/releases/latest/download/install.sh | sh
 ```
 
-GitHub's `latest` endpoint selects the release bootstrap; that bootstrap pins and downloads its exact-version wheel and `.sha256` sidecar. It verifies and installs the wheel in a private sibling staging directory, reads back the installed package version, validates and rewrites the two generated entry-point shebangs to their final virtual-environment path, and only then atomically publishes the versioned installation. It links `agentporter-uninstall` into `${XDG_BIN_HOME:-$HOME/.local/bin}` before launching the normal interactive installer through `/dev/tty`. Existing install or link paths are refused rather than overwritten. If the product installation is cancelled or fails, the verified package and uninstaller remain available for diagnosis or cleanup. After a later successful Profile uninstall, the release-installed entry removes its own exact link and versioned private environment.
+GitHub's `latest` endpoint selects the release bootstrap; that bootstrap pins and downloads its exact-version wheel and `.sha256` sidecar. It verifies and installs the wheel in a private sibling staging directory, reads back the installed package version, validates and rewrites the three generated entry-point shebangs to their final virtual-environment path, and only then atomically publishes the versioned installation. It links `agentporter-uninstall` into `${XDG_BIN_HOME:-$HOME/.local/bin}` before launching the normal interactive installer through `/dev/tty`. Existing install or link paths are refused rather than overwritten. If the product installation is cancelled or fails, the verified package and uninstaller remain available for diagnosis or cleanup. After a later successful Profile uninstall, the release-installed entry removes its own exact link and versioned private environment.
 
 The checksum protects against accidental corruption or mismatched hosting; it is not independent of the GitHub release account. The wheel still resolves its declared dependencies through pip, restricted to binary distributions, so the release checksum does not independently authenticate those dependency downloads. For stronger provenance, inspect the script and compare published release attestations/checksums before execution. Add `${XDG_BIN_HOME:-$HOME/.local/bin}` to `PATH` if necessary.
 
@@ -40,6 +40,10 @@ agentporter
 
 `agentporter` takes no user-facing flags or subcommands. It detects Hermes, validates the complete manifest and target set, creates a private staging area, displays one exact plan, and requests the confirmation printed on screen. Review every target. Cancellation or an incorrect phrase performs no install writes.
 
+## Release-candidate bootstrap boundary
+
+Before the hosted v0.1.4 wheel, checksum, and `install.sh` assets exist, the source-tree `install.sh` is intentionally **not executable as a user installation path**: it is pinned to the immutable `https://github.com/KumaCool/AgentPorter/releases/download/v0.1.4` assets prepared for publication. Current users must continue to use `https://github.com/KumaCool/AgentPorter/releases/latest/download/install.sh`. Publication must upload immutable assets first, then externally read back both the v0.1.4 URLs and the `latest` alias, compare bytes/checksums, and rerun the verifier.
+
 ## Run from source
 
 ```bash
@@ -57,9 +61,9 @@ The source checkout and artifact must come from a commit you trust. Do not run f
 
 Terminal statuses distinguish success, cancellation, preflight failure, install failure with compensation, incomplete compensation, and readback failure. Treat anything other than the explicit success result as not installed or requiring inspection; never infer success from some profile directories being present.
 
-AgentPorter v0.1.4 installs two dedicated Worker Profiles. It does not overwrite existing profiles, copy provider credentials, invoke a model, install a daemon, or create a task database. Profile-local credentials and runtime data remain managed by Hermes and the user.
+AgentPorter v0.1.4 installs two dedicated Worker Profiles and one dedicated orchestrator Profile. Its static orchestrator configuration is installed and read back. It does not overwrite existing profiles, copy provider credentials, invoke a model, install a daemon, or create a task database. Profile-local credentials and runtime data remain managed by Hermes and the user.
 
-This release does **not** configure automatic decomposition, start the gateway dispatcher, create Kanban tasks, or prove live task routing. Those capabilities are tracked in the [multi-agent orchestration plan](plan/02-multi-agent-orchestration.md).
+Static orchestrator configuration is installed and read back, but auto decomposition remains disabled; AgentPorter does **not** start Gateway, create Kanban tasks, enable live routing, or prove live task routing. Those capabilities are tracked in the [multi-agent orchestration plan](plan/02-multi-agent-orchestration.md).
 
 ## Independent uninstall
 
