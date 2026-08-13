@@ -159,19 +159,35 @@ class DispatchPlan:
                 if not valid:
                     raise ValueError(f"{name} readiness mismatch")
         graph = {item.local_id: item.parents for item in tasks}
+        states: dict[str, Literal["visiting", "visited"]] = {}
 
-        def reaches_root(task_id: str, visiting: frozenset[str] = frozenset()) -> bool:
-            if task_id in visiting:
+        def visit_all_parents(task_id: str) -> None:
+            state = states.get(task_id)
+            if state == "visiting":
                 raise ValueError("cycle in task graph")
-            parents = graph[task_id]
-            return any(
-                parent in roots or (parent in graph and reaches_root(parent, visiting | {task_id}))
-                for parent in parents
-            )
+            if state == "visited":
+                return
+            states[task_id] = "visiting"
+            for parent in graph[task_id]:
+                if parent in graph:
+                    visit_all_parents(parent)
+            states[task_id] = "visited"
 
         for task_id in ordered_ids:
-            if not reaches_root(task_id):
+            visit_all_parents(task_id)
+
+        reachable = set(roots)
+        pending = set(ordered_ids)
+        while pending:
+            newly_reachable = {
+                task_id
+                for task_id in pending
+                if any(parent in reachable for parent in graph[task_id])
+            }
+            if not newly_reachable:
                 raise ValueError("task is not reachable from structural root")
+            reachable.update(newly_reachable)
+            pending.difference_update(newly_reachable)
         validate_delegation_contracts([item.contract for item in tasks])
         safe = {
             "board": board,

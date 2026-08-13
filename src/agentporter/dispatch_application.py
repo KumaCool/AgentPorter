@@ -37,9 +37,19 @@ def plan_to_mutations(plan: DispatchPlan) -> tuple[PlannedMutation, ...]:
         result.append(
             PlannedMutation(
                 local_id=task.local_id,
+                title=task.title,
+                body=task.body,
                 board=plan.board,
                 tenant=plan.tenant,
                 assignee=task.assignee,
+                component_id=task.component_id,
+                profile=task.profile,
+                model=task.model,
+                provider=task.provider,
+                config_digest=task.config_digest,
+                hermes_version=task.hermes_version,
+                binding_fingerprint=task.binding_fingerprint,
+                contract=task.contract,
                 creator_session=plan.creator_session
                 if plan.route.source == "creator-session"
                 else None,

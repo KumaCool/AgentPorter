@@ -56,14 +56,16 @@ class ObservationInput:
     allowed_writes: tuple[str, ...]
     tests_running: bool
     tests_passed: bool | None
-    current_run_id: str | None = None
-    runs: tuple[RunSnapshot, ...] = ()
+    current_run_id: str
+    runs: tuple[RunSnapshot, ...]
+    log_run_id: str
+    worktree_run_id: str
+    evidence_run_id: str
+    tests_run_id: str
     workspace: str | None = None
     base_sha: str | None = None
-    evidence_run_id: str | None = None
     evidence_workspace: str | None = None
     evidence_base_sha: str | None = None
-    tests_run_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,15 +102,21 @@ def derive_observation(
         not any(path == root or path.startswith(root + "/") for root in allowed) for path in paths
     )
     run = item.run
-    authoritative_ids = {candidate.run_id for candidate in item.runs}
-    current_id = item.current_run_id or (run.run_id if run else None)
-    noncurrent = run is not None and (
-        run.run_id != current_id or (item.runs and run.run_id not in authoritative_ids)
+    run_ids = tuple(candidate.run_id for candidate in item.runs)
+    current_id = item.current_run_id
+    authority_invalid = (
+        not current_id
+        or run_ids.count(current_id) != 1
+        or len(run_ids) != len(set(run_ids))
+        or run is None
+        or run.run_id != current_id
     )
     evidence_mismatch = any(
         (
-            item.evidence_run_id is not None and item.evidence_run_id != current_id,
-            item.tests_run_id is not None and item.tests_run_id != current_id,
+            item.log_run_id != current_id,
+            item.worktree_run_id != current_id,
+            item.evidence_run_id != current_id,
+            item.tests_run_id != current_id,
             item.workspace is not None and item.evidence_workspace != item.workspace,
             item.base_sha is not None and item.evidence_base_sha != item.base_sha,
         )
@@ -121,7 +129,7 @@ def derive_observation(
     )
     reread = False
     integration = False
-    if noncurrent:
+    if authority_invalid or evidence_mismatch:
         state, reason = "inconsistent", "noncurrent-run-evidence"
     elif contradiction:
         state, reason = "inconsistent", "task-run-contradiction"
@@ -144,8 +152,7 @@ def derive_observation(
                 and _SHA.fullmatch(item.base_sha or "") is not None
             )
             integration = bool(
-                not evidence_mismatch
-                and valid_sha
+                valid_sha
                 and changed
                 and item.worktree_digest
                 and item.log_digest
@@ -192,6 +199,8 @@ def derive_observation(
         item.workspace,
         item.base_sha,
         item.evidence_run_id,
+        item.log_run_id,
+        item.worktree_run_id,
         item.tests_run_id,
     )
     return RuntimeObservation(item.task_id, state, reason, reread, integration, digest)

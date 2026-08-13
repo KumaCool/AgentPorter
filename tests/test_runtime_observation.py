@@ -30,6 +30,8 @@ def snapshot(**changes):
         tests_passed=None,
         current_run_id="run-a",
         runs=(RunSnapshot("run-a", "running", None, 1234, NOW - timedelta(seconds=5)),),
+        log_run_id="run-a",
+        worktree_run_id="run-a",
         workspace="/safe/worktree",
         base_sha="0" * 40,
         evidence_run_id="run-a",
@@ -116,3 +118,21 @@ def test_structural_root_continuation_requires_all_parents_done_and_new_run():
         )
         == "event-durable"
     )
+
+
+def test_observation_requires_unique_current_run_and_all_evidence_authority():
+    current = RunSnapshot("run-a", "terminal", "completed", None, NOW)
+    complete = snapshot(task_status="done", run=current, runs=(current,), tests_passed=True)
+    assert derive_observation(complete, now=NOW).integration_candidate
+    for changes in (
+        {"current_run_id": ""},
+        {"runs": ()},
+        {"runs": (current, current)},
+        {"log_run_id": "old"},
+        {"worktree_run_id": "old"},
+        {"evidence_run_id": "old"},
+        {"tests_run_id": "old"},
+    ):
+        result = derive_observation(snapshot(**changes), now=NOW)
+        assert result.state == "inconsistent"
+        assert not result.integration_candidate

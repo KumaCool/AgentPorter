@@ -1,5 +1,6 @@
 from dataclasses import dataclass, replace
 
+from agentporter.delegation_contract import DelegationContract
 from agentporter.dispatch_planning import NotificationRoute
 from agentporter.kanban_runtime import (
     KanbanCapabilities,
@@ -52,7 +53,17 @@ class FakeAdapter:
         return {
             "id": task_id,
             "status": "blocked",
+            "title": item.title,
+            "body": item.body,
             "assignee": item.assignee,
+            "component_id": item.component_id,
+            "profile": item.profile,
+            "model": item.model,
+            "provider": item.provider,
+            "config_digest": item.config_digest,
+            "hermes_version": item.hermes_version,
+            "binding_fingerprint": item.binding_fingerprint,
+            "delegation_contract": item.contract.model_dump(mode="json"),
             "session_id": item.creator_session,
             "workspace": item.workspace,
             "branch": item.branch,
@@ -84,8 +95,9 @@ class FakeAdapter:
             raise RuntimeError("CAS board drift")
         return self.revision
 
-    def block(self, task_id, reason):
-        self.calls.append(("block", task_id, reason))
+    def block(self, task_id, reason, expected_revision):
+        self.calls.append(("block", task_id, reason, expected_revision))
+        return self.revision
 
 
 def route():
@@ -103,9 +115,31 @@ def route():
 def mutation(**changes):
     values = dict(
         local_id="child",
+        title="child title",
+        body="full delegation body",
         board="board",
         tenant="tenant",
         assignee="worker-a",
+        component_id="worker-a",
+        profile="worker-a",
+        model="model-a",
+        provider="provider-a",
+        config_digest="config-a",
+        hermes_version="0.20.0",
+        binding_fingerprint="binding-a",
+        contract=DelegationContract(
+            goal="bounded task",
+            reads=("src/agentporter/readiness.py",),
+            writes=("src/agentporter/new.py",),
+            forbidden=(".env",),
+            operations=("write", "test"),
+            constraints=("offline",),
+            acceptance=("pytest tests/test_new.py",),
+            expected=("green",),
+            base_sha="7cc1dad4e49aecfeadf4eb033802a5a990794c69",
+            test_file_names=("tests/test_new.py",),
+            shared_owner="worker-a",
+        ),
         creator_session="session-secret",
         workspace="/worktree",
         branch="phase-e",
@@ -221,3 +255,53 @@ def test_cli_route_is_notification_only_not_creator_continuation():
     )[0]
     assert receipt.continuity_level == "notification-only"
     assert not receipt.session_id_attached
+
+
+def test_ready_replay_is_reblocked_before_global_phases_and_keeps_task_id_on_failure():
+    class ReadyReplay(FakeAdapter):
+        def __post_init__(self):
+            super().__post_init__()
+            self.item = mutation()
+            self.tasks["task-child"] = self.item
+            self.status = "ready"
+
+        def lookup_by_idempotency(self, board, tenant, key):
+            self.calls.append(("lookup", key))
+            return "task-child"
+
+        def show_json(self, task_id):
+            value = super().show_json(task_id)
+            value["status"] = self.status
+            return value
+
+        def block(self, task_id, reason, expected_revision):
+            self.calls.append(("block", task_id, reason, expected_revision))
+            self.status = "blocked"
+            return self.revision
+
+        def link(self, parent_id, child_id, expected_revision):
+            raise RuntimeError("after-replay-failure")
+
+    adapter = ReadyReplay()
+    receipt = KanbanRuntime(adapter, KanbanCapabilities.offline_contract()).execute(
+        (adapter.item,), known_assignees={"worker-a"}, expected_revision="rev-1"
+    )[0]
+    assert receipt.status == "failed"
+    assert receipt.task_id == "task-child"
+    names = [call[0] for call in adapter.calls]
+    assert names[:5] == ["revision", "lookup", "show", "block", "show"]
+    assert names.count("block") == 2
+
+
+def test_internal_typeerror_is_not_retried_without_revision():
+    class SideEffectThenTypeError(FakeAdapter):
+        def create_blocked(self, mutation, expected_revision):
+            self.calls.append(("create", mutation.local_id, expected_revision))
+            raise TypeError("adapter-internal")
+
+    adapter = SideEffectThenTypeError()
+    receipt = KanbanRuntime(adapter, KanbanCapabilities.offline_contract()).execute(
+        (mutation(),), known_assignees={"worker-a"}, expected_revision="rev-1"
+    )[0]
+    assert receipt.status == "failed"
+    assert [call[0] for call in adapter.calls].count("create") == 1

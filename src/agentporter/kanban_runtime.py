@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any, Literal, Protocol, cast
 
+from .delegation_contract import DelegationContract
 from .dispatch_planning import NotificationRoute
 
 
@@ -32,9 +33,19 @@ class KanbanCapabilities:
 @dataclass(frozen=True, slots=True, repr=False)
 class PlannedMutation:
     local_id: str
+    title: str
+    body: str
     board: str
     tenant: str
     assignee: str
+    component_id: str
+    profile: str
+    model: str
+    provider: str
+    config_digest: str
+    hermes_version: str
+    binding_fingerprint: str
+    contract: DelegationContract
     creator_session: str | None
     workspace: str
     branch: str | None
@@ -82,7 +93,7 @@ class KanbanAdapter(Protocol):
     def show_json(self, task_id: str) -> dict[str, Any]: ...
     def notify_list_json(self, task_id: str) -> list[dict[str, Any]]: ...
     def unblock(self, task_id: str, expected_revision: str) -> str: ...
-    def block(self, task_id: str, reason: str) -> None: ...
+    def block(self, task_id: str, reason: str, expected_revision: str) -> str: ...
 
 
 class _DispatchFailure(Exception):
@@ -131,21 +142,43 @@ def _route_matches(expected: NotificationRoute, actual: dict[str, Any]) -> bool:
     )
 
 
-def _task_matches(item: PlannedMutation, task_id: str, actual: dict[str, Any]) -> bool:
-    return actual == {
-        "id": task_id,
-        "status": "blocked",
-        "assignee": item.assignee,
-        "session_id": item.creator_session,
-        "workspace": item.workspace,
-        "branch": item.branch,
-        "base_sha": item.base_sha,
-        "parents": list(item.parents),
-        "idempotency_key": item.idempotency_key,
-        "ownership_digest": item.ownership_digest,
-        "board": item.board,
-        "tenant": item.tenant,
+def _task_matches(
+    item: PlannedMutation,
+    task_id: str,
+    actual: dict[str, Any],
+    *,
+    allowed_statuses: frozenset[str] = frozenset({"blocked"}),
+) -> bool:
+    status = actual.get("status")
+    if status not in allowed_statuses:
+        return False
+    expected = {
+        "status": status,
+        **{
+            "id": task_id,
+            "title": item.title,
+            "body": item.body,
+            "assignee": item.assignee,
+            "component_id": item.component_id,
+            "profile": item.profile,
+            "model": item.model,
+            "provider": item.provider,
+            "config_digest": item.config_digest,
+            "hermes_version": item.hermes_version,
+            "binding_fingerprint": item.binding_fingerprint,
+            "delegation_contract": item.contract.model_dump(mode="json"),
+            "session_id": item.creator_session,
+            "workspace": item.workspace,
+            "branch": item.branch,
+            "base_sha": item.base_sha,
+            "parents": list(item.parents),
+            "idempotency_key": item.idempotency_key,
+            "ownership_digest": item.ownership_digest,
+            "board": item.board,
+            "tenant": item.tenant,
+        },
     }
+    return actual == expected
 
 
 class KanbanRuntime:
@@ -153,26 +186,27 @@ class KanbanRuntime:
         self._adapter = adapter
         self._capabilities = capabilities
 
-    def _next_revision(self, item: PlannedMutation) -> str:
-        return self._adapter.board_revision(item.board, item.tenant)
-
     def _create(self, item: PlannedMutation, revision: str) -> tuple[str, str]:
-        method = cast(Any, self._adapter.create_blocked)
-        try:
-            value = method(item, revision)
-        except TypeError:
-            return cast(str, method(item)), self._next_revision(item)
-        if not isinstance(value, tuple) or len(cast(tuple[object, ...], value)) != 2:
+        create = cast(Callable[[PlannedMutation, str], object], self._adapter.create_blocked)
+        value = create(item, revision)
+        if not isinstance(value, tuple):
             raise _DispatchFailure("invalid-revision-token")
-        return cast(tuple[str, str], value)
+        parts = cast(tuple[object, ...], value)
+        if len(parts) != 2:
+            raise _DispatchFailure("invalid-revision-token")
+        task_id, next_revision = parts
+        if (
+            not isinstance(task_id, str)
+            or not task_id
+            or not isinstance(next_revision, str)
+            or not next_revision
+        ):
+            raise _DispatchFailure("invalid-revision-token")
+        return task_id, next_revision
 
     def _mutate(self, name: str, item: PlannedMutation, revision: str, *args: object) -> str:
         method: Any = getattr(self._adapter, name)
-        try:
-            value = method(*args, revision)
-        except TypeError:
-            method(*args)
-            return self._next_revision(item)
+        value = method(*args, revision)
         if not isinstance(value, str) or not value:
             raise _DispatchFailure("invalid-revision-token")
         return value
@@ -183,10 +217,15 @@ class KanbanRuntime:
             return None
         return cast(str | None, method(item.board, item.tenant, item.idempotency_key))
 
-    def _compensate(self, task_ids: list[str]) -> None:
+    def _compensate(self, task_ids: list[str], revision: str) -> None:
         for task_id in task_ids:
-            with contextlib.suppress(BaseException):
-                self._adapter.block(task_id, "dispatch-transaction-failed")
+            try:
+                block = cast(Callable[[str, str, str], object], self._adapter.block)
+                value = block(task_id, "dispatch-transaction-failed", revision)
+                if isinstance(value, str) and value:
+                    revision = value
+            except BaseException:
+                continue
 
     def execute(
         self,
@@ -225,11 +264,21 @@ class KanbanRuntime:
                 existing = self._lookup(item)
                 if existing is None:
                     task_id, revision = self._create(item, revision)
+                    task_ids.append(task_id)
                 else:
                     task_id = existing
-                    if not _task_matches(item, task_id, self._adapter.show_json(task_id)):
+                    task_ids.append(task_id)
+                    actual = self._adapter.show_json(task_id)
+                    if not _task_matches(
+                        item, task_id, actual, allowed_statuses=frozenset({"blocked", "ready"})
+                    ):
                         raise _DispatchFailure("idempotency-readback-mismatch")
-                task_ids.append(task_id)
+                    if actual["status"] == "ready":
+                        revision = self._mutate(
+                            "block", item, revision, task_id, "dispatch-replay-reblock"
+                        )
+                        if not _task_matches(item, task_id, self._adapter.show_json(task_id)):
+                            raise _DispatchFailure("replay-reblock-readback-mismatch")
             for item, task_id in zip(mutations, task_ids, strict=True):
                 for parent in item.parents:
                     revision = self._mutate("link", item, revision, parent, task_id)
@@ -251,7 +300,7 @@ class KanbanRuntime:
                 for item, task_id in zip(mutations, task_ids, strict=True)
             )
         except BaseException as exc:
-            self._compensate(task_ids)
+            self._compensate(task_ids, revision)
             if not isinstance(exc, Exception):
                 raise
             reason = (

@@ -61,10 +61,54 @@ def test_plan_graph_and_repr_are_closed_and_secret_safe():
         assert secret not in shown
 
 
+def test_plan_rejects_cycle_even_when_cycle_node_also_has_root_parent():
+    def graph_task(local_id, parents, key):
+        scoped = task().contract.model_copy(
+            update={
+                "writes": (f"src/{local_id}.py",),
+                "test_file_names": (f"tests/test_{local_id}.py",),
+                "acceptance": (f"pytest tests/test_{local_id}.py",),
+            }
+        )
+        return task(
+            local_id=local_id,
+            parents=parents,
+            idempotency_key=key,
+            contract=scoped,
+        )
+
+    with pytest.raises(ValueError, match="cycle"):
+        make_plan(
+            graph_task("a", ("root", "b"), "ka"),
+            graph_task("b", ("a",), "kb"),
+        )
+
+
 def test_plan_bridge_is_complete_and_v020_is_zero_mutation_fail_closed():
     plan = make_plan(task())
     mutations = plan_to_mutations(plan)
-    assert mutations[0].local_id == "child-a"
+    item = mutations[0]
+    source = plan.tasks[0]
+    assert item.title == source.title
+    assert item.body == source.body
+    assert item.contract == source.contract
+    assert (
+        item.component_id,
+        item.profile,
+        item.model,
+        item.provider,
+        item.config_digest,
+        item.hermes_version,
+        item.binding_fingerprint,
+    ) == (
+        source.component_id,
+        source.profile,
+        source.model,
+        source.provider,
+        source.config_digest,
+        source.hermes_version,
+        source.binding_fingerprint,
+    )
     assert mutations[0].ownership_digest
     adapter = FakeAdapter()
     result = DispatchApplication(adapter, KanbanCapabilities.v020()).dispatch(
@@ -153,8 +197,8 @@ def test_baseexception_compensates_then_preserves_identity_without_leak():
         def link(self, parent_id, child_id, expected_revision):
             raise KeyboardInterrupt("raw-secret")
 
-        def block(self, task_id, reason):
-            self.calls.append(("block", task_id, reason))
+        def block(self, task_id, reason, expected_revision):
+            self.calls.append(("block", task_id, reason, expected_revision))
             raise RuntimeError("compensation-secret")
 
     adapter = Abort()
@@ -189,6 +233,8 @@ def test_observation_rejects_noncurrent_evidence_and_requires_bound_integration(
         item,
         run=current,
         evidence_run_id="current",
+        log_run_id="current",
+        worktree_run_id="current",
         tests_run_id="current",
         runs=(current,),
         current_run_id="current",
