@@ -35,3 +35,7 @@ Plan 03 Worker 质量与性能基准（后置）
 - Hermes v0.20 缺少 tool/fallback 遥测时，成功结果必须为 `live-call-passed + route-proof-incomplete`，默认仍阻止自动 Kanban 派发。
 - Plan 03 只在 Plan 05 关闭推理可用性后运行；其统计结果不能补偿安装、readiness 或路由主链失败。
 - 离线开发、测试、复审、提交和既定阶段交付持续执行；真实模型调用、Gateway 服务变更、Kanban mutation和发布仍需各自明确授权。
+
+## Unreleased runtime-activation amendment
+
+Plan 05 is amended for Hermes v0.20 custom providers: skip unsupported bare-provider auth, inherit the exact main/default Profile provider definition transactionally from either the current keyed `providers` schema or compatible `custom_providers` schema, and chain activation immediately after installation. Offline implementation is complete; live credentialed canary remains separately authorized and unperformed.

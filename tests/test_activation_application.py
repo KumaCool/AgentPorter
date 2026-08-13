@@ -49,6 +49,26 @@ def _detection(tmp_path: Path) -> HermesDetection:
 
 def _installation(tmp_path: Path) -> tuple[HermesDetection, DiscoveryResult]:
     found = _detection(tmp_path)
+    (found.hermes_home / "config.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "model": {"default": "parent-model"},
+                "custom_providers": [
+                    {
+                        "name": "custom-provider",
+                        "base_url": SECRET_ENDPOINT,
+                        "api_key": "PRIVATE-CUSTOM-PROVIDER-KEY",
+                        "model": "parent-model",
+                        "models": ["gpt-5.6-luna", "gpt-5.3-codex-spark"],
+                        "extra_headers": {"X-Provider-Mode": "private"},
+                    }
+                ],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    (found.hermes_home / "config.yaml").chmod(0o600)
     models = {
         "luna_worker": "gpt-5.6-luna",
         "codex_5_3_small_worker": "gpt-5.3-codex-spark",
@@ -82,7 +102,7 @@ def _inputs() -> dict[str, ActivationBindingInput]:
         component_id: ActivationBindingInput(
             provider_id="custom-provider",
             endpoint_value=SECRET_ENDPOINT,
-            credential_grant_kind="profile-auth",
+            credential_grant_kind="custom-provider-config",
             credential_state="operator-authorized",
         )
         for component_id in COMPONENT_IDS.values()
@@ -103,7 +123,86 @@ def test_build_plan_uses_only_complete_discovered_installation_and_typed_snapsho
         "gpt-5.3-codex-spark",
     }
     assert all(item.original_config.provider is None for item in plan.bindings)
+    assert all(
+        item.provider_definition["api_key"] == "PRIVATE-CUSTOM-PROVIDER-KEY"
+        for item in plan.bindings
+    )
     assert SECRET_ENDPOINT not in repr(plan)
+    assert "PRIVATE-CUSTOM-PROVIDER-KEY" not in repr(plan)
+
+
+def test_build_plan_and_apply_support_current_keyed_provider_schema(tmp_path: Path) -> None:
+    found, discovery = _installation(tmp_path)
+    source = yaml.safe_load((found.hermes_home / "config.yaml").read_text(encoding="utf-8"))
+    legacy = source.pop("custom_providers")[0]
+    source["providers"] = {
+        "custom-provider": {
+            "api": legacy.pop("base_url"),
+            "api_key": legacy.pop("api_key"),
+            "default_model": legacy.pop("model"),
+            "models": legacy.pop("models"),
+            "extra_headers": legacy.pop("extra_headers"),
+            "transport": "openai",
+        }
+    }
+    (found.hermes_home / "config.yaml").write_text(
+        yaml.safe_dump(source, sort_keys=False), encoding="utf-8"
+    )
+    discovery = discover_installation(found.profiles_root)
+
+    plan = build_activation_plan(discovery, found, _inputs())
+    result = apply_activation(plan, input_fn=lambda _prompt: plan.confirmation_phrase)
+
+    assert result.status is ActivationStatus.CANARY_REQUIRED
+    assert all(target.provider_container == "providers" for target in plan.bindings)
+    for target in plan.bindings:
+        loaded = yaml.safe_load((target.profile_path / "config.yaml").read_text(encoding="utf-8"))
+        assert loaded["providers"]["custom-provider"] == source["providers"]["custom-provider"]
+        assert "custom_providers" not in loaded
+
+
+def test_duplicate_provider_across_legacy_and_current_schema_is_rejected(tmp_path: Path) -> None:
+    found, _ = _installation(tmp_path)
+    source = yaml.safe_load((found.hermes_home / "config.yaml").read_text(encoding="utf-8"))
+    legacy = source["custom_providers"][0]
+    source["providers"] = {
+        "custom-provider": {
+            "api": legacy["base_url"],
+            "api_key": "SECOND-PRIVATE-KEY",
+        }
+    }
+    (found.hermes_home / "config.yaml").write_text(
+        yaml.safe_dump(source, sort_keys=False), encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="exactly one"):
+        build_activation_plan(discover_installation(found.profiles_root), found, _inputs())
+
+
+def test_current_keyed_provider_preserves_unrelated_worker_providers(tmp_path: Path) -> None:
+    found, discovery = _installation(tmp_path)
+    source = yaml.safe_load((found.hermes_home / "config.yaml").read_text(encoding="utf-8"))
+    legacy = source.pop("custom_providers")[0]
+    source["providers"] = {
+        "custom-provider": {"api": legacy["base_url"], "api_key": legacy["api_key"]}
+    }
+    (found.hermes_home / "config.yaml").write_text(
+        yaml.safe_dump(source, sort_keys=False), encoding="utf-8"
+    )
+    for target in discovery.targets:
+        worker = yaml.safe_load((target.path / "config.yaml").read_text(encoding="utf-8"))
+        worker["providers"] = {"keep-provider": {"api": "https://keep.invalid/v1"}}
+        (target.path / "config.yaml").write_text(
+            yaml.safe_dump(worker, sort_keys=False), encoding="utf-8"
+        )
+    plan = build_activation_plan(discover_installation(found.profiles_root), found, _inputs())
+
+    result = apply_activation(plan, input_fn=lambda _prompt: plan.confirmation_phrase)
+
+    assert result.status is ActivationStatus.CANARY_REQUIRED
+    for target in plan.bindings:
+        loaded = yaml.safe_load((target.profile_path / "config.yaml").read_text(encoding="utf-8"))
+        assert list(loaded["providers"]) == ["keep-provider", "custom-provider"]
 
 
 def test_build_plan_accepts_complete_three_component_discovery_but_reads_only_workers(
@@ -157,14 +256,7 @@ def test_formal_activation_entry_prompts_for_workers_in_component_order_only(
     )
     prompts: list[str] = []
     captured: dict[str, ActivationBindingInput] = {}
-    answers = iter(
-        (
-            "provider-luna",
-            "profile-auth",
-            "provider-codex",
-            "profile-auth",
-        )
-    )
+    answers = iter(("custom-provider", "custom-provider"))
     sentinel_plan = object()
     sentinel_result = object()
 
@@ -208,6 +300,7 @@ def test_formal_activation_entry_prompts_for_workers_in_component_order_only(
         "Provider ID for renamed-codex: ",
     ]
     assert all("orchestrator" not in prompt for prompt in prompts)
+    assert all("Credential grant" not in prompt for prompt in prompts)
 
 
 def test_apply_activation_confirms_once_then_writes_and_reads_back_without_cli(
@@ -238,6 +331,146 @@ def test_apply_activation_confirms_once_then_writes_and_reads_back_without_cli(
             "provider": "custom-provider",
             "base_url": SECRET_ENDPOINT,
         }
+        assert loaded["custom_providers"] == [
+            {
+                "name": "custom-provider",
+                "base_url": SECRET_ENDPOINT,
+                "api_key": "PRIVATE-CUSTOM-PROVIDER-KEY",
+                "model": "parent-model",
+                "models": ["gpt-5.6-luna", "gpt-5.3-codex-spark"],
+                "extra_headers": {"X-Provider-Mode": "private"},
+            }
+        ]
+
+
+def test_missing_parent_custom_provider_fails_before_worker_write(tmp_path: Path) -> None:
+    found, discovery = _installation(tmp_path)
+    inputs = {
+        component: replace(value, provider_id="missing-provider")
+        for component, value in _inputs().items()
+    }
+    before = {
+        item.current_name: (item.path / "config.yaml").read_bytes() for item in discovery.targets
+    }
+
+    with pytest.raises(ValueError, match="custom Provider"):
+        build_activation_plan(discovery, found, inputs)
+
+    assert {
+        item.current_name: (item.path / "config.yaml").read_bytes() for item in discovery.targets
+    } == before
+
+
+def test_activation_preserves_unrelated_worker_provider_and_never_renders_copied_secret(
+    tmp_path: Path,
+) -> None:
+    found, discovery = _installation(tmp_path)
+    for target in discovery.targets:
+        config = yaml.safe_load((target.path / "config.yaml").read_text())
+        config["custom_providers"] = [
+            {"name": "keep-provider", "base_url": "https://keep.invalid/v1", "key_env": "KEEP"}
+        ]
+        (target.path / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+    plan = build_activation_plan(discover_installation(found.profiles_root), found, _inputs())
+    rendered: list[str] = []
+
+    result = apply_activation(
+        plan,
+        input_fn=lambda _prompt: plan.confirmation_phrase,
+        output=_Writer(rendered),
+    )
+
+    assert result.status is ActivationStatus.CANARY_REQUIRED
+    assert "PRIVATE-CUSTOM-PROVIDER-KEY" not in "".join(rendered)
+    for target in plan.bindings:
+        config = yaml.safe_load((target.profile_path / "config.yaml").read_text())
+        assert [item["name"] for item in config["custom_providers"]] == [
+            "keep-provider",
+            "custom-provider",
+        ]
+
+
+def test_source_provider_drift_after_confirmation_compensates_worker_writes(
+    tmp_path: Path,
+) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+
+    def drift_source(_target: ActivationTargetPlan, index: int) -> None:
+        if index == len(plan.bindings) - 1:
+            source = yaml.safe_load((found.hermes_home / "config.yaml").read_text())
+            source["custom_providers"][0]["api_key"] = "CONCURRENT-PRIVATE-KEY"
+            (found.hermes_home / "config.yaml").write_text(yaml.safe_dump(source, sort_keys=False))
+
+    result = apply_activation(
+        plan,
+        input_fn=lambda _prompt: plan.confirmation_phrase,
+        after_write=drift_source,
+    )
+
+    assert result.status is ActivationStatus.FAILED
+    for target in plan.bindings:
+        config = yaml.safe_load((target.profile_path / "config.yaml").read_text())
+        assert "provider" not in config["model"]
+        assert "custom_providers" not in config
+
+
+def test_source_drift_during_receipt_publication_compensates_configs_and_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+    original = activation._write_receipt  # pyright: ignore[reportPrivateUsage]
+    injected = False
+
+    def drift_then_write(
+        target: ActivationTargetPlan, readback: activation.ConfigSnapshot
+    ) -> object:
+        nonlocal injected
+        if not injected:
+            injected = True
+            source = yaml.safe_load((found.hermes_home / "config.yaml").read_text())
+            source["custom_providers"][0]["api_key"] = "RECEIPT-WINDOW-PRIVATE-KEY"
+            (found.hermes_home / "config.yaml").write_text(yaml.safe_dump(source, sort_keys=False))
+        return original(target, readback)
+
+    monkeypatch.setattr(activation, "_write_receipt", drift_then_write)
+
+    result = apply_activation(plan, input_fn=lambda _prompt: plan.confirmation_phrase)
+
+    assert result.status is ActivationStatus.FAILED
+    for target in plan.bindings:
+        loaded = yaml.safe_load((target.profile_path / "config.yaml").read_text())
+        assert "provider" not in loaded["model"]
+        assert "custom_providers" not in loaded
+        assert not (target.profile_path / "local/agentporter/runtime-binding.json").exists()
+
+
+def test_worker_provider_drift_before_receipt_is_not_certified(tmp_path: Path) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+    last = plan.bindings[-1]
+
+    def drift_last_worker(_target: ActivationTargetPlan, index: int) -> None:
+        if index == len(plan.bindings) - 1:
+            config = yaml.safe_load((last.profile_path / "config.yaml").read_text())
+            config["custom_providers"][0]["api_key"] = "DRIFTED-WORKER-PRIVATE-KEY"
+            (last.profile_path / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+
+    result = apply_activation(
+        plan,
+        input_fn=lambda _prompt: plan.confirmation_phrase,
+        after_write=drift_last_worker,
+    )
+
+    assert result.status is ActivationStatus.COMPENSATION_INCOMPLETE
+    assert result.residue_count == 1
+    for target in plan.bindings:
+        assert not (target.profile_path / "local/agentporter/runtime-binding.json").exists()
+    first = yaml.safe_load((plan.bindings[0].profile_path / "config.yaml").read_text())
+    assert "provider" not in first["model"]
+    drifted = yaml.safe_load((last.profile_path / "config.yaml").read_text())
+    assert drifted["custom_providers"][0]["api_key"] == "DRIFTED-WORKER-PRIVATE-KEY"
 
 
 def test_stale_snapshot_causes_zero_writes(tmp_path: Path) -> None:
@@ -586,6 +819,11 @@ def test_receipt_update_rejects_unknown_external_schema(tmp_path: Path) -> None:
     )
     receipt = first.bindings[0].profile_path / "local/agentporter/runtime-binding.json"
     receipt.write_text('{"schema_version":1,"foreign":true}\n', encoding="utf-8")
+    source = yaml.safe_load((found.hermes_home / "config.yaml").read_text())
+    replacement = dict(source["custom_providers"][0])
+    replacement["name"] = "replacement-provider"
+    source["custom_providers"].append(replacement)
+    (found.hermes_home / "config.yaml").write_text(yaml.safe_dump(source, sort_keys=False))
     changed = {
         key: replace(value, provider_id="replacement-provider") for key, value in _inputs().items()
     }
@@ -704,6 +942,11 @@ def test_second_receipt_failure_restores_both_existing_receipts_and_configs(
         item.profile_path / "local/agentporter/runtime-binding.json" for item in first_plan.bindings
     ]
     before_receipts = [path.read_bytes() for path in receipts]
+    source = yaml.safe_load((found.hermes_home / "config.yaml").read_text())
+    replacement = dict(source["custom_providers"][0])
+    replacement["name"] = "replacement-provider"
+    source["custom_providers"].append(replacement)
+    (found.hermes_home / "config.yaml").write_text(yaml.safe_dump(source, sort_keys=False))
     changed = {
         key: replace(value, provider_id="replacement-provider") for key, value in _inputs().items()
     }

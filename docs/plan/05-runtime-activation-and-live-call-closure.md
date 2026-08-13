@@ -357,3 +357,15 @@ restricted dispatch
 - 每阶段完成后同步设计、计划索引、项目状态和受影响文档；代码-only GREEN不是完成。
 - 开源提交前扫描个人信息、token、endpoint、私人路径和运行输出。
 - 阶段验收后按项目规则push到远端；tag/Release、真实模型、Gateway和Kanban仍分别需要明确授权。
+
+## 未发布修订验收矩阵
+
+- [x] custom Provider 激活不调用 Hermes v0.20 `auth add/status`。
+- [x] 主/default Profile 中唯一且 endpoint 一致的完整 Provider 定义被复制到两个 Worker。
+- [x] Hermes v0.20 keyed `providers.<id>` 与兼容 `custom_providers` 均受支持；来源 schema 保持不变，跨结构重复时 fail closed。
+- [x] 来源缺失/重复/endpoint 不一致/确认后漂移时 fail closed。
+- [x] 每个 receipt 发布前及全部发布后重验来源与 Worker 完整配置/身份；receipt 窗口漂移会补偿配置和已发布 receipt，无法安全恢复的并发 Worker 修改报告 residue。
+- [x] Provider 定义不进入输出、repr、receipt 或 argv；目标配置继承是唯一获批的秘密复制边界。
+- [x] bootstrap 安装成功后直接进入 activation，无额外 opt-in。
+- [x] activation 失败保留公开重试入口并返回非零。
+- [ ] 真实凭据 one-shot 仍需用户在 canary 门明确授权；本修订未执行真实模型调用。

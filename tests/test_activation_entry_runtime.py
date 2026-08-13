@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from test_activation_application import (
     _inputs as inputs_fixture,  # pyright: ignore[reportPrivateUsage]
 )
@@ -18,19 +19,14 @@ from agentporter.activation_application import (
 from agentporter.runtime_probe import ProbeObservation
 
 
-def test_runtime_phases_have_independent_confirmation_and_disclose_side_effects(
+def test_runtime_skips_unsupported_custom_provider_auth_and_discloses_live_side_effects(
     tmp_path: Path,
 ) -> None:
     found, discovery = installation_fixture(tmp_path)
     plan = build_activation_plan(discovery, found, inputs_fixture())
     prompts: list[str] = []
     output: list[str] = []
-    auth_calls: list[str] = []
-    auth_statuses = iter(("logged-out", "logged-in", "logged-out", "logged-in"))
-
-    answers = iter(
-        (plan.confirmation_phrase, "AUTH renamed-luna", "AUTH renamed-codex", "RUN 2 WORKER CALLS")
-    )
+    answers = iter((plan.confirmation_phrase, "RUN 2 WORKER CALLS"))
 
     def answer(prompt: str) -> str:
         prompts.append(prompt)
@@ -45,8 +41,8 @@ def test_runtime_phases_have_independent_confirmation_and_disclose_side_effects(
         plan,
         input_fn=answer,
         output=Writer(),  # type: ignore[arg-type]
-        auth_status_runner=lambda binding: next(auth_statuses),
-        auth_add_runner=lambda binding: auth_calls.append(binding.component_id),
+        auth_status_runner=lambda _binding: pytest.fail("custom Provider auth status unsupported"),
+        auth_add_runner=lambda _binding: pytest.fail("custom Provider auth add unsupported"),
         probe_runner=lambda binding, nonce, _directory: ProbeObservation(
             output=f"AGENTPORTER_READY:{nonce}",
             actual_model=binding.expected_model,
@@ -58,7 +54,7 @@ def test_runtime_phases_have_independent_confirmation_and_disclose_side_effects(
         require_runtime_confirmations=True,
     )
     assert result.status is ActivationStatus.RESTRICTED
-    assert len(auth_calls) == 2
+
     assert all(
         json.loads((item.profile_path / "local/agentporter/runtime-binding.json").read_text())[
             "canary_reason_code"
@@ -78,19 +74,18 @@ def test_runtime_phases_have_independent_confirmation_and_disclose_side_effects(
         assert receipt["credential_verification"] == "verified"
 
 
-def test_rejecting_live_confirmation_makes_zero_probe_calls_but_keeps_binding_and_auth(
+def test_rejecting_live_confirmation_makes_zero_probe_calls_but_keeps_binding(
     tmp_path: Path,
 ) -> None:
     found, discovery = installation_fixture(tmp_path)
     plan = build_activation_plan(discovery, found, inputs_fixture())
     probes: list[str] = []
-    auth_statuses = iter(("logged-out", "logged-in", "logged-out", "logged-in"))
-    answers = iter((plan.confirmation_phrase, "AUTH renamed-luna", "AUTH renamed-codex", "NO"))
+    answers = iter((plan.confirmation_phrase, "NO"))
     result = apply_activation(
         plan,
         input_fn=lambda _prompt: next(answers),
-        auth_status_runner=lambda _binding: next(auth_statuses),
-        auth_add_runner=lambda _binding: None,
+        auth_status_runner=lambda _binding: pytest.fail("auth status must not run"),
+        auth_add_runner=lambda _binding: pytest.fail("auth add must not run"),
         probe_runner=lambda binding, _nonce, _directory: (
             probes.append(binding.component_id) or ProbeObservation()
         ),
@@ -109,7 +104,10 @@ def test_unsupported_grant_returns_before_auth_or_probe(tmp_path: Path) -> None:
     inputs = inputs_fixture()
     first = next(iter(inputs))
     inputs[first] = type(inputs[first])(
-        "p", "https://example.invalid", "profile-env", "operator-authorized"
+        "custom-provider",
+        "https://activation-endpoint.invalid/v1",
+        "profile-env",
+        "operator-authorized",
     )
     plan = build_activation_plan(discovery, found, inputs)
     calls: list[str] = []
@@ -129,21 +127,20 @@ def test_unsupported_grant_returns_before_auth_or_probe(tmp_path: Path) -> None:
     assert calls == []
 
 
-def test_auth_add_is_followed_by_authoritative_status_readback(tmp_path: Path) -> None:
+def test_custom_provider_config_never_calls_hermes_auth(tmp_path: Path) -> None:
     found, discovery = installation_fixture(tmp_path)
     plan = build_activation_plan(discovery, found, inputs_fixture())
     calls: list[str] = []
-    statuses = iter(("logged-out", "logged-in", "logged-out", "logged-in"))
-    answers = iter((plan.confirmation_phrase, "AUTH renamed-luna", "AUTH renamed-codex", "NO"))
+    answers = iter((plan.confirmation_phrase, "NO"))
     result = apply_activation(
         plan,
         input_fn=lambda _prompt: next(answers),
         auth_status_runner=lambda binding: (
-            calls.append("status:" + binding.component_id) or next(statuses)
+            calls.append("status:" + binding.component_id) or "unknown"
         ),
         auth_add_runner=lambda binding: calls.append("add:" + binding.component_id),
         probe_runner=lambda _binding, _nonce, _directory: ProbeObservation(),
         require_runtime_confirmations=True,
     )
     assert result.status is ActivationStatus.CANARY_REQUIRED
-    assert [item.split(":")[0] for item in calls] == ["status", "add", "status"] * 2
+    assert calls == []

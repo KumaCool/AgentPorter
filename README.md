@@ -131,3 +131,7 @@ The detailed design and plan documents are engineering history and contracts, no
 See [CONTRIBUTING.md](CONTRIBUTING.md) for exact offline gates and the separate real-Hermes workflow. Never commit credentials, private runtime state, caches, model output, or personal paths. Report suspected vulnerabilities privately according to [SECURITY.md](SECURITY.md).
 
 AgentPorter is licensed under the [MIT License](LICENSE).
+
+## Unreleased install-to-activation flow
+
+The next candidate chains activation immediately after a successful Profile installation; there is no extra “enter activation?” prompt. For Hermes v0.20 custom providers, activation does not call unsupported bare-provider `auth add/status`. Instead, it requires an exact provider definition in the main/default Profile, seals that source config, and transactionally copies the complete selected `custom_providers` entry into each Worker before binding and the separately confirmed live canary. This intentionally copies provider configuration, including whichever `api_key` or `key_env` field the operator already placed there; it never prints that definition or stores it in AgentPorter receipts. Missing, duplicate, endpoint-mismatched, or concurrently changed definitions fail closed.

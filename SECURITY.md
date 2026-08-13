@@ -39,3 +39,7 @@ Release candidates must pass offline format, lint, type, test, build, Markdown-l
 Release artifacts must contain only the expected package modules/resources and distribution metadata. Tests, caches, private directories, credentials, sessions, memories, bytecode, and secret-like content are forbidden. A mismatch blocks publication; it must not be waived by deleting the expected item from the release contract.
 
 Maintainers will acknowledge valid private reports when possible, investigate, add regression coverage, and coordinate disclosure. No fixed response timeline is guaranteed.
+
+## Unreleased custom-provider inheritance boundary
+
+For Hermes v0.20 custom providers, AgentPorter does not invoke unsupported bare-provider auth commands. The operator-approved activation transaction copies one exact provider definition from the main/default Profile into each Worker. That definition may contain an API key and is therefore treated as secret configuration: it is never rendered, logged, passed in argv, fingerprinted, or persisted in AgentPorter receipts. Source/target identities and digests are revalidated and drift fails closed. This is a narrow exception to the older “never copies credentials” statement; AgentPorter still never reads or copies Hermes auth stores, `.env`, OAuth tokens, or unrelated provider definitions.

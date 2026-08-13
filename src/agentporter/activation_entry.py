@@ -49,13 +49,10 @@ def run_activator(
         target = targets[component_id]
         provider = input_fn(f"Provider ID for {target.current_name}: ").strip()
         endpoint = endpoint_reader(f"Endpoint for {target.current_name} (hidden): ")
-        grant = input_fn("Credential grant (profile-auth only): ").strip()
-        if grant != "profile-auth":
-            raise SystemExit("AgentPorter activation credential source unsupported")
         inputs[target.component_id] = ActivationBindingInput(
             provider,
             endpoint,
-            grant,  # type: ignore[arg-type]
+            "custom-provider-config",
             "operator-authorized",
         )
     plan = build_activation_plan(discovery, found, inputs)

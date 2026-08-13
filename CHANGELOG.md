@@ -4,6 +4,11 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+### Changed
+
+- The POSIX bootstrap now starts `agentporter-activate` immediately after successful Profile installation without an additional opt-in prompt; activation failure keeps the installed retry entry and returns non-zero.
+- Hermes v0.20 custom-provider activation no longer calls unsupported bare-provider auth commands. It transactionally inherits the exact selected provider definition from the main/default Profile into each Worker, while keeping that potentially secret definition out of output, argv, fingerprints, and receipts.
+
 ## [0.1.6] - 2026-08-13
 
 ### Fixed

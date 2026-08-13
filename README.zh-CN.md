@@ -155,3 +155,7 @@ agentporter-uninstall
 不要提交凭据、私有运行状态、缓存、模型输出、个人路径或环境敏感数据。安全问题请按照 [SECURITY.md](SECURITY.md) 私下报告。
 
 AgentPorter 使用 [MIT License](LICENSE) 发布。
+
+## 未发布版安装到激活流程
+
+下一候选版会在 Profile 安装成功后直接串联激活，不再额外询问“是否进入激活”。针对 Hermes v0.20 的 custom Provider，激活器不再调用不受支持的裸 Provider `auth add/status`；它要求主/default Profile 中存在唯一且 endpoint 一致的完整定义，封印来源配置后，将所选 `custom_providers` 条目事务化复制到每个 Worker，再执行绑定和单独确认的真实 canary。复制范围包含用户已放入该定义的 `api_key` 或 `key_env`，但不会打印定义或写入 AgentPorter receipt。缺失、重复、endpoint 不匹配或并发变化均 fail closed。

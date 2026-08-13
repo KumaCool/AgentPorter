@@ -78,6 +78,8 @@ class ActivationTargetPlan:
     marker_digest: str = field(repr=False)
     marker_device: int = field(repr=False)
     marker_inode: int = field(repr=False)
+    provider_definition: dict[str, object] = field(repr=False)
+    provider_container: str
 
     @property
     def component_id(self) -> str:
@@ -98,6 +100,8 @@ class ActivationPlan:
     hermes_home: Path = field(repr=False)
     bindings: tuple[ActivationTargetPlan, ...]
     confirmation_phrase: str
+    source_config_path: Path = field(repr=False)
+    source_config: ConfigSnapshot = field(repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -323,7 +327,70 @@ def _updated_payload(target: ActivationTargetPlan) -> bytes:
     model = cast(dict[str, object], model_value)
     model["provider"] = target.binding.provider_id
     model["base_url"] = target.binding.endpoint_value
+    if target.provider_container == "custom_providers":
+        providers = config.get("custom_providers")
+        if providers is None:
+            providers = []
+        if not isinstance(providers, list):
+            raise ValueError("Worker custom_providers must be a list")
+        typed_providers = cast(list[object], providers)
+        retained: list[object] = []
+        for item in typed_providers:
+            if isinstance(item, dict):
+                typed_item = cast(dict[object, object], item)
+                if typed_item.get("name") == target.binding.provider_id:
+                    continue
+            retained.append(cast(object, item))
+        retained.append(target.provider_definition)
+        config["custom_providers"] = retained
+    elif target.provider_container == "providers":
+        providers = config.get("providers")
+        if providers is None:
+            providers = {}
+        if not isinstance(providers, dict):
+            raise ValueError("Worker providers must be a mapping")
+        typed_providers = cast(dict[str, object], providers)
+        typed_providers[target.binding.provider_id] = target.provider_definition
+        config["providers"] = typed_providers
+    else:
+        raise ValueError("unsupported Provider container")
     return yaml.safe_dump(config, sort_keys=False).encode("utf-8")
+
+
+def _custom_provider(
+    snapshot: ConfigSnapshot, provider_id: str, endpoint: str
+) -> tuple[str, dict[str, object]]:
+    config = _decoded_mapping(snapshot)
+    matches: list[tuple[str, dict[str, object]]] = []
+    legacy = config.get("custom_providers")
+    if legacy is not None:
+        if not isinstance(legacy, list):
+            raise ValueError("main Profile custom_providers must be a list")
+        for item in cast(list[object], legacy):
+            if not isinstance(item, dict):
+                continue
+            typed_item = cast(dict[object, object], item)
+            if typed_item.get("name") == provider_id and all(
+                isinstance(key, str) for key in typed_item
+            ):
+                matches.append(("custom_providers", cast(dict[str, object], typed_item)))
+    current = config.get("providers")
+    if current is not None:
+        if not isinstance(current, dict):
+            raise ValueError("main Profile providers must be a mapping")
+        typed_current = cast(dict[object, object], current)
+        item = typed_current.get(provider_id)
+        if isinstance(item, dict):
+            typed_item = cast(dict[object, object], item)
+            if all(isinstance(key, str) for key in typed_item):
+                matches.append(("providers", cast(dict[str, object], typed_item)))
+    if len(matches) != 1:
+        raise ValueError("selected custom Provider must have exactly one main Profile definition")
+    container, definition = matches[0]
+    endpoint_key = "base_url" if container == "custom_providers" else "api"
+    if definition.get(endpoint_key) != endpoint:
+        raise ValueError("selected custom Provider endpoint does not match main Profile definition")
+    return container, dict(definition)
 
 
 def _target_for_component(discovery: DiscoveryResult) -> Mapping[str, Target]:
@@ -381,11 +448,16 @@ def build_activation_plan(
     if len(installation_ids) != 1:
         raise ValueError("activation requires one installation id")
     bindings: list[ActivationTargetPlan] = []
+    source_path = detection.hermes_home / "config.yaml"
+    source_snapshot = _read_config(detection.hermes_home)
     for component_id in COMPONENT_IDS.values():
         target = targets[component_id]
         snapshot = _read_config(target.path)
         marker_digest, marker_device, marker_inode = _marker_identity(target.path)
         supplied = inputs[component_id]
+        provider_container, provider_definition = _custom_provider(
+            source_snapshot, supplied.provider_id, supplied.endpoint_value
+        )
         binding = RuntimeBindingPlan.from_values(
             portable_id=portable_by_component[component_id],
             component_id=component_id,
@@ -408,6 +480,8 @@ def build_activation_plan(
                 marker_digest,
                 marker_device,
                 marker_inode,
+                provider_definition,
+                provider_container,
             )
         )
     installation_id = installation_ids.pop()
@@ -416,6 +490,8 @@ def build_activation_plan(
         detection.hermes_home,
         tuple(bindings),
         f"ACTIVATE AGENTPORTER {installation_id[:8]}",
+        source_path,
+        source_snapshot,
     )
 
 
@@ -428,8 +504,8 @@ def _safe_summary(plan: ActivationPlan, output: TextIO) -> None:
             file=output,
         )
     print(
-        "Activation writes two non-secret keys per target; Profile auth and the separately "
-        "confirmed live canary follow as independent stages.",
+        "Activation copies the selected main-Profile custom Provider definition and writes "
+        "the Worker binding; a separately confirmed live canary follows.",
         file=output,
     )
 
@@ -854,6 +930,8 @@ def apply_activation(
     if input_fn("Type the activation phrase exactly: ") != plan.confirmation_phrase:
         return ActivationResult(ActivationStatus.CANCELLED)
     try:
+        if not _same_config(_read_config(plan.source_config_path.parent), plan.source_config):
+            return ActivationResult(ActivationStatus.STALE)
         for target in plan.bindings:
             if not _target_is_bound(target) or not _same_config(
                 _read_config(target.profile_path), target.original_config
@@ -870,6 +948,8 @@ def apply_activation(
     try:
         receipt_snapshots = [(target, _receipt_snapshot(target), None) for target in plan.bindings]
         for index, target in enumerate(plan.bindings):
+            if not _same_config(_read_config(plan.source_config_path.parent), plan.source_config):
+                raise ValueError("main Profile custom Provider changed before write")
             current = _read_config(target.profile_path)
             if not _target_is_bound(target) or not _same_config(current, target.original_config):
                 raise ValueError("activation target changed before write")
@@ -878,17 +958,44 @@ def apply_activation(
             readback = _atomic_write_target(target, _updated_payload(target), current)
             if after_write is not None:
                 after_write(target, index)
+            current_readback = _read_config(target.profile_path)
             if (
-                readback.model != target.expected_model
-                or readback.provider != target.binding.provider_id
-                or readback.base_url != target.binding.endpoint_value
+                not _target_is_bound(target)
+                or not _same_config(current_readback, readback)
+                or current_readback.content != _updated_payload(target)
+                or current_readback.model != target.expected_model
+                or current_readback.provider != target.binding.provider_id
+                or current_readback.base_url != target.binding.endpoint_value
             ):
                 raise ValueError("activation readback mismatch")
-            readbacks.append(readback)
-        for index, (target, readback) in enumerate(zip(plan.bindings, readbacks, strict=True)):
-            published = _write_receipt(target, readback)
+            readbacks.append(current_readback)
+        if not _same_config(_read_config(plan.source_config_path.parent), plan.source_config):
+            raise ValueError("main Profile custom Provider changed after Worker writes")
+        for index, (target, expected_readback) in enumerate(
+            zip(plan.bindings, readbacks, strict=True)
+        ):
+            if not _same_config(_read_config(plan.source_config_path.parent), plan.source_config):
+                raise ValueError("main Profile custom Provider changed before receipt")
+            current_readback = _read_config(target.profile_path)
+            if (
+                not _target_is_bound(target)
+                or not _same_config(current_readback, expected_readback)
+                or current_readback.content != _updated_payload(target)
+            ):
+                raise ValueError("activation target changed before receipt")
+            published = _write_receipt(target, current_readback)
             original = receipt_snapshots[index][1]
             receipt_snapshots[index] = (target, original, published)
+        if not _same_config(_read_config(plan.source_config_path.parent), plan.source_config):
+            raise ValueError("main Profile custom Provider changed during receipt publication")
+        for target, expected_readback in zip(plan.bindings, readbacks, strict=True):
+            current_readback = _read_config(target.profile_path)
+            if (
+                not _target_is_bound(target)
+                or not _same_config(current_readback, expected_readback)
+                or current_readback.content != _updated_payload(target)
+            ):
+                raise ValueError("activation target changed during receipt publication")
     except Exception:
         residue = _restore(attempted) + _restore_receipts(receipt_snapshots)
         status = ActivationStatus.COMPENSATION_INCOMPLETE if residue else ActivationStatus.FAILED
@@ -911,9 +1018,15 @@ def apply_activation(
     )
     if any(target.binding.credential_state != "operator-authorized" for target in plan.bindings):
         return ActivationResult(ActivationStatus.CREDENTIAL_REQUIRED, items)
-    if any(target.binding.credential_grant_kind != "profile-auth" for target in plan.bindings):
+    if any(
+        target.binding.credential_grant_kind not in {"profile-auth", "custom-provider-config"}
+        for target in plan.bindings
+    ):
         return ActivationResult(ActivationStatus.CREDENTIAL_SOURCE_UNSUPPORTED, items)
-    if require_runtime_confirmations and auth_status_runner is not None:
+    needs_profile_auth = any(
+        target.binding.credential_grant_kind == "profile-auth" for target in plan.bindings
+    )
+    if require_runtime_confirmations and needs_profile_auth and auth_status_runner is not None:
         for target in plan.bindings:
             status = auth_status_runner(target.binding)
             if status != "logged-in" and auth_add_runner is not None:

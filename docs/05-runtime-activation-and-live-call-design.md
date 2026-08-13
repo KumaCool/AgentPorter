@@ -154,12 +154,12 @@ Hermes v0.20 one-shot不是无状态 RPC。即使 AgentPorter删除自身的usag
 
 ## 4.1 安装
 
-Fresh install 继续安装三个 Profile，但最终结果必须明确为：
+Fresh install 安装三个 Profile 后，bootstrap 立即通过同一真实终端进入激活器，不增加是否进入的选择：
 
 ```text
 Profiles installed
 Runtime state: configuration-required
-Next: agentporter-activate
+Starting agentporter-activate
 ```
 
 bootstrap 必须在公共 bin 目录发布并读回：
@@ -489,3 +489,13 @@ public_entries:
 9. 卸载删除三个公共入口和精确私有环境；
 10. 完整测试、Ruff、Pyright、build、隐私扫描和外部 release asset readback 通过；
 11. 真实模型调用、Gateway 或 Kanban mutation仅在用户分别授权后执行。
+
+## 12. 未发布修订：custom Provider 继承与安装串联
+
+本修订替代本文中“custom Provider 必须走 Profile-scoped auth”以及“安装只提示下一步”的旧合同：
+
+1. Hermes v0.20 不支持裸 custom Provider 的 `auth add/status`，因此 `custom-provider-config` 激活路径不得调用二者；凭据有效性仅由单独授权的真实 one-shot 裁决。
+2. 主/default Profile 的 `config.yaml` 是 Provider 定义权威来源。激活计划同时支持 Hermes v0.20 当前 keyed `providers.<id>` schema 与兼容的 list-shaped `custom_providers` schema；必须跨两种结构找到唯一匹配项，并要求其 `api`/`base_url` 与输入 endpoint 精确一致，同时封印来源文件身份和摘要。
+3. 配置事务按来源 schema 原样把完整条目复制/替换到每个 Worker，同时写入 `model.provider` 与 `model.base_url`；不得把 keyed 条目转换并重复物化为 legacy 条目。Worker 其他 Provider 和无关配置保持不变。来源缺失、跨结构重复、endpoint 不一致或确认后漂移时零写入或安全补偿。每个 receipt 发布前及全部 receipt 发布后必须重验来源和目标完整配置/身份；receipt 只为紧邻发布时仍匹配计划 payload 的配置摘要背书。
+4. Provider 定义可能包含 `api_key`，这是用户明确要求的 Profile 配置复制边界；它只存在于来源/目标 `config.yaml`，不得进入 argv、提示、日志、异常、fingerprint 或 receipt。
+5. bootstrap 在安装成功后无条件调用公开 `agentporter-activate`，不询问是否进入；激活自身的绑定确认及真实调用确认不合并。激活失败保留可重试安装并透传非零退出状态。
