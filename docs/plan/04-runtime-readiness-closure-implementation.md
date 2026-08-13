@@ -283,7 +283,9 @@ sdist/wheel build: passed
 
 首轮 7 项 finding family 与限定 closure review 的 6 项机械复现均已固化为回归测试；最后 6 项由主代理逐项重放并随完整门禁关闭，未追加第三轮泛化复审。
 
-## Phase D：第三组件 orchestrator 与安全 Kanban 配置
+## Phase D：第三组件 orchestrator 与安全 Kanban 配置（已完成离线闭环）
+
+**Status:** 已完成。fresh install 生成同 installation ID 的三组件；legacy 双 Worker 正式入口只新增 orchestrator 并保持旧文件不变；双/三组件均支持安全发现与卸载；activation 仍只作用两个 Worker。正式安装采用无写预览→确认→重验证→staging 两阶段，取消/拒绝在确认前零 staging 写入。
 
 **Objective:** 把控制面放在专用 Gateway owner，而不是两个执行 Worker。
 
@@ -325,6 +327,19 @@ python -m pytest \
   tests/test_uninstall_* \
   tests/test_phase7_real_hermes_orchestration.py -v
 ```
+
+**Offline closure evidence:**
+
+```text
+Phase D focused: 118 passed; repair-focused: 86 passed; final two-phase focused: 63 passed
+Repository offline pytest: 634 passed, 1 expected unsupported skip, 2 existing duplicate-archive warnings
+Hermes v0.20 formal cold/hot: three-profile install/readback/rename/uninstall passed
+Ruff format/check: passed
+Pyright strict: 0 errors, 0 warnings
+sdist/wheel build: passed
+```
+
+集中语义复审的 legacy 正式升级与三组件 activation 两项阻断已关闭；限定 closure review 的取消前 staging 写入问题由无写预览两阶段流程关闭，并由主代理重放 fresh/legacy 取消和完整门禁验收。
 
 ## Phase E：任务级订阅、DispatchReceipt 与结构性接续
 
