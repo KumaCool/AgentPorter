@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from subprocess import CompletedProcess
 
@@ -147,6 +148,28 @@ def test_oneshot_uses_probe_owned_nonce_when_supplied(tmp_path: Path) -> None:
     argv = calls[0]["argv"]
     assert isinstance(argv, tuple)
     assert argv[argv.index("-z") + 1] == "Reply exactly AGENTPORTER_READY:owned-nonce"
+
+
+def test_oneshot_timeout_reaps_entire_process_tree(tmp_path: Path) -> None:
+    executable = tmp_path / "hermes"
+    child_marker = tmp_path / "child-finished"
+    executable.write_text(
+        f"#!/bin/sh\n(sleep 1; printf finished > '{child_marker}') &\nsleep 30\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o700)
+
+    adapter = HermesRuntime(executable, timeout_seconds=0.1)
+    with pytest.raises(RuntimeCommandError, match="probe-timeout"):
+        adapter.oneshot(
+            "worker",
+            "m",
+            "p",
+            source_env={"PATH": "/bin:/usr/bin", "CHILD_MARKER": str(child_marker)},
+        )
+
+    time.sleep(1.2)
+    assert not child_marker.exists()
 
 
 @pytest.mark.parametrize(

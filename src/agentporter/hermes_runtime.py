@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import signal
 import stat
 import subprocess
 import tempfile
@@ -134,6 +135,25 @@ class HermesRuntime:
         if completed.returncode != 0:
             raise RuntimeCommandError("authentication-failed")
 
+    def _run_oneshot(
+        self, argv: tuple[str, ...], source_env: Mapping[str, str] | None
+    ) -> subprocess.CompletedProcess[str]:
+        process = subprocess.Popen(
+            argv,
+            env=self.minimal_environment(source_env),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        try:
+            stdout, stderr = process.communicate(timeout=self.timeout_seconds)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.communicate()
+            raise
+        return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+
     def oneshot(
         self,
         profile: str,
@@ -167,14 +187,17 @@ class HermesRuntime:
             )
             try:
                 self._revalidate()
-                completed = self.command_runner(
-                    argv,
-                    env=self.minimal_environment(source_env),
-                    capture_output=True,
-                    text=True,
-                    timeout=self.timeout_seconds,
-                    check=False,
-                )
+                if self.command_runner is subprocess.run:
+                    completed = self._run_oneshot(argv, source_env)
+                else:
+                    completed = self.command_runner(
+                        argv,
+                        env=self.minimal_environment(source_env),
+                        capture_output=True,
+                        text=True,
+                        timeout=self.timeout_seconds,
+                        check=False,
+                    )
             except subprocess.TimeoutExpired as error:
                 raise RuntimeCommandError("probe-timeout") from error
             if completed.returncode != 0:

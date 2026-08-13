@@ -345,6 +345,22 @@ def test_rejects_secret_broken_link_and_forbidden_archive_path(tmp_path: Path) -
     assert any("forbidden archive path" in error for error in errors)
 
 
+@pytest.mark.parametrize("secret_key", ["token", "api_key", "password"])
+def test_rejects_structured_json_secret_fields(tmp_path: Path, secret_key: str) -> None:
+    repo = _repository(tmp_path)
+    secret_file = repo / "src" / "agentporter" / f"structured-{secret_key}.json"
+    secret_file.write_text(
+        f'{{"nested":{{"{secret_key}":"abcdefghijklmnop"}}}}\n',
+        encoding="utf-8",
+    )
+    wheel, sdist = _artifacts(repo)
+
+    errors = verify_release(_contract(repo), [wheel, sdist])
+
+    relative = secret_file.relative_to(repo)
+    assert f"repository: secret-like value in {relative}" in errors
+
+
 def test_rejects_wrong_metadata_and_extra_artifact(tmp_path: Path) -> None:
     repo = _repository(tmp_path)
     wheel, sdist = _artifacts(repo)

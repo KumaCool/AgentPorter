@@ -36,6 +36,97 @@ if [ "${AGENTPORTER_BOOTSTRAP_TESTING:-}" = 1 ]; then
     INPUT_DEVICE=${AGENTPORTER_TEST_INPUT_DEVICE:?test input device is required}
 fi
 
+recover_upgrade() {
+    [ -e "$JOURNAL" ] || [ -L "$JOURNAL" ] || return 0
+    recovery=$(
+        "$PYTHON" -c 'import json, os, pathlib, shutil, stat, sys
+journal, old_root, quarantine, install_root, bin_home = map(pathlib.Path, sys.argv[1:])
+names = ("agentporter", "agentporter-activate", "agentporter-uninstall")
+states = {"PREPARED", "STAGED_015_VERIFIED", "RECEIPT_V2_STAGED", "AGENTPORTER_PUBLISHED", "ACTIVATE_PUBLISHED", "UNINSTALLER_SWITCHED", "ENTRY_SET_READBACK_PASSED", "RECEIPT_V2_COMMITTED", "OLD_014_QUARANTINED"}
+def reject(): raise SystemExit(1)
+def observed(path):
+    try: value = path.lstat()
+    except OSError: return {"device": None, "inode": None, "type": "absent", "target": None}
+    kind = "symlink" if stat.S_ISLNK(value.st_mode) else "directory" if stat.S_ISDIR(value.st_mode) else "file" if stat.S_ISREG(value.st_mode) else "other"
+    return {"device": value.st_dev, "inode": value.st_ino, "type": kind, "target": os.readlink(path) if kind == "symlink" else None}
+def sealed_matches(path, seal, *, target=False):
+    value = observed(path)
+    keys = ("device", "inode", "type") + (("target",) if target else ())
+    return all(value[key] == seal[key] for key in keys)
+try:
+    info = journal.lstat()
+    if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid != os.getuid() or info.st_size > 16384: reject()
+    data = json.loads(journal.read_bytes())
+except (OSError, ValueError, TypeError): reject()
+if set(data) != {"schema_version", "from", "to", "state", "old_root", "old_receipt", "old_uninstaller", "entries"}: reject()
+if data["schema_version"] != 2 or data["from"] != "0.1.4" or data["to"] != "0.1.5" or data["state"] not in states: reject()
+for key in ("old_root", "old_receipt", "old_uninstaller"):
+    if not isinstance(data[key], dict) or not {"device", "inode", "type", "target"} <= set(data[key]): reject()
+if not isinstance(data["old_receipt"].get("sha256"), str): reject()
+entries = data["entries"]
+if not isinstance(entries, list) or [item.get("name") for item in entries if isinstance(item, dict)] != list(names): reject()
+if any(set(item) != {"name", "device", "inode", "type", "target"} for item in entries): reject()
+committed = data["state"] in {"RECEIPT_V2_COMMITTED", "OLD_014_QUARANTINED"}
+legacy = quarantine if committed and quarantine.exists() else old_root
+receipt = legacy / "bootstrap-install.json"
+uninstaller = legacy / "venv/bin/agentporter-uninstall"
+if not sealed_matches(legacy, data["old_root"]) or not sealed_matches(receipt, data["old_receipt"]): reject()
+try:
+    if __import__("hash" + "lib").sha256(receipt.read_bytes()).hexdigest() != data["old_receipt"]["sha256"]: reject()
+except OSError: reject()
+if not sealed_matches(uninstaller, data["old_uninstaller"]): reject()
+expected = {name: install_root / "venv/bin" / name for name in names}
+for item in entries:
+    public = bin_home / item["name"]
+    current = observed(public)
+    new = current["type"] == "symlink" and current["target"] == str(expected[item["name"]])
+    original = sealed_matches(public, item, target=item["type"] == "symlink")
+    if not (new or original): reject()
+receipt2 = install_root / "bootstrap-install.json"
+install_present = install_root.exists() or install_root.is_symlink()
+if install_present:
+    try:
+        installed = json.loads(receipt2.read_bytes())
+    except (OSError, ValueError, TypeError): reject()
+    if installed != {"schema_version": 2, "product": "agentporter", "version": "0.1.5", "public_entries": [str(bin_home / name) for name in names]}: reject()
+    if not install_root.is_dir() or install_root.is_symlink(): reject()
+if committed and not install_present: reject()
+if committed:
+    if any(observed(bin_home / name)["target"] != str(expected[name]) for name in names): reject()
+    if legacy != quarantine or old_root.exists(): reject()
+    shutil.rmtree(quarantine)
+    journal.unlink()
+    print("completed")
+else:
+    public_uninstaller = bin_home / "agentporter-uninstall"
+    if observed(public_uninstaller)["target"] == str(expected["agentporter-uninstall"]):
+        temporary = install_root / ".agentporter-uninstall.recovery"
+        temporary.unlink(missing_ok=True)
+        temporary.symlink_to(uninstaller)
+        os.replace(temporary, public_uninstaller)
+    for name in ("agentporter", "agentporter-activate"):
+        public = bin_home / name
+        if observed(public)["target"] == str(expected[name]): public.unlink()
+    if install_present: shutil.rmtree(install_root)
+    journal.unlink()
+    print("recovered")' \
+            "$JOURNAL" "$OLD_ROOT" "$OLD_QUARANTINE" "$INSTALL_ROOT" "$BIN_HOME" \
+            2>/dev/null
+    ) || fail 'partial/mixed interrupted upgrade; residue retained'
+    case "$recovery" in
+        completed)
+            printf 'AgentPorter bootstrap: safely completed interrupted upgrade\n' >&2
+            exit 0
+            ;;
+        recovered)
+            fail 'recovered interrupted upgrade to 0.1.4; rerun the installer to retry'
+            ;;
+        *) fail 'partial/mixed interrupted upgrade; residue retained' ;;
+    esac
+}
+
+recover_upgrade
+
 [ -r "$INPUT_DEVICE" ] || fail 'an interactive terminal is required'
 [ ! -e "$INSTALL_ROOT" ] && [ ! -L "$INSTALL_ROOT" ] \
     || fail "installation path already exists: ${INSTALL_ROOT}"

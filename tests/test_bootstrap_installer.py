@@ -26,7 +26,7 @@ def _fake_tools(
     tmp_path: Path, *, checksum: str, checksum_name: str = WHEEL_NAME
 ) -> tuple[Path, Path]:
     tools = tmp_path / "tools"
-    tools.mkdir()
+    tools.mkdir(exist_ok=True)
     log = tmp_path / "calls.log"
     _write_executable(
         tools / "curl",
@@ -46,6 +46,23 @@ printf 'curl %s\\n' "$url" >> "$CALL_LOG"
 case "$url" in
   *.sha256) printf '%s  {checksum_name}\\n' "$FAKE_CHECKSUM" > "$out" ;;
   *) printf 'wheel-bytes' > "$out" ;;
+esac
+""",
+    )
+    _write_executable(
+        tools / "mv",
+        """#!/bin/sh
+set -eu
+/bin/mv "$@"
+destination=''
+for argument in "$@"; do destination=$argument; done
+case "${AGENTPORTER_TEST_INTERRUPT_AFTER_MOVE:-}:$destination" in
+  install-root:*/0.1.5|old-quarantine:*/.0.1.4-upgrade-quarantine)
+    kill -KILL "$PPID"
+    ;;
+  prepared:*/.0.1.5-upgrade-journal)
+    if grep -q '"state": "PREPARED"' "$destination"; then kill -KILL "$PPID"; fi
+    ;;
 esac
 """,
     )
@@ -457,3 +474,110 @@ def test_upgrade_journal_seals_authority_and_per_entry_objects(tmp_path: Path) -
         "agentporter-uninstall",
     ]
     assert all({"device", "inode", "type", "target"} <= set(item) for item in journal["entries"])
+
+
+def test_restart_recovers_prepared_upgrade_without_a_published_new_root(tmp_path: Path) -> None:
+    old_root, old_public = _seed_v1_upgrade(tmp_path)
+    checksum = hashlib.sha256(b"wheel-bytes").hexdigest()
+
+    interrupted = _run(
+        tmp_path,
+        checksum=checksum,
+        extra_env={"AGENTPORTER_TEST_INTERRUPT_AFTER_MOVE": "prepared"},
+    )
+    assert interrupted.returncode == -9
+
+    restarted = _run(tmp_path, checksum=checksum)
+
+    assert restarted.returncode != 0
+    assert "recovered interrupted upgrade" in restarted.stderr
+    assert old_root.is_dir()
+    assert old_public.is_symlink()
+    assert not (tmp_path / "data" / "agentporter" / ".0.1.5-upgrade-journal").exists()
+
+
+def test_restart_recovers_interrupted_upgrade_before_existing_root_preflight(
+    tmp_path: Path,
+) -> None:
+    old_root, old_public = _seed_v1_upgrade(tmp_path)
+    checksum = hashlib.sha256(b"wheel-bytes").hexdigest()
+
+    interrupted = _run(
+        tmp_path,
+        checksum=checksum,
+        extra_env={"AGENTPORTER_TEST_INTERRUPT_AFTER_MOVE": "install-root"},
+    )
+
+    assert interrupted.returncode == -9
+    journal = tmp_path / "data" / "agentporter" / ".0.1.5-upgrade-journal"
+    assert json.loads(journal.read_text(encoding="utf-8"))["state"] == "RECEIPT_V2_STAGED"
+    assert (tmp_path / "data" / "agentporter" / VERSION).is_dir()
+
+    restarted = _run(tmp_path, checksum="0" * 64)
+
+    assert restarted.returncode != 0
+    assert "recovered interrupted upgrade" in restarted.stderr
+    assert "installation path already exists" not in restarted.stderr
+    assert old_root.is_dir()
+    assert old_public.is_symlink()
+    assert old_public.resolve() == old_root / "venv" / "bin" / "agentporter-uninstall"
+    assert not (tmp_path / "data" / "agentporter" / VERSION).exists()
+    assert not journal.exists()
+
+
+def test_restart_safely_completes_committed_upgrade_interrupted_during_old_quarantine(
+    tmp_path: Path,
+) -> None:
+    old_root, _ = _seed_v1_upgrade(tmp_path)
+    checksum = hashlib.sha256(b"wheel-bytes").hexdigest()
+
+    interrupted = _run(
+        tmp_path,
+        checksum=checksum,
+        extra_env={"AGENTPORTER_TEST_INTERRUPT_AFTER_MOVE": "old-quarantine"},
+    )
+
+    assert interrupted.returncode == -9
+    journal = tmp_path / "data" / "agentporter" / ".0.1.5-upgrade-journal"
+    assert json.loads(journal.read_text(encoding="utf-8"))["state"] == "RECEIPT_V2_COMMITTED"
+    assert not old_root.exists()
+    quarantine = tmp_path / "data" / "agentporter" / ".0.1.4-upgrade-quarantine"
+    assert quarantine.is_dir()
+    calls_before = (tmp_path / "calls.log").read_text(encoding="utf-8").count("curl ")
+
+    restarted = _run(tmp_path, checksum=checksum)
+
+    assert restarted.returncode == 0, restarted.stderr
+    assert "completed interrupted upgrade" in restarted.stderr
+    assert not journal.exists()
+    assert not quarantine.exists()
+    assert (tmp_path / "data" / "agentporter" / VERSION).is_dir()
+    assert (tmp_path / "calls.log").read_text(encoding="utf-8").count("curl ") == calls_before
+
+
+def test_restart_rejects_mixed_residue_without_changing_any_object(tmp_path: Path) -> None:
+    old_root, old_public = _seed_v1_upgrade(tmp_path)
+    checksum = hashlib.sha256(b"wheel-bytes").hexdigest()
+    interrupted = _run(
+        tmp_path,
+        checksum=checksum,
+        extra_env={"AGENTPORTER_TEST_INTERRUPT_AFTER_MOVE": "install-root"},
+    )
+    assert interrupted.returncode == -9
+    occupied = tmp_path / "bin" / "agentporter"
+    occupied.write_text("external-occupant", encoding="utf-8")
+    journal = tmp_path / "data" / "agentporter" / ".0.1.5-upgrade-journal"
+    journal_before = journal.read_bytes()
+    new_root = tmp_path / "data" / "agentporter" / VERSION
+    calls_before = (tmp_path / "calls.log").read_text(encoding="utf-8").count("curl ")
+
+    restarted = _run(tmp_path, checksum=checksum)
+
+    assert restarted.returncode != 0
+    assert "partial/mixed interrupted upgrade" in restarted.stderr
+    assert (tmp_path / "calls.log").read_text(encoding="utf-8").count("curl ") == calls_before
+    assert occupied.read_text(encoding="utf-8") == "external-occupant"
+    assert old_root.is_dir()
+    assert old_public.is_symlink()
+    assert new_root.is_dir()
+    assert journal.read_bytes() == journal_before

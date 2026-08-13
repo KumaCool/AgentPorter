@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import configparser
+import contextlib
 import email
 import hashlib
 import hmac
+import json
 import re
 import stat
 import tarfile
@@ -18,6 +20,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from email.message import Message
 from pathlib import Path, PurePosixPath
+from typing import cast
 
 _METADATA_ALLOWLIST = {
     "METADATA",
@@ -45,6 +48,7 @@ _SECRET_ASSIGNMENT = re.compile(
     r"(?i)(?:api[_-]?key|password|secret)\s*[:=]\s*[\"']?[A-Za-z0-9_./+\-=]{16,}"
 )
 _TOKEN_LITERAL = re.compile(r"(?i)token\s*[:=]\s*[\"'][A-Za-z0-9_./+\-=]{16,}[\"']")
+_STRUCTURED_SECRET_KEYS = frozenset({"token", "api_key", "password"})
 _LINK = re.compile(r"(?<!!)\[[^]]*]\(([^) #]+)(?:#[^)]+)?\)")
 _MAX_MEMBER_SIZE = 1024 * 1024
 _MAX_ARCHIVE_SIZE = 5 * 1024 * 1024
@@ -122,12 +126,33 @@ def _duplicate_errors(names: Sequence[str], label: str) -> list[str]:
     return errors
 
 
+def _contains_structured_secret(data: object) -> bool:
+    if isinstance(data, dict):
+        mapping = cast(dict[object, object], data)
+        return any(
+            (isinstance(key, str) and key.casefold() in _STRUCTURED_SECRET_KEYS)
+            or _contains_structured_secret(value)
+            for key, value in mapping.items()
+        )
+    if isinstance(data, list):
+        return any(_contains_structured_secret(value) for value in cast(list[object], data))
+    return False
+
+
+def _contains_secret_text(text: str, name: str) -> bool:
+    structured_secret = False
+    if name.casefold().endswith(".json"):
+        with contextlib.suppress(json.JSONDecodeError):
+            structured_secret = _contains_structured_secret(json.loads(text))
+    return bool(_SECRET_ASSIGNMENT.search(text) or _TOKEN_LITERAL.search(text) or structured_secret)
+
+
 def _content_errors(data: bytes, name: str, label: str) -> list[str]:
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
         return []
-    if _SECRET_ASSIGNMENT.search(text) or _TOKEN_LITERAL.search(text):
+    if _contains_secret_text(text, name):
         return [f"{label}: secret-like value in {name!r}"]
     return []
 
@@ -266,7 +291,7 @@ def _repository_errors(repository: Path) -> list[str]:
         if set(markdown.relative_to(repository).parts) & {"dist", ".git", ".venv"}:
             continue
         text = markdown.read_text(encoding="utf-8")
-        if _SECRET_ASSIGNMENT.search(text) or _TOKEN_LITERAL.search(text):
+        if _contains_secret_text(text, markdown.name):
             errors.append(f"repository: secret-like value in {markdown.relative_to(repository)}")
         for target in _LINK.findall(text):
             if "://" in target or target.startswith("mailto:"):
@@ -287,7 +312,7 @@ def _repository_errors(repository: Path) -> list[str]:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
-        if _SECRET_ASSIGNMENT.search(text) or _TOKEN_LITERAL.search(text):
+        if _contains_secret_text(text, path.name):
             errors.append(f"repository: secret-like value in {path.relative_to(repository)}")
     return errors
 
