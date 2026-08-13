@@ -786,6 +786,7 @@ def test_restore_refuses_whole_file_drift_and_preserves_unrelated_key(
     assert loaded["model"]["provider"] == "custom-provider"
 
 
+@pytest.mark.skipif(os.geteuid() != 0, reason="changing file ownership requires root")
 def test_atomic_config_replacement_preserves_owner_and_private_mode(tmp_path: Path) -> None:
     found, discovery = _installation(tmp_path)
     plan = build_activation_plan(discovery, found, _inputs())
