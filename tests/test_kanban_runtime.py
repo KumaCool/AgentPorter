@@ -62,14 +62,16 @@ class FakeAdapter:
     def notify_list_json(self, task_id):
         self.calls.append(("notify-list", task_id))
         route = self.subscriptions[task_id]
-        return [{
-            "platform": route.platform,
-            "chat_id": route.chat_id,
-            "chat_type": route.chat_type,
-            "thread_id": route.thread_id,
-            "notifier_profile": route.notifier_profile,
-            "delivery_metadata": dict(route.delivery_metadata),
-        }]
+        return [
+            {
+                "platform": route.platform,
+                "chat_id": route.chat_id,
+                "chat_type": route.chat_type,
+                "thread_id": route.thread_id,
+                "notifier_profile": route.notifier_profile,
+                "delivery_metadata": dict(route.delivery_metadata),
+            }
+        ]
 
     def unblock(self, task_id, expected_revision):
         self.calls.append(("unblock", task_id, expected_revision))
@@ -82,18 +84,32 @@ class FakeAdapter:
 
 def route():
     return NotificationRoute(
-        "telegram", "secret-chat", "group", "secret-thread", "default",
-        (("reply_anchor", "secret-anchor"),), "creator-session"
+        "telegram",
+        "secret-chat",
+        "group",
+        "secret-thread",
+        "default",
+        (("reply_anchor", "secret-anchor"),),
+        "creator-session",
     )
 
 
 def mutation(**changes):
     values = dict(
-        local_id="child", board="board", tenant="tenant", assignee="worker-a",
-        creator_session="session-secret", workspace="/worktree", branch="phase-e",
-        base_sha="7cc1dad4e49aecfeadf4eb033802a5a990794c69", parents=("root-id",),
-        idempotency_key="key-child", ownership_digest="ownership", route=route(),
-        subscribe=True, runnable=True,
+        local_id="child",
+        board="board",
+        tenant="tenant",
+        assignee="worker-a",
+        creator_session="session-secret",
+        workspace="/worktree",
+        branch="phase-e",
+        base_sha="7cc1dad4e49aecfeadf4eb033802a5a990794c69",
+        parents=("root-id",),
+        idempotency_key="key-child",
+        ownership_digest="ownership",
+        route=route(),
+        subscribe=True,
+        runnable=True,
     )
     values.update(changes)
     return PlannedMutation(**values)
@@ -102,25 +118,24 @@ def mutation(**changes):
 def test_unknown_assignee_and_unsupported_capability_make_zero_adapter_calls():
     adapter = FakeAdapter()
     runtime = KanbanRuntime(adapter, KanbanCapabilities.offline_contract())
-    receipt = runtime.execute((mutation(assignee="missing"),), known_assignees={"worker-a"},
-                              expected_revision="rev-1")
+    receipt = runtime.execute(
+        (mutation(assignee="missing"),), known_assignees={"worker-a"}, expected_revision="rev-1"
+    )
     assert receipt[0].status == "failed"
     assert receipt[0].safe_reason == "unknown-assignee"
     assert adapter.calls == []
 
     capabilities = replace(KanbanCapabilities.offline_contract(), delivery_metadata=False)
     unsupported = KanbanRuntime(adapter, capabilities)
-    result = unsupported.execute((mutation(),), known_assignees={"worker-a"},
-                                 expected_revision="rev-1")
+    result = unsupported.execute(
+        (mutation(),), known_assignees={"worker-a"}, expected_revision="rev-1"
+    )
     assert result[0].safe_reason == "unsupported-delivery-metadata"
     assert adapter.calls == []
 
     native = KanbanRuntime(adapter, KanbanCapabilities.v020())
-    result = native.execute((mutation(),), known_assignees={"worker-a"},
-                            expected_revision="rev-1")
-    assert result[0].safe_reason in {
-        "unsupported-delivery-metadata", "unsupported-cas-revision"
-    }
+    result = native.execute((mutation(),), known_assignees={"worker-a"}, expected_revision="rev-1")
+    assert result[0].safe_reason in {"unsupported-delivery-metadata", "unsupported-cas-revision"}
     assert adapter.calls == []
 
 
@@ -130,7 +145,14 @@ def test_exact_order_readback_then_unblock_and_secret_safe_receipt():
         (mutation(),), known_assignees={"worker-a"}, expected_revision="rev-1"
     )
     assert [call[0] for call in adapter.calls] == [
-        "revision", "create", "link", "subscribe", "show", "notify-list", "revision", "unblock"
+        "revision",
+        "create",
+        "link",
+        "subscribe",
+        "show",
+        "notify-list",
+        "revision",
+        "unblock",
     ]
     receipt = receipts[0]
     assert receipt.status == "succeeded"
@@ -185,8 +207,9 @@ def test_cli_route_is_notification_only_not_creator_continuation():
     adapter = FakeAdapter()
     cli_route = replace(route(), source="cli")
     receipt = KanbanRuntime(adapter, KanbanCapabilities.offline_contract()).execute(
-        (mutation(route=cli_route, creator_session=None),), known_assignees={"worker-a"},
-        expected_revision="rev-1"
+        (mutation(route=cli_route, creator_session=None),),
+        known_assignees={"worker-a"},
+        expected_revision="rev-1",
     )[0]
     assert receipt.continuity_level == "notification-only"
     assert not receipt.session_id_attached

@@ -88,11 +88,18 @@ def test_structural_root_continuation_requires_all_parents_done_and_new_run():
     from agentporter.runtime_observation import derive_structural_continuation
 
     result = derive_structural_continuation(
-        root_status="ready", parent_statuses=("done", "done"),
-        previous_run_id="old", current_run_id="new"
+        root_status="ready",
+        parent_statuses=("done", "done"),
+        previous_run_id="old",
+        current_run_id="new",
     )
     assert result == "orchestrator-resumed"
-    assert derive_structural_continuation(
-        root_status="blocked", parent_statuses=("done", "done"),
-        previous_run_id="old", current_run_id="old"
-    ) == "event-durable"
+    assert (
+        derive_structural_continuation(
+            root_status="blocked",
+            parent_statuses=("done", "done"),
+            previous_run_id="old",
+            current_run_id="old",
+        )
+        == "event-durable"
+    )

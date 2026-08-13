@@ -127,9 +127,7 @@ def test_plan_is_immutable_blocked_and_binds_all_authorities():
         ({}, {"fresh": False}, "fresh"),
     ],
 )
-def test_rejects_missing_stale_or_mismatched_assignee_evidence(
-    task_change, evidence_change, match
-):
+def test_rejects_missing_stale_or_mismatched_assignee_evidence(task_change, evidence_change, match):
     with pytest.raises(ValueError, match=match):
         DispatchPlan.create(
             board="agentporter",
@@ -148,21 +146,39 @@ def test_rejects_missing_stale_or_mismatched_assignee_evidence(
 def test_rejects_wrong_base_duplicate_keys_and_unbound_parent():
     with pytest.raises(ValueError, match="base SHA"):
         DispatchPlan.create(
-            board="agentporter", tenant="t", creator_session="s", route=route(),
-            tasks=(task(),), readiness=(evidence(),), now=NOW,
-            expected_base_sha="0" * 40, expected_board_revision="r",
+            board="agentporter",
+            tenant="t",
+            creator_session="s",
+            route=route(),
+            tasks=(task(),),
+            readiness=(evidence(),),
+            now=NOW,
+            expected_base_sha="0" * 40,
+            expected_board_revision="r",
             structural_roots=("root",),
         )
     with pytest.raises(ValueError, match="idempotency"):
         DispatchPlan.create(
-            board="agentporter", tenant="t", creator_session="s", route=route(),
-            tasks=(task(), task(local_id="other")), readiness=(evidence(),), now=NOW,
-            expected_base_sha=SHA, expected_board_revision="r",
+            board="agentporter",
+            tenant="t",
+            creator_session="s",
+            route=route(),
+            tasks=(task(), task(local_id="other")),
+            readiness=(evidence(),),
+            now=NOW,
+            expected_base_sha=SHA,
+            expected_board_revision="r",
             structural_roots=("root",),
         )
     with pytest.raises(ValueError, match="parent"):
         DispatchPlan.create(
-            board="agentporter", tenant="t", creator_session="s", route=route(),
-            tasks=(task(parents=("missing",)),), readiness=(evidence(),), now=NOW,
-            expected_base_sha=SHA, expected_board_revision="r",
+            board="agentporter",
+            tenant="t",
+            creator_session="s",
+            route=route(),
+            tasks=(task(parents=("missing",)),),
+            readiness=(evidence(),),
+            now=NOW,
+            expected_base_sha=SHA,
+            expected_board_revision="r",
         )

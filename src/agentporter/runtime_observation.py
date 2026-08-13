@@ -7,8 +7,14 @@ from datetime import datetime, timedelta
 from typing import Literal
 
 DerivedState = Literal[
-    "launching", "active", "stale-or-wedged", "completed", "failed",
-    "needs-input", "degraded", "inconsistent",
+    "launching",
+    "active",
+    "stale-or-wedged",
+    "completed",
+    "failed",
+    "needs-input",
+    "degraded",
+    "inconsistent",
 ]
 ContinuityLevel = Literal["event-durable", "orchestrator-resumed"]
 _TERMINAL_OUTCOMES = frozenset({"completed", "blocked", "crashed", "timed_out", "gave_up"})
@@ -134,9 +140,7 @@ def derive_observation(
     return RuntimeObservation(item.task_id, state, reason, reread, integration, digest)
 
 
-def should_emit_event(
-    previous: RuntimeObservation | None, current: RuntimeObservation
-) -> bool:
+def should_emit_event(previous: RuntimeObservation | None, current: RuntimeObservation) -> bool:
     if current.state not in _EVENT_STATES:
         return False
     return previous is None or previous.evidence_digest_tuple != current.evidence_digest_tuple

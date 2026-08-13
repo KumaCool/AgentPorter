@@ -70,9 +70,18 @@ class TaskSpec:
 
     def __post_init__(self) -> None:
         required = (
-            self.local_id, self.title, self.body, self.assignee, self.component_id,
-            self.profile, self.model, self.provider, self.config_digest,
-            self.hermes_version, self.binding_fingerprint, self.idempotency_key,
+            self.local_id,
+            self.title,
+            self.body,
+            self.assignee,
+            self.component_id,
+            self.profile,
+            self.model,
+            self.provider,
+            self.config_digest,
+            self.hermes_version,
+            self.binding_fingerprint,
+            self.idempotency_key,
         )
         if not all(item.strip() for item in required):
             raise ValueError("task authority fields must be non-empty")
@@ -164,6 +173,12 @@ class DispatchPlan:
             json.dumps(safe, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
         return cls(
-            board, tenant, creator_session, route, tasks, expected_board_revision,
-            structural_roots, fingerprint,
+            board,
+            tenant,
+            creator_session,
+            route,
+            tasks,
+            expected_board_revision,
+            structural_roots,
+            fingerprint,
         )
