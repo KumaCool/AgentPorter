@@ -170,6 +170,14 @@ recover_entry_transaction() {
 recover_entry_transaction
 
 [ -r "$INPUT_DEVICE" ] || fail 'an interactive terminal is required'
+if [ "${AGENTPORTER_BOOTSTRAP_TESTING:-}" != 1 ]; then
+    "$PYTHON" -c 'import os,sys
+try: fd=os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_NOCTTY", 0))
+except OSError: raise SystemExit(1)
+try:
+ if not os.isatty(fd): raise SystemExit(1)
+finally: os.close(fd)' "$INPUT_DEVICE" || fail 'an interactive terminal is required'
+fi
 [ ! -e "$INSTALL_ROOT" ] && [ ! -L "$INSTALL_ROOT" ] \
     || fail "installation path already exists: ${INSTALL_ROOT}"
 

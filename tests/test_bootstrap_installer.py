@@ -302,6 +302,29 @@ def test_bootstrap_rejects_bad_checksum_before_creating_venv(tmp_path: Path) -> 
     assert not (tmp_path / "data" / "agentporter" / VERSION / "venv").exists()
 
 
+def test_bootstrap_production_preflight_rejects_unopenable_terminal_before_creating_paths(
+    tmp_path: Path,
+) -> None:
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path / "home"),
+        "XDG_DATA_HOME": str(tmp_path / "data"),
+        "XDG_BIN_HOME": str(tmp_path / "bin"),
+    }
+
+    result = subprocess.run(
+        ["/bin/sh", str(SCRIPT)],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "interactive terminal" in result.stderr
+    assert not (tmp_path / "data").exists()
+
+
 def test_bootstrap_requires_terminal_before_creating_paths(tmp_path: Path) -> None:
     checksum = hashlib.sha256(b"wheel-bytes").hexdigest()
 

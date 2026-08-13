@@ -145,4 +145,6 @@ agentporter-uninstall
 
 ## 0.1.7 发布候选串联激活
 
+当 `/dev/tty` 不能被实际打开并验证为终端时，bootstrap 现在会在下载或创建安装路径之前失败；仅“路径可读”不再视为交互终端授权。
+
 交互安装计划成功后，bootstrap 会通过同一个真实终端直接启动 `agentporter-activate`，不再增加是否进入激活的选择。激活仍保留绑定确认，并对真实模型调用单独披露和确认。Hermes v0.20 的 custom Provider 跳过不支持的裸 Provider 认证命令，在既有 descriptor-bound 配置事务中把主/default Profile 的完整所选 Provider 定义复制到各 Worker。当前 keyed `providers.<id>` 与兼容的 list-shaped `custom_providers` 两种 schema 均受支持，且不会相互转换或重复物化。激活失败时保留已安装 Profiles 和公开重试命令，并返回非零状态。

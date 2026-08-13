@@ -145,4 +145,6 @@ The example resource path is the v0.1.4 release contract. Hosted release accepta
 
 ## 0.1.7 release candidate
 
+The bootstrap now fails before downloading or creating installation paths when `/dev/tty` cannot actually be opened as a terminal; file readability alone is not treated as interactive-terminal authority.
+
 After the interactive install plan succeeds, the bootstrap now starts `agentporter-activate` directly through the same real terminal, without another opt-in prompt. Activation still retains its binding confirmation and separately discloses/confirms live model calls. On Hermes v0.20, custom providers bypass unsupported bare-provider auth commands and inherit the exact selected provider definition from the main/default Profile into each Worker under the existing descriptor-bound config transaction. Both the current keyed `providers.<id>` schema and the compatible list-shaped `custom_providers` schema are supported without converting one into the other. Activation failure leaves the installed Profiles and public retry command in place and returns a non-zero status.
