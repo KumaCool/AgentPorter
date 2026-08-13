@@ -10,8 +10,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "install.sh"
-VERSION = "0.1.7"
-PREVIOUS_VERSION = "0.1.6"
+VERSION = "0.1.8"
+PREVIOUS_VERSION = "0.1.7"
 WHEEL_NAME = f"agentporter-{VERSION}-py3-none-any.whl"
 
 

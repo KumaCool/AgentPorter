@@ -16,14 +16,14 @@ from agentporter import bootstrap_txn as tx
 def _world(
     tmp_path: Path, *, fresh: bool = False
 ) -> tuple[dict[str, object], Path, dict[str, int]]:
-    old = tmp_path / "0.1.6"
-    new = tmp_path / "0.1.7"
+    old = tmp_path / "0.1.7"
+    new = tmp_path / "0.1.8"
     if not fresh:
         old.mkdir()
     new.mkdir()
     if not fresh:
-        (old / "bootstrap-install.json").write_text('{"version":"0.1.6"}\n')
-    (new / "bootstrap-install.json").write_text('{"version":"0.1.7"}\n')
+        (old / "bootstrap-install.json").write_text('{"version":"0.1.7"}\n')
+    (new / "bootstrap-install.json").write_text('{"version":"0.1.8"}\n')
     bindir = tmp_path / "bin"
     bindir.mkdir()
     entries: list[dict[str, str]] = []
@@ -56,7 +56,7 @@ def _world(
         "old_receipt": str(old / "bootstrap-install.json"),
         "new_receipt": str(new / "bootstrap-install.json"),
         "entries": entries,
-        "journal": str(tmp_path / ".0.1.7-entry-transaction.json"),
+        "journal": str(tmp_path / ".0.1.8-entry-transaction.json"),
     }
     spec_path = tmp_path / "spec.json"
     spec_path.write_text(json.dumps(spec))
@@ -213,7 +213,7 @@ def test_uncommitted_recovery_owns_exact_new_root_cleanup(tmp_path: Path) -> Non
     assert recovered.returncode == 0, recovered.stderr
     _assert_old(spec, inodes)
     assert not Path(str(spec["new_root"])).exists()
-    assert not Path(str(spec["new_root"])).with_name(".0.1.7-txn-quarantine").exists()
+    assert not Path(str(spec["new_root"])).with_name(".0.1.8-txn-quarantine").exists()
     assert not Path(str(spec["journal"])).exists()
     assert not spec_path.exists()
 

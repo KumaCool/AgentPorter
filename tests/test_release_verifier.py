@@ -257,7 +257,7 @@ def test_v016_cli_call_requires_and_accepts_standalone_assets(tmp_path: Path) ->
             "--repository",
             str(repository),
             "--version",
-            "0.1.7",
+            "0.1.8",
             "--dependency",
             "pydantic<3,>=2",
             "--dependency",
@@ -439,8 +439,8 @@ done
     ("old", "new"),
     [
         (
-            "WHEEL=agentporter-0.1.7-py3-none-any.whl",
-            "WHEEL=agentporter-0.1.7-py3-none-any.whl\n"
+            "WHEEL=agentporter-0.1.8-py3-none-any.whl",
+            "WHEEL=agentporter-0.1.8-py3-none-any.whl\n"
             "RELEASE_BASE_URL=https://example.com/evil/releases/download/v9",
         ),
         ('"$RELEASE_BASE_URL/$asset"', '"$ATTACKER_URL/$asset"'),

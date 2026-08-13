@@ -4,6 +4,12 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-08-14
+
+### Fixed
+
+- The POSIX bootstrap now proves `/dev/tty` can be opened and is a terminal before downloads or filesystem publication, so headless `curl | sh` attempts fail with zero installation side effects instead of leaving a verified package behind.
+
 ## [0.1.7] - 2026-08-14
 
 ### Changed
@@ -91,7 +97,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 First supported public release.
 
-[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/KumaCool/AgentPorter/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/KumaCool/AgentPorter/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/KumaCool/AgentPorter/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/KumaCool/AgentPorter/compare/v0.1.4...v0.1.5

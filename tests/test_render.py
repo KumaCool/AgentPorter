@@ -39,7 +39,7 @@ def test_render_staging_produces_three_profiles_with_isolated_orchestrator_contr
             MarkerV1.model_validate_json((item.directory / "agentporter-profile.json").read_text())
         )
         assert distribution["name"] == item.profile_name
-        assert distribution["version"] == "0.1.7"
+        assert distribution["version"] == "0.1.8"
         assert distribution["distribution_owned"] == [
             "SOUL.md",
             "config.yaml",
