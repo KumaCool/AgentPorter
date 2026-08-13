@@ -134,6 +134,7 @@ Never post raw config files, marker paths, credentials, sessions, memories, or p
      --required-module runtime_observation.py \
      --required-module runtime_probe.py \
      --bootstrap-checksum <wheel>.sha256 \
+     --bootstrap-source-sha256 566e07f77f3f7867b27fdb98e21c2d17f78929c203bd9500431fe82707fa84b6 \
      <wheel> <sdist>
    ```
 

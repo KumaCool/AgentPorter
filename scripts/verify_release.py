@@ -7,6 +7,7 @@ import argparse
 import configparser
 import email
 import hashlib
+import hmac
 import re
 import stat
 import tarfile
@@ -58,6 +59,7 @@ class ReleaseContract:
     entry_points: Mapping[str, str]
     resources: frozenset[str]
     required_modules: frozenset[str] = frozenset()
+    bootstrap_source_sha256: str | None = None
 
 
 def _canonical_requirement(value: str) -> str:
@@ -315,7 +317,13 @@ def verify_bootstrap(contract: ReleaseContract, wheel: Path, checksum: Path) -> 
         return ["bootstrap: install.sh is missing"]
     if not bootstrap.stat().st_mode & stat.S_IXUSR:
         errors.append("bootstrap: install.sh must be executable")
-    text = bootstrap.read_text(encoding="utf-8")
+    source = bootstrap.read_bytes()
+    actual_source_sha256 = hashlib.sha256(source).hexdigest()
+    if contract.bootstrap_source_sha256 is None or not hmac.compare_digest(
+        actual_source_sha256, contract.bootstrap_source_sha256
+    ):
+        errors.append("bootstrap: source SHA-256 does not match the release contract")
+    text = source.decode("utf-8")
     version_match = re.search(r"(?m)^VERSION=([^\n]+)$", text)
     release_url_match = re.search(r"(?m)^RELEASE_BASE_URL=([^\n]+)$", text)
     wheel_match = re.search(r"(?m)^WHEEL=([^\n]+)$", text)
@@ -398,6 +406,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--resource", action="append", default=[])
     parser.add_argument("--required-module", action="append", default=[])
     parser.add_argument("--bootstrap-checksum", type=Path)
+    parser.add_argument("--bootstrap-source-sha256")
     return parser
 
 
@@ -408,6 +417,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ValueError:
         print("FAIL: each --entry-point must be NAME=MODULE:CALLABLE")
         return 2
+    if args.bootstrap_checksum is not None and (
+        args.bootstrap_source_sha256 is None
+        or re.fullmatch(r"[0-9a-f]{64}", args.bootstrap_source_sha256) is None
+    ):
+        print("FAIL: --bootstrap-source-sha256 must be a lowercase SHA-256")
+        return 2
     contract = ReleaseContract(
         repository=args.repository.resolve(),
         package=args.package,
@@ -416,6 +431,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         entry_points=entries,
         resources=frozenset(args.resource),
         required_modules=frozenset(args.required_module),
+        bootstrap_source_sha256=args.bootstrap_source_sha256,
     )
     errors = verify_release(contract, args.artifacts)
     if args.bootstrap_checksum is not None:

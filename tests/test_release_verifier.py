@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import email.message
+import hashlib
 import io
 import re
 import stat
@@ -139,7 +140,12 @@ def test_bootstrap_contract_accepts_exact_wheel_checksum(tmp_path: Path) -> None
     digest = __import__("hashlib").sha256(wheel.read_bytes()).hexdigest()
     checksum.write_text(f"{digest}  {wheel.name}\n", encoding="ascii")
 
-    assert verify_bootstrap(_contract(repo), wheel, checksum) == []
+    contract = replace(
+        _contract(repo),
+        bootstrap_source_sha256=hashlib.sha256(bootstrap.read_bytes()).hexdigest(),
+    )
+
+    assert verify_bootstrap(contract, wheel, checksum) == []
 
 
 def _valid_bootstrap_text() -> str:
@@ -165,6 +171,66 @@ for module in $REQUIRED_MODULES; do
     importlib.import_module(sys.argv[1])
 done
 """
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        (
+            "WHEEL=agentporter-0.1.4-py3-none-any.whl",
+            "WHEEL=agentporter-0.1.4-py3-none-any.whl\n"
+            "RELEASE_BASE_URL=https://example.com/evil/releases/download/v9",
+        ),
+        ('"$RELEASE_BASE_URL/$WHEEL"', '"$ATTACKER_URL/$WHEEL"'),
+        ("INSTALLED_VERSION=$(", "if false; then\nINSTALLED_VERSION=$("),
+    ],
+    ids=["release-url-reassignment", "alternate-download-variable", "dead-readback-block"],
+)
+def test_bootstrap_contract_rejects_any_source_change_even_when_tokens_survive(
+    tmp_path: Path, old: str, new: str
+) -> None:
+    approved_bootstrap = Path(__file__).parents[1] / "install.sh"
+    approved_source = approved_bootstrap.read_text(encoding="utf-8")
+    assert old in approved_source
+    repo = _repository(tmp_path)
+    bootstrap = repo / "install.sh"
+    bootstrap.write_text(approved_source.replace(old, new, 1), encoding="utf-8")
+    bootstrap.chmod(0o755)
+    wheel = repo / "agentporter-0.1.4-py3-none-any.whl"
+    wheel.write_bytes(b"dummy")
+    checksum = wheel.with_name(f"{wheel.name}.sha256")
+    checksum.write_text(
+        f"{hashlib.sha256(wheel.read_bytes()).hexdigest()}  {wheel.name}\n",
+        encoding="ascii",
+    )
+    contract = ReleaseContract(
+        repository=repo,
+        package="agentporter",
+        version="0.1.4",
+        dependencies=frozenset(),
+        entry_points={
+            "agentporter": "x",
+            "agentporter-activate": "x",
+            "agentporter-uninstall": "x",
+        },
+        resources=frozenset({"resources/workers.yaml"}),
+        required_modules=frozenset(
+            {
+                "activation_application.py",
+                "activation_entry.py",
+                "dispatch_application.py",
+                "dispatch_planning.py",
+                "kanban_runtime.py",
+                "runtime_observation.py",
+                "runtime_probe.py",
+            }
+        ),
+        bootstrap_source_sha256=hashlib.sha256(approved_bootstrap.read_bytes()).hexdigest(),
+    )
+
+    errors = verify_bootstrap(contract, wheel, checksum)
+
+    assert "bootstrap: source SHA-256 does not match the release contract" in errors
 
 
 @pytest.mark.parametrize(
