@@ -227,7 +227,10 @@ def test_spec_is_strict_private_bounded_and_path_bound(tmp_path: Path, kind: str
     elif kind == "mode":
         spec_path.chmod(0o640)
     elif kind == "owner":
-        os.chown(spec_path, 65534, 65534)
+        try:
+            os.chown(spec_path, 65534, 65534)
+        except PermissionError:
+            pytest.skip("changing file ownership requires root")
     elif kind == "oversized":
         spec_path.write_bytes(b" " * 65537)
     else:
