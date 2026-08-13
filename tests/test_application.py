@@ -172,14 +172,13 @@ def test_confirmed_application_composes_fresh_native_transaction(
         "detect",
         "detect",
         "detect",
-        "detect",
         "executor",
         "adapter",
         "transaction",
         "detect",
         "detect",
     ]
-    assert len(detections) == 6
+    assert len(detections) == 5
 
 
 def test_formal_installer_discovers_renamed_legacy_and_stages_only_orchestrator(
@@ -293,11 +292,18 @@ def test_cancel_has_zero_adapter_or_transaction(
     import agentporter.application as application
 
     detection_calls = 0
+    id_calls = 0
+    staging_parent = tmp_path / "staging"
 
     def detector(*, env: object) -> HermesDetection:
         nonlocal detection_calls
         detection_calls += 1
         return _detection(tmp_path)
+
+    def installation_id_factory() -> UUID:
+        nonlocal id_calls
+        id_calls += 1
+        return INSTALLATION_ID
 
     monkeypatch.setattr(
         application,
@@ -306,19 +312,21 @@ def test_cancel_has_zero_adapter_or_transaction(
     )
     result = application.run_installer(
         _manifest(tmp_path),
-        tmp_path / "staging",
+        staging_parent,
         {},
         input_fn=lambda _: "no",
         output=StringIO(),
         detector=detector,
         executor_factory=lambda: pytest.fail("cancel must not create executor"),
         adapter_factory=lambda *args: pytest.fail("cancel must not create adapter"),
-        installation_id_factory=lambda: INSTALLATION_ID,
+        installation_id_factory=installation_id_factory,
     )
 
     assert result.workflow.status is WorkflowStatus.CANCELLED
     assert result.transaction is None
-    assert detection_calls == 2
+    assert detection_calls == 1
+    assert id_calls == 0
+    assert not staging_parent.exists()
 
 
 def test_transaction_finishes_before_staging_cleanup(

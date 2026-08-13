@@ -415,6 +415,7 @@ def plan_installation(
     staging_scanner: Callable[[Path], object] = scan_staging,
     provider_selection: Mapping[str, str] | None = None,
     existing_installation: DiscoveryResult | None = None,
+    materialize: bool = True,
 ) -> InstallPlan:
     try:
         manifest = load_manifest(manifest_path)
@@ -482,11 +483,34 @@ def plan_installation(
             reason="staging boundary is invalid",
         )
 
+    aggregate_status: PlanStatus = (
+        "configuration-required"
+        if any(worker.runtime_configuration == "configuration-required" for worker in workers)
+        else "ready"
+    )
+    reason = (
+        "one or more workers require explicit provider configuration"
+        if aggregate_status == "configuration-required"
+        else "static collection preflight completed"
+    )
+    if not materialize:
+        return _base_plan(
+            detection,
+            workers=workers,
+            installation_id=installation_id_override,
+            installable=True,
+            status=aggregate_status,
+            reason=reason,
+        )
+
     staging_dir: Path | None = None
     staging_identity: StagingIdentity | None = None
     installation_id = installation_id_override or str(installation_id_factory())
+    parent_created = False
     try:
-        staging_parent.mkdir(parents=True, exist_ok=True)
+        if not staging_parent.exists():
+            staging_parent.mkdir(parents=True)
+            parent_created = True
         staging_dir = Path(tempfile.mkdtemp(prefix="agentporter-", dir=staging_parent))
         staging_identity = _capture_identity(staging_dir)
         render_staging(manifest, staging_dir, UUID(installation_id))
@@ -498,6 +522,9 @@ def plan_installation(
             if staging_dir is not None and staging_identity is not None
             else None
         )
+        if parent_created:
+            with suppress(OSError):
+                staging_parent.rmdir()
         return _base_plan(
             detection,
             workers=workers,
@@ -511,17 +538,10 @@ def plan_installation(
             cleanup = _cleanup_bound(staging_dir, staging_identity)
             if cleanup.status == "failed":
                 error.add_note("staging cleanup failed; a residual staging path remains")
+        if parent_created:
+            with suppress(OSError):
+                staging_parent.rmdir()
         raise
-    aggregate_status: PlanStatus = (
-        "configuration-required"
-        if any(worker.runtime_configuration == "configuration-required" for worker in workers)
-        else "ready"
-    )
-    reason = (
-        "one or more workers require explicit provider configuration"
-        if aggregate_status == "configuration-required"
-        else "static collection preflight completed"
-    )
     return _base_plan(
         detection,
         workers=workers,
@@ -559,6 +579,65 @@ def preflight_installation(
     if installed_components == set(INSTALL_COMPONENT_IDS.values()):
         return _base_plan(detection, status="conflict", reason="AgentPorter is already installed")
     existing = authoritative if authoritative.status is DiscoveryStatus.READY else None
+    return plan_installation(
+        detection,
+        manifest_path,
+        staging_parent=staging_parent,
+        existing_installation=existing,
+        materialize=False,
+        **supplied,  # type: ignore[arg-type]
+    )
+
+
+def confirmation_semantics(plan: InstallPlan) -> tuple[object, ...]:
+    """Return the immutable user-visible semantics shared by preview and staged plans."""
+    return (
+        plan.hermes,
+        plan.workers,
+        plan.distribution_owned,
+        plan.installable,
+        plan.status,
+        plan.reason,
+        plan.copied_data,
+        plan.modified_data,
+        plan.model_calls,
+        plan.runtime_validated,
+        plan.compensation_boundary,
+    )
+
+
+def materialize_installation(
+    detection: HermesDetection,
+    manifest_path: Path,
+    *,
+    staging_parent: Path,
+    preview: InstallPlan,
+    **kwargs: object,
+) -> InstallPlan:
+    """Re-discover, re-plan without writes, then stage only matching confirmed semantics."""
+    authoritative = discover_installation(detection.profiles_root)
+    supplied = dict(kwargs)
+    supplied.pop("existing_installation", None)
+    if authoritative.status is DiscoveryStatus.AMBIGUOUS:
+        return _base_plan(
+            detection,
+            status="conflict",
+            reason="existing installation discovery is ambiguous",
+        )
+    installed = {target.component_id for target in authoritative.targets}
+    if installed == set(INSTALL_COMPONENT_IDS.values()):
+        return _base_plan(detection, status="conflict", reason="AgentPorter is already installed")
+    existing = authoritative if authoritative.status is DiscoveryStatus.READY else None
+    candidate = plan_installation(
+        detection,
+        manifest_path,
+        staging_parent=staging_parent,
+        existing_installation=existing,
+        materialize=False,
+        **supplied,  # type: ignore[arg-type]
+    )
+    if confirmation_semantics(candidate) != confirmation_semantics(preview):
+        return _base_plan(detection, status="conflict", reason="plan changed after confirmation")
     return plan_installation(
         detection,
         manifest_path,
@@ -614,6 +693,14 @@ def revalidate_install_plan(
 
 def confirm_install_plan(plan: InstallPlan, token: str) -> bool:
     return token == plan.confirmation_token and revalidate_install_plan(plan)
+
+
+def confirm_preview_plan(plan: InstallPlan, token: str) -> bool:
+    return (
+        token == plan.confirmation_token
+        and plan.fingerprint == _fingerprint(plan)
+        and plan.installable
+    )
 
 
 def cleanup_staging(plan: InstallPlan) -> CleanupOutcome:

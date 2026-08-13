@@ -79,7 +79,11 @@ def render_plan_text(plan: InstallPlan) -> str:
 
 def request_for_plan(plan: InstallPlan) -> ConfirmationRequest | None:
     """Build the only application-level confirmation request from a sealed plan."""
-    if not planning.confirm_install_plan(plan, plan.confirmation_token):
+    if plan.staging_dir is None:
+        valid = planning.confirm_preview_plan(plan, plan.confirmation_token)
+    else:
+        valid = planning.confirm_install_plan(plan, plan.confirmation_token)
+    if not valid:
         return None
     return ConfirmationRequest(plan_text=render_plan_text(plan), fingerprint=plan.fingerprint)
 
@@ -188,10 +192,59 @@ def preflight_and_confirm(
         **preflight_kwargs,
     )
 
-    return confirm_preflight_plan(
-        plan,
-        current_detection_provider=detector,
-        continuation=continuation,
-        input_fn=input_fn,
-        output=output,
-    )
+    request = request_for_plan(plan)
+    if request is None:
+        return WorkflowOutcome(WorkflowStatus.REJECTED, plan.reason, True)
+    decision = confirm_once(request, input_fn=input_fn, output=output)
+    if decision is ConfirmationDecision.CANCELLED:
+        return WorkflowOutcome(WorkflowStatus.CANCELLED, "confirmation cancelled", True)
+
+    final_plan: InstallPlan | None = None
+    pending_error: BaseException | None = None
+    result = WorkflowOutcome(WorkflowStatus.REJECTED, "plan became stale after confirmation", True)
+    try:
+        final_plan = planning.materialize_installation(
+            detector(),
+            manifest_path,
+            staging_parent=staging_parent,
+            preview=plan,
+            **preflight_kwargs,
+        )
+        if planning.confirmation_semantics(final_plan) == planning.confirmation_semantics(
+            plan
+        ) and planning.confirm_install_plan(final_plan, final_plan.confirmation_token):
+            continuation(final_plan)
+            result = WorkflowOutcome(
+                WorkflowStatus.CONFIRMED, "confirmed continuation completed", False
+            )
+    except BaseException as error:
+        pending_error = error
+    finally:
+        cleanup_verified = True
+        cleanup_issue: object | None = None
+        if final_plan is not None:
+            try:
+                cleanup_outcome = planning.cleanup_staging(final_plan)
+                cleanup_verified = _cleanup_verified(cleanup_outcome)
+                if not cleanup_verified:
+                    cleanup_issue = cleanup_outcome
+            except Exception as error:
+                cleanup_verified = False
+                cleanup_issue = error
+            except BaseException:
+                if pending_error is None:
+                    raise
+                cleanup_verified = False
+        if pending_error is not None:
+            if not cleanup_verified:
+                pending_error.add_note(
+                    f"AgentPorter staging cleanup was not verified ({type(cleanup_issue).__name__})"
+                )
+            raise pending_error
+    if not cleanup_verified:
+        return WorkflowOutcome(
+            WorkflowStatus.CLEANUP_FAILED,
+            "staging cleanup was refused or could not be verified",
+            False,
+        )
+    return WorkflowOutcome(result.status, result.reason, True)

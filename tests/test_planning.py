@@ -272,8 +272,7 @@ def test_staging_scan_failure_is_invalid_and_cleanup_is_verified(tmp_path: Path)
     assert plan.status == "invalid"
     assert plan.reason == "staging validation failed"
     assert plan.staging_dir is None
-    assert staging_parent.is_dir()
-    assert list(staging_parent.iterdir()) == []
+    assert not staging_parent.exists()
     assert "sensitive scanner detail" not in repr(plan)
 
 
@@ -515,7 +514,7 @@ def test_unexpected_runtime_error_propagates_after_identity_cleanup(
     monkeypatch.setattr("agentporter.planning.render_staging", explode)
     with pytest.raises(RuntimeError, match="programming defect"):
         plan_installation(_detection(tmp_path), _manifest(tmp_path), staging_parent=staging_parent)
-    assert list(staging_parent.iterdir()) == []
+    assert not staging_parent.exists()
 
 
 def test_keyboard_interrupt_cleans_identity_then_reraises(
@@ -529,7 +528,7 @@ def test_keyboard_interrupt_cleans_identity_then_reraises(
     monkeypatch.setattr("agentporter.planning.render_staging", interrupt)
     with pytest.raises(KeyboardInterrupt):
         plan_installation(_detection(tmp_path), _manifest(tmp_path), staging_parent=staging_parent)
-    assert list(staging_parent.iterdir()) == []
+    assert not staging_parent.exists()
 
 
 def test_staging_cleanup_failure_is_visible_with_residual_path(

@@ -388,7 +388,7 @@ def _forbidden_boundary_calls(source: str) -> list[str]:
     return forbidden
 
 
-def test_preflight_and_confirm_uses_three_fresh_detections(tmp_path: Path) -> None:
+def test_preflight_and_confirm_redetects_after_confirmation(tmp_path: Path) -> None:
     calls: list[str] = []
     continued: list[InstallPlan] = []
 
@@ -418,12 +418,12 @@ def test_preflight_and_confirm_uses_three_fresh_detections(tmp_path: Path) -> No
     )
 
     assert outcome.status is WorkflowStatus.CONFIRMED
-    assert calls == ["detect", "detect", "prompt", "detect", "continue"]
+    assert calls == ["detect", "prompt", "detect", "continue"]
     assert len(continued) == 1
     assert continued[0].staging_dir is not None and not continued[0].staging_dir.exists()
 
 
-def test_fresh_conflict_before_prompt_blocks_input_and_continuation(tmp_path: Path) -> None:
+def test_fresh_conflict_after_prompt_blocks_staging_and_continuation(tmp_path: Path) -> None:
     plan_detection = _detection(tmp_path)
     conflict_detection = _detection(
         tmp_path,
@@ -442,18 +442,25 @@ def test_fresh_conflict_before_prompt_blocks_input_and_continuation(tmp_path: Pa
         calls.append("detect")
         return next(detections)
 
+    output = StringIO()
+
+    def confirm(_: str) -> str:
+        fingerprint = output.getvalue().split("Plan fingerprint: ", 1)[1].splitlines()[0]
+        return f"INSTALL AGENTPORTER {fingerprint[:8]}"
+
     outcome = preflight_and_confirm(
         detector,
         _manifest(tmp_path),
         staging_parent=tmp_path / "external-staging",
         continuation=_forbidden,
-        input_fn=_forbidden,
-        output=StringIO(),
-        installation_id_factory=lambda: INSTALLATION_ID,
+        input_fn=confirm,
+        output=output,
+        installation_id_factory=lambda: pytest.fail("drift must not create an id"),
     )
 
     assert outcome.status is WorkflowStatus.REJECTED
     assert calls == ["detect", "detect"]
+    assert not (tmp_path / "external-staging").exists()
 
 
 @pytest.mark.parametrize("answer", ["cancel", ""])
