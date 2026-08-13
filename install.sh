@@ -86,7 +86,9 @@ for item in entries:
     current = observed(public)
     new = current["type"] == "symlink" and current["target"] == str(expected[item["name"]])
     original = sealed_matches(public, item, target=item["type"] == "symlink")
-    if not (new or original): reject()
+    if committed:
+        if not original: reject()
+    elif not (new or original): reject()
 receipt2 = install_root / "bootstrap-install.json"
 install_present = install_root.exists() or install_root.is_symlink()
 if install_present:

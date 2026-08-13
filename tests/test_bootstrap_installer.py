@@ -706,3 +706,29 @@ def test_restart_fails_closed_on_every_sealed_object_drift_without_writes(
         assert os.path.lexists(path)
         if content is not None:
             assert path.read_bytes() == content
+
+
+def test_committed_restart_rejects_same_target_public_link_replacement(tmp_path: Path) -> None:
+    _seed_v1_upgrade(tmp_path)
+    checksum = hashlib.sha256(b"wheel-bytes").hexdigest()
+    interrupted = _run(
+        tmp_path,
+        checksum=checksum,
+        extra_env={"AGENTPORTER_TEST_INTERRUPT_AFTER_MOVE": "old-quarantine"},
+    )
+    assert interrupted.returncode != 0
+    public = tmp_path / "bin" / "agentporter"
+    target = os.readlink(public)
+    displaced = public.with_name("displaced-agentporter")
+    public.rename(displaced)
+    public.symlink_to(target)
+    journal = tmp_path / "data" / "agentporter" / ".0.1.5-upgrade-journal"
+    before = journal.read_bytes()
+
+    restarted = _run(tmp_path, checksum=checksum)
+
+    assert restarted.returncode != 0
+    assert "partial/mixed" in restarted.stderr
+    assert public.is_symlink()
+    assert displaced.is_symlink()
+    assert journal.read_bytes() == before

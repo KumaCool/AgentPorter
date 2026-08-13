@@ -3,6 +3,7 @@ from __future__ import annotations
 import email.message
 import hashlib
 import io
+import json
 import re
 import stat
 import tarfile
@@ -345,6 +346,30 @@ def test_rejects_secret_broken_link_and_forbidden_archive_path(tmp_path: Path) -
     assert any("forbidden archive path" in error for error in errors)
 
 
+@pytest.mark.parametrize("suffix", ["json", "yaml"])
+def test_structured_secret_value_semantics_and_binary_fail_closed(
+    tmp_path: Path, suffix: str
+) -> None:
+    repo = _repository(tmp_path)
+    secret = repo / "src" / "agentporter" / f"secret.{suffix}"
+    placeholder = repo / "src" / "agentporter" / f"placeholder.{suffix}"
+    binary = repo / "src" / "agentporter" / "opaque.bin"
+    if suffix == "json":
+        secret.write_text(json.dumps({"password": "!Abc def$Ghij#Klmn"}), encoding="utf-8")
+        placeholder.write_text(json.dumps({"token": "replace-with-your-token"}), encoding="utf-8")
+    else:
+        secret.write_text('password: "!Abc def$Ghij#Klmn"\n', encoding="utf-8")
+        placeholder.write_text('token: "replace-with-your-token"\n', encoding="utf-8")
+    wheel, sdist = _artifacts(repo)
+    binary.write_bytes(b"token=abcdefghijklmnop\xff")
+
+    errors = verify_release(_contract(repo), [wheel, sdist])
+
+    assert any(secret.name in error and "secret-like value" in error for error in errors)
+    assert not any(placeholder.name in error and "secret-like value" in error for error in errors)
+    assert any(binary.name in error and "non-UTF-8" in error for error in errors)
+
+
 @pytest.mark.parametrize("secret_key", ["token", "api_key", "password"])
 def test_rejects_structured_json_secret_fields(tmp_path: Path, secret_key: str) -> None:
     repo = _repository(tmp_path)
@@ -357,8 +382,8 @@ def test_rejects_structured_json_secret_fields(tmp_path: Path, secret_key: str) 
 
     errors = verify_release(_contract(repo), [wheel, sdist])
 
-    relative = secret_file.relative_to(repo)
-    assert f"repository: secret-like value in {relative}" in errors
+    relative = secret_file.relative_to(repo).as_posix()
+    assert any("repository: secret-like value" in error and relative in error for error in errors)
 
 
 @pytest.mark.parametrize("suffix", ["json", "yaml"])

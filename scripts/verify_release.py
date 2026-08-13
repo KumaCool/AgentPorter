@@ -51,6 +51,9 @@ _SECRET_ASSIGNMENT = re.compile(
 )
 _TOKEN_LITERAL = re.compile(r"(?i)token\s*[:=]\s*[\"'][A-Za-z0-9_./+\-=]{16,}[\"']")
 _STRUCTURED_SECRET_KEYS = frozenset({"token", "api_key", "password"})
+_SECRET_PLACEHOLDERS = frozenset(
+    {"example", "changeme", "not configured", "your-token-here", "replace-with-your-token"}
+)
 _LINK = re.compile(r"(?<!!)\[[^]]*]\(([^) #]+)(?:#[^)]+)?\)")
 _MAX_MEMBER_SIZE = 1024 * 1024
 _MAX_ARCHIVE_SIZE = 5 * 1024 * 1024
@@ -136,7 +139,8 @@ def _contains_structured_secret(data: object) -> bool:
                 isinstance(key, str)
                 and key.casefold() in _STRUCTURED_SECRET_KEYS
                 and isinstance(value, str)
-                and re.fullmatch(r"[A-Za-z0-9_./+\-=]{16,}", value.strip()) is not None
+                and len(value.strip()) >= 16
+                and value.strip().casefold() not in _SECRET_PLACEHOLDERS
             )
             or _contains_structured_secret(value)
             for key, value in mapping.items()
@@ -148,12 +152,17 @@ def _contains_structured_secret(data: object) -> bool:
 
 def _contains_secret_text(text: str, name: str) -> bool:
     structured_secret = False
+    structured_parsed = False
     if name.casefold().endswith(".json"):
         with contextlib.suppress(json.JSONDecodeError):
+            structured_parsed = True
             structured_secret = _contains_structured_secret(json.loads(text))
     elif name.casefold().endswith((".yaml", ".yml")):
         with contextlib.suppress(yaml.YAMLError):
+            structured_parsed = True
             structured_secret = _contains_structured_secret(yaml.safe_load(text))
+    if structured_parsed:
+        return structured_secret
     return bool(_SECRET_ASSIGNMENT.search(text) or _TOKEN_LITERAL.search(text) or structured_secret)
 
 
@@ -161,7 +170,7 @@ def _content_errors(data: bytes, name: str, label: str) -> list[str]:
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
-        return []
+        return [f"{label}: non-UTF-8 authored content in {name!r}"]
     if _contains_secret_text(text, name):
         return [f"{label}: secret-like value in {name!r}"]
     return []
@@ -318,12 +327,8 @@ def _repository_errors(repository: Path) -> list[str]:
     for path in public_files:
         if not path.is_file() or set(path.relative_to(repository).parts) & _FORBIDDEN_PARTS:
             continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
-        if _contains_secret_text(text, path.name):
-            errors.append(f"repository: secret-like value in {path.relative_to(repository)}")
+        data = path.read_bytes()
+        errors.extend(_content_errors(data, path.relative_to(repository).as_posix(), "repository"))
     return errors
 
 
