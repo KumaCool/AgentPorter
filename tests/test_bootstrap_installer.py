@@ -103,7 +103,7 @@ if [ "${1-}" = '-c' ]; then
     *"import agentporter"*) printf '{VERSION}\n' ;;
     *hashlib*)
       case "${3-}" in
-        */bootstrap_txn.py) sha256sum "$3" | sed 's/[[:space:]].*//' ;;
+        */bootstrap_txn.py) exec {REAL_PYTHON} "$@" ;;
         *) printf '%s\n' "$FAKE_ACTUAL_CHECKSUM" ;;
       esac
       ;;
