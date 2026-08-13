@@ -230,19 +230,21 @@ def _named_file_identity_digest(directory_fd: int, name: str) -> tuple[int, int,
 def _exchange_names(directory_fd: int, left: str, right: str) -> None:
     """Atomically exchange two names, or fail closed when the OS has no CAS rename."""
     libc = ctypes.CDLL(None, use_errno=True)
+    function_name = "renameatx_np" if sys.platform == "darwin" else "renameat2"
     try:
-        renameat2 = libc.renameat2
+        exchange = getattr(libc, function_name)
     except AttributeError as error:
         raise ValueError("atomic name exchange is unavailable") from error
-    renameat2.argtypes = [
+    exchange.argtypes = [
         ctypes.c_int,
         ctypes.c_char_p,
         ctypes.c_int,
         ctypes.c_char_p,
         ctypes.c_uint,
     ]
-    renameat2.restype = ctypes.c_int
-    if renameat2(directory_fd, os.fsencode(left), directory_fd, os.fsencode(right), 2) != 0:
+    exchange.restype = ctypes.c_int
+    # Linux RENAME_EXCHANGE and macOS RENAME_SWAP intentionally share value 2.
+    if exchange(directory_fd, os.fsencode(left), directory_fd, os.fsencode(right), 2) != 0:
         code = ctypes.get_errno()
         if code in {errno.ENOSYS, errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP}:
             raise ValueError("atomic name exchange is unavailable")
