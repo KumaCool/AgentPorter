@@ -341,7 +341,9 @@ sdist/wheel build: passed
 
 集中语义复审的 legacy 正式升级与三组件 activation 两项阻断已关闭；限定 closure review 的取消前 staging 写入问题由无写预览两阶段流程关闭，并由主代理重放 fresh/legacy 取消和完整门禁验收。
 
-## Phase E：任务级订阅、DispatchReceipt 与结构性接续
+## Phase E：任务级订阅、DispatchReceipt 与结构性接续（离线合同已完成；v0.20 mutation unsupported）
+
+**Status:** 已完成离线组合根、完整 Plan→Runtime 桥接、secret-safe DAG 权威、多卡全局 blocked 事务、幂等复用/CAS、精确 task/subscription readback、运行观察和结构性接续合同。Hermes v0.20 缺 delivery metadata 写入口及 board-revision CAS，正式组合根因此在 adapter 调用前 fail closed；不声称真实建卡、订阅或续跑已执行。
 
 **Objective:** 修复“订阅为空”和终态不唤醒，但不在无任务时伪造订阅。
 
@@ -374,6 +376,18 @@ python -m pytest \
   tests/test_kanban_runtime.py \
   tests/test_runtime_observation.py -v
 ```
+
+**Offline closure evidence:**
+
+```text
+Phase E focused: 31 passed
+Repository offline pytest: 665 passed, 1 expected unsupported skip, 2 existing duplicate-archive warnings
+Ruff format/check: passed
+Pyright strict: 0 errors, 0 warnings
+sdist/wheel build: passed
+```
+
+集中复审的 6 个 finding family 已关闭；限定 closure review 的 5 项机械复现（完整正文桥接、全图 DAG、ready replay reblock、严格 CAS 协议、必填 current-run authority）由主代理逐项重放并随完整门禁验收。
 
 ## Phase F：文档、打包、门禁与发布候选
 
