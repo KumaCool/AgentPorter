@@ -215,7 +215,7 @@ chmod 700 "$STAGING" || fail 'could not secure the staging directory'
 printf 'Downloading AgentPorter v%s release artifacts...\n' "$VERSION"
 CURL_ENV="env -i PATH=$PATH"
 if [ "${AGENTPORTER_BOOTSTRAP_TESTING:-}" = 1 ]; then
-    CURL_ENV="$CURL_ENV CALL_LOG=${CALL_LOG:?} FAKE_CHECKSUM=${FAKE_CHECKSUM:?} AGENTPORTER_TXN_HELPER_SOURCE=${AGENTPORTER_TXN_HELPER_SOURCE:?}"
+    CURL_ENV="$CURL_ENV CALL_LOG=${CALL_LOG:?} FAKE_CHECKSUM=${FAKE_CHECKSUM:?} AGENTPORTER_TXN_HELPER_SOURCE=${AGENTPORTER_TXN_HELPER_SOURCE:?} REAL_PYTHON=${REAL_PYTHON:?}"
 fi
 for asset in "$WHEEL" "$CHECKSUM" "$TXN_HELPER" "$TXN_HELPER_CHECKSUM"; do
     # shellcheck disable=SC2086 -- fixed allowlisted environment words.

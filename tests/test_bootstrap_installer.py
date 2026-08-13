@@ -43,8 +43,10 @@ done
 printf 'curl %s\\n' "$url" >> "$CALL_LOG"
 case "$url" in
   */bootstrap_txn.py.sha256)
-    sha256sum "$AGENTPORTER_TXN_HELPER_SOURCE" \
-      | sed 's#  .*#  bootstrap_txn.py#' > "$out"
+    "$REAL_PYTHON" -c 'import hashlib,pathlib,sys
+source=pathlib.Path(sys.argv[1]); out=pathlib.Path(sys.argv[2])
+out.write_text(hashlib.sha256(source.read_bytes()).hexdigest()+"  bootstrap_txn.py\\n")' \
+      "$AGENTPORTER_TXN_HELPER_SOURCE" "$out"
     ;;
   */bootstrap_txn.py) cp "$AGENTPORTER_TXN_HELPER_SOURCE" "$out" ;;
   *.sha256) printf '%s  {checksum_name}\\n' "$FAKE_CHECKSUM" > "$out" ;;
@@ -179,6 +181,7 @@ def _run(
         "AGENTPORTER_BOOTSTRAP_TESTING": "1",
         "AGENTPORTER_TEST_INPUT_DEVICE": str(input_device),
         "AGENTPORTER_TXN_HELPER_SOURCE": str(ROOT / "scripts" / "bootstrap_txn.py"),
+        "REAL_PYTHON": sys.executable,
         **(extra_env or {}),
     }
     return subprocess.run(
@@ -311,6 +314,7 @@ def test_bootstrap_rejects_checksum_for_wrong_wheel_name(tmp_path: Path) -> None
         "AGENTPORTER_BOOTSTRAP_TESTING": "1",
         "AGENTPORTER_TEST_INPUT_DEVICE": str(input_device),
         "AGENTPORTER_TXN_HELPER_SOURCE": str(ROOT / "scripts" / "bootstrap_txn.py"),
+        "REAL_PYTHON": sys.executable,
     }
 
     result = subprocess.run(
