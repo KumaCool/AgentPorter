@@ -28,6 +28,14 @@ def snapshot(**changes):
         allowed_writes=("src/agentporter/new.py", "tests/test_new.py"),
         tests_running=False,
         tests_passed=None,
+        current_run_id="run-a",
+        runs=(RunSnapshot("run-a", "running", None, 1234, NOW - timedelta(seconds=5)),),
+        workspace="/safe/worktree",
+        base_sha="0" * 40,
+        evidence_run_id="run-a",
+        evidence_workspace="/safe/worktree",
+        evidence_base_sha="0" * 40,
+        tests_run_id="run-a",
     )
     values.update(changes)
     return ObservationInput(**values)
@@ -58,6 +66,7 @@ def test_terminal_candidate_requires_worktree_head_allowlist_and_tests():
     complete = snapshot(
         task_status="done",
         run=RunSnapshot("run-a", "terminal", "completed", None, NOW),
+        runs=(RunSnapshot("run-a", "terminal", "completed", None, NOW),),
         tests_passed=True,
     )
     assert derive_observation(complete, now=NOW).integration_candidate
@@ -88,10 +97,14 @@ def test_structural_root_continuation_requires_all_parents_done_and_new_run():
     from agentporter.runtime_observation import derive_structural_continuation
 
     result = derive_structural_continuation(
+        root_id="root",
         root_status="ready",
-        parent_statuses=("done", "done"),
+        expected_parent_ids=frozenset({"a", "b"}),
+        actual_parent_statuses=(("a", "done"), ("b", "done")),
         previous_run_id="old",
         current_run_id="new",
+        current_run_root_id="root",
+        current_run_task_id="root",
     )
     assert result == "orchestrator-resumed"
     assert (

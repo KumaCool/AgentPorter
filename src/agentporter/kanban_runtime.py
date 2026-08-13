@@ -1,10 +1,11 @@
-"""Fail-closed Kanban mutation orchestration through an injected public adapter."""
+"""Fail-closed staged Kanban mutation orchestration through an injected adapter."""
 
 from __future__ import annotations
 
+import contextlib
 import json
 from dataclasses import asdict, dataclass
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 from .dispatch_planning import NotificationRoute
 
@@ -21,18 +22,14 @@ class KanbanCapabilities:
 
     @classmethod
     def v020(cls) -> KanbanCapabilities:
-        # Local v0.20 help proves create/link/subscribe/list/readback. It exposes neither an
-        # exact delivery-metadata write surface nor a board-revision CAS surface, so formal
-        # dispatch must fail closed rather than infer either capability.
         return cls(True, True, True, True, False, True, False)
 
     @classmethod
     def offline_contract(cls) -> KanbanCapabilities:
-        """Synthetic complete capability set for injected-adapter contract tests only."""
         return cls(True, True, True, True, True, True, True)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, repr=False)
 class PlannedMutation:
     local_id: str
     board: str
@@ -74,12 +71,17 @@ class DispatchReceipt:
 
 class KanbanAdapter(Protocol):
     def board_revision(self, board: str, tenant: str) -> str: ...
-    def create_blocked(self, mutation: PlannedMutation) -> str: ...
-    def link(self, parent_id: str, child_id: str) -> None: ...
-    def notify_subscribe(self, task_id: str, route: NotificationRoute) -> None: ...
+    def create_blocked(
+        self, mutation: PlannedMutation, expected_revision: str
+    ) -> tuple[str, str]: ...
+    def lookup_by_idempotency(self, board: str, tenant: str, key: str) -> str | None: ...
+    def link(self, parent_id: str, child_id: str, expected_revision: str) -> str: ...
+    def notify_subscribe(
+        self, task_id: str, route: NotificationRoute, expected_revision: str
+    ) -> str: ...
     def show_json(self, task_id: str) -> dict[str, Any]: ...
     def notify_list_json(self, task_id: str) -> list[dict[str, Any]]: ...
-    def unblock(self, task_id: str, expected_revision: str) -> None: ...
+    def unblock(self, task_id: str, expected_revision: str) -> str: ...
     def block(self, task_id: str, reason: str) -> None: ...
 
 
@@ -92,13 +94,9 @@ def _workspace_kind(value: str) -> str:
 
 
 def _receipt(
-    item: PlannedMutation,
-    *,
-    task_id: str | None,
-    succeeded: bool,
-    reason: str,
+    item: PlannedMutation, *, task_id: str | None, succeeded: bool, reason: str
 ) -> DispatchReceipt:
-    continuation: Literal["notification-only", "event-durable"] = (
+    continuity: Literal["notification-only", "event-durable"] = (
         "event-durable" if item.route.source == "creator-session" else "notification-only"
     )
     return DispatchReceipt(
@@ -114,20 +112,22 @@ def _receipt(
         item.ownership_digest,
         item.base_sha,
         item.route.digest(),
-        continuation,
+        continuity,
         "succeeded" if succeeded else "failed",
         reason,
     )
 
 
 def _route_matches(expected: NotificationRoute, actual: dict[str, Any]) -> bool:
-    return (
-        actual.get("platform") == expected.platform
-        and actual.get("chat_id") == expected.chat_id
-        and actual.get("chat_type") == expected.chat_type
-        and actual.get("thread_id") == expected.thread_id
-        and actual.get("notifier_profile") == expected.notifier_profile
-        and actual.get("delivery_metadata") == dict(expected.delivery_metadata)
+    return all(
+        (
+            actual.get("platform") == expected.platform,
+            actual.get("chat_id") == expected.chat_id,
+            actual.get("chat_type") == expected.chat_type,
+            actual.get("thread_id") == expected.thread_id,
+            actual.get("notifier_profile") == expected.notifier_profile,
+            actual.get("delivery_metadata") == dict(expected.delivery_metadata),
+        )
     )
 
 
@@ -153,6 +153,41 @@ class KanbanRuntime:
         self._adapter = adapter
         self._capabilities = capabilities
 
+    def _next_revision(self, item: PlannedMutation) -> str:
+        return self._adapter.board_revision(item.board, item.tenant)
+
+    def _create(self, item: PlannedMutation, revision: str) -> tuple[str, str]:
+        method = cast(Any, self._adapter.create_blocked)
+        try:
+            value = method(item, revision)
+        except TypeError:
+            return cast(str, method(item)), self._next_revision(item)
+        if not isinstance(value, tuple) or len(cast(tuple[object, ...], value)) != 2:
+            raise _DispatchFailure("invalid-revision-token")
+        return cast(tuple[str, str], value)
+
+    def _mutate(self, name: str, item: PlannedMutation, revision: str, *args: object) -> str:
+        method: Any = getattr(self._adapter, name)
+        try:
+            value = method(*args, revision)
+        except TypeError:
+            method(*args)
+            return self._next_revision(item)
+        if not isinstance(value, str) or not value:
+            raise _DispatchFailure("invalid-revision-token")
+        return value
+
+    def _lookup(self, item: PlannedMutation) -> str | None:
+        method = getattr(self._adapter, "lookup_by_idempotency", None)
+        if method is None:
+            return None
+        return cast(str | None, method(item.board, item.tenant, item.idempotency_key))
+
+    def _compensate(self, task_ids: list[str]) -> None:
+        for task_id in task_ids:
+            with contextlib.suppress(BaseException):
+                self._adapter.block(task_id, "dispatch-transaction-failed")
+
     def execute(
         self,
         mutations: tuple[PlannedMutation, ...],
@@ -160,55 +195,79 @@ class KanbanRuntime:
         known_assignees: set[str],
         expected_revision: str,
     ) -> tuple[DispatchReceipt, ...]:
+        if not mutations:
+            return ()
         unsupported = self._unsupported_reason(mutations)
         if unsupported:
             return tuple(
                 _receipt(item, task_id=None, succeeded=False, reason=unsupported)
                 for item in mutations
             )
-        unknown = next((item for item in mutations if item.assignee not in known_assignees), None)
-        if unknown is not None:
+        if any(item.assignee not in known_assignees for item in mutations):
             return tuple(
                 _receipt(item, task_id=None, succeeded=False, reason="unknown-assignee")
                 for item in mutations
             )
-        actual_revision = self._adapter.board_revision(mutations[0].board, mutations[0].tenant)
-        if actual_revision != expected_revision:
+        if (
+            self._adapter.board_revision(mutations[0].board, mutations[0].tenant)
+            != expected_revision
+        ):
             return tuple(
                 _receipt(item, task_id=None, succeeded=False, reason="board-drift")
                 for item in mutations
             )
-        receipts: list[DispatchReceipt] = []
-        for item in mutations:
-            task_id: str | None = None
-            try:
-                task_id = self._adapter.create_blocked(item)
+
+        task_ids: list[str] = []
+        revision = expected_revision
+        try:
+            # Global transaction phases: create/reuse, link, subscribe, readback, CAS-unblock.
+            for item in mutations:
+                existing = self._lookup(item)
+                if existing is None:
+                    task_id, revision = self._create(item, revision)
+                else:
+                    task_id = existing
+                    if not _task_matches(item, task_id, self._adapter.show_json(task_id)):
+                        raise _DispatchFailure("idempotency-readback-mismatch")
+                task_ids.append(task_id)
+            for item, task_id in zip(mutations, task_ids, strict=True):
                 for parent in item.parents:
-                    self._adapter.link(parent, task_id)
+                    revision = self._mutate("link", item, revision, parent, task_id)
+            for item, task_id in zip(mutations, task_ids, strict=True):
                 if item.subscribe:
-                    self._adapter.notify_subscribe(task_id, item.route)
+                    revision = self._mutate("notify_subscribe", item, revision, task_id, item.route)
+            for item, task_id in zip(mutations, task_ids, strict=True):
                 if not _task_matches(item, task_id, self._adapter.show_json(task_id)):
                     raise _DispatchFailure("task-readback-mismatch")
                 if item.subscribe:
                     subscriptions = self._adapter.notify_list_json(task_id)
                     if len(subscriptions) != 1 or not _route_matches(item.route, subscriptions[0]):
                         raise _DispatchFailure("subscription-readback-mismatch")
-                if self._adapter.board_revision(item.board, item.tenant) != expected_revision:
-                    raise _DispatchFailure("board-drift")
+            for item, task_id in zip(mutations, task_ids, strict=True):
                 if item.runnable:
-                    self._adapter.unblock(task_id, expected_revision)
-                receipts.append(_receipt(item, task_id=task_id, succeeded=True, reason="verified"))
-            except _DispatchFailure as exc:
-                if task_id is not None:
-                    self._adapter.block(task_id, str(exc))
-                receipts.append(_receipt(item, task_id=task_id, succeeded=False, reason=str(exc)))
-            except Exception:
-                if task_id is not None:
-                    self._adapter.block(task_id, "dispatch-step-failed")
-                receipts.append(
-                    _receipt(item, task_id=task_id, succeeded=False, reason="dispatch-step-failed")
+                    revision = self._mutate("unblock", item, revision, task_id)
+            return tuple(
+                _receipt(item, task_id=task_id, succeeded=True, reason="verified")
+                for item, task_id in zip(mutations, task_ids, strict=True)
+            )
+        except BaseException as exc:
+            self._compensate(task_ids)
+            if not isinstance(exc, Exception):
+                raise
+            reason = (
+                str(exc)
+                if isinstance(exc, _DispatchFailure)
+                else ("board-drift" if "CAS board drift" in str(exc) else "dispatch-step-failed")
+            )
+            return tuple(
+                _receipt(
+                    item,
+                    task_id=task_ids[index] if index < len(task_ids) else None,
+                    succeeded=False,
+                    reason=reason,
                 )
-        return tuple(receipts)
+                for index, item in enumerate(mutations)
+            )
 
     def _unsupported_reason(self, mutations: tuple[PlannedMutation, ...]) -> str | None:
         needed = {

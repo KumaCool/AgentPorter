@@ -22,24 +22,29 @@ class FakeAdapter:
         self.calls.append(("revision", board, tenant))
         return self.revision
 
-    def create_blocked(self, mutation):
+    def lookup_by_idempotency(self, board, tenant, key):
+        return None
+
+    def create_blocked(self, mutation, expected_revision):
         self.calls.append(("create", mutation.local_id))
         if self.fail_at == "create":
             raise RuntimeError("boom")
         task_id = f"task-{mutation.local_id}"
         self.tasks[task_id] = mutation
-        return task_id
+        return task_id, self.revision
 
-    def link(self, parent_id, child_id):
+    def link(self, parent_id, child_id, expected_revision):
         self.calls.append(("link", parent_id, child_id))
         if self.fail_at == "link":
             raise RuntimeError("boom")
+        return self.revision
 
-    def notify_subscribe(self, task_id, route):
+    def notify_subscribe(self, task_id, route, expected_revision):
         self.calls.append(("subscribe", task_id))
         if self.fail_at == "subscribe":
             raise RuntimeError("boom")
         self.subscriptions[task_id] = route
+        return self.revision
 
     def show_json(self, task_id):
         self.calls.append(("show", task_id))
@@ -77,6 +82,7 @@ class FakeAdapter:
         self.calls.append(("unblock", task_id, expected_revision))
         if self.revision != expected_revision:
             raise RuntimeError("CAS board drift")
+        return self.revision
 
     def block(self, task_id, reason):
         self.calls.append(("block", task_id, reason))
@@ -151,7 +157,6 @@ def test_exact_order_readback_then_unblock_and_secret_safe_receipt():
         "subscribe",
         "show",
         "notify-list",
-        "revision",
         "unblock",
     ]
     receipt = receipts[0]
@@ -194,6 +199,9 @@ def test_exact_subscription_mismatch_and_cas_drift_never_unblock():
             value = super().notify_list_json(task_id)
             self.revision = "rev-2"
             return value
+
+        def unblock(self, task_id, expected_revision):
+            raise RuntimeError("CAS board drift")
 
     drift = Drift()
     receipt = KanbanRuntime(drift, KanbanCapabilities.offline_contract()).execute(

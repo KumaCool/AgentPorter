@@ -15,7 +15,7 @@ from .readiness import ReadinessEvidence
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, repr=False)
 class WorkspaceBinding:
     kind: Literal["scratch", "worktree", "dir"]
     path: str
@@ -29,7 +29,7 @@ class WorkspaceBinding:
             raise ValueError("worktree branch is required")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, repr=False)
 class NotificationRoute:
     platform: str
     chat_id: str
@@ -48,7 +48,7 @@ class NotificationRoute:
         return hashlib.sha256(payload.encode()).hexdigest()
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, repr=False)
 class TaskSpec:
     local_id: str
     title: str
@@ -89,7 +89,7 @@ class TaskSpec:
             raise ValueError("contract and workspace base SHA differ")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, repr=False)
 class DispatchPlan:
     board: str
     tenant: str
@@ -122,7 +122,15 @@ class DispatchPlan:
         evidence_by_component = {item.binding.component_id: item for item in readiness}
         if len(evidence_by_component) != len(readiness):
             raise ValueError("duplicate readiness evidence")
-        ids = {item.local_id for item in tasks}
+        ordered_ids = [item.local_id for item in tasks]
+        ids = set(ordered_ids)
+        if len(ids) != len(ordered_ids):
+            raise ValueError("duplicate task ID")
+        roots = set(structural_roots)
+        if len(roots) != len(structural_roots):
+            raise ValueError("duplicate structural root")
+        if ids & roots:
+            raise ValueError("root overlap")
         keys = [item.idempotency_key for item in tasks]
         if len(keys) != len(set(keys)):
             raise ValueError("duplicate idempotency key")
@@ -132,6 +140,8 @@ class DispatchPlan:
                 raise ValueError("unexpected base SHA")
             if any(parent not in known_parents for parent in item.parents):
                 raise ValueError("unbound parent")
+            if item.local_id in item.parents:
+                raise ValueError("self-parent")
             evidence = evidence_by_component.get(item.component_id)
             if evidence is None or evidence.status != "runtime-ready":
                 raise ValueError("assignee lacks runtime-ready evidence")
@@ -148,6 +158,20 @@ class DispatchPlan:
             for valid, name in checks:
                 if not valid:
                     raise ValueError(f"{name} readiness mismatch")
+        graph = {item.local_id: item.parents for item in tasks}
+
+        def reaches_root(task_id: str, visiting: frozenset[str] = frozenset()) -> bool:
+            if task_id in visiting:
+                raise ValueError("cycle in task graph")
+            parents = graph[task_id]
+            return any(
+                parent in roots or (parent in graph and reaches_root(parent, visiting | {task_id}))
+                for parent in parents
+            )
+
+        for task_id in ordered_ids:
+            if not reaches_root(task_id):
+                raise ValueError("task is not reachable from structural root")
         validate_delegation_contracts([item.contract for item in tasks])
         safe = {
             "board": board,
@@ -161,7 +185,10 @@ class DispatchPlan:
                     "id": item.local_id,
                     "assignee": item.assignee,
                     "component": item.component_id,
-                    "workspace": asdict(item.workspace),
+                    "workspace_kind": item.workspace.kind,
+                    "workspace_bound": True,
+                    "branch_present": item.workspace.branch is not None,
+                    "base_sha": item.workspace.base_sha,
                     "parents": item.parents,
                     "idempotency_key": item.idempotency_key,
                     "writes": item.contract.writes,
