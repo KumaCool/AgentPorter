@@ -24,7 +24,7 @@ def _project() -> dict[str, object]:
 def test_version_has_one_package_source() -> None:
     config = _project()
 
-    assert agentporter.__version__ == "0.1.5"
+    assert agentporter.__version__ == "0.1.6"
     assert config["project"]["dynamic"] == ["version"]  # type: ignore[index]
     assert "version" not in config["project"]  # type: ignore[operator]
     assert config["tool"]["setuptools"]["dynamic"]["version"] == {  # type: ignore[index]
@@ -101,7 +101,8 @@ def test_built_wheel_contains_phase_f_runtime_modules_and_console_entries(tmp_pa
         assert "agentporter/runtime_observation.py" in names
         assert "agentporter/runtime_probe.py" in names
         assert "agentporter/uninstall_entry.py" in names
-        entry_points = archive.read("agentporter-0.1.5.dist-info/entry_points.txt").decode()
+        assert "agentporter/bootstrap_txn.py" in names
+        entry_points = archive.read("agentporter-0.1.6.dist-info/entry_points.txt").decode()
 
     assert "agentporter = agentporter:main" in entry_points
     assert "agentporter-activate = agentporter.activation_entry:main" in entry_points
@@ -122,12 +123,13 @@ def test_built_sdist_contains_package_but_not_tests_or_caches(tmp_path: Path) ->
     with tarfile.open(archives[0]) as archive:
         names = set(archive.getnames())
 
-    prefix = "agentporter-0.1.5/"
+    prefix = "agentporter-0.1.6/"
     assert prefix + "src/agentporter/resources/workers.yaml" in names
     assert prefix + "src/agentporter/activation_entry.py" in names
     assert prefix + "src/agentporter/dispatch_application.py" in names
     assert prefix + "src/agentporter/kanban_runtime.py" in names
     assert prefix + "src/agentporter/runtime_observation.py" in names
     assert prefix + "src/agentporter/uninstall_entry.py" in names
+    assert prefix + "src/agentporter/bootstrap_txn.py" in names
     assert not any(name.startswith(prefix + "tests/") for name in names)
     assert not any("__pycache__" in name or name.endswith((".pyc", ".pyo")) for name in names)

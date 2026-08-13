@@ -4,6 +4,13 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-08-13
+
+### Fixed
+
+- Closed release-review gaps in one-shot process-tree cleanup, structured secret scanning, and fail-closed interrupted-upgrade recovery.
+- Added a checksum-verified, authority-sealed three-entry bootstrap transaction for fresh 0.1.6 installs and completed 0.1.5 upgrades while preserving the historical 0.1.4 to 0.1.5 recovery contract.
+
 ## [0.1.5] - 2026-08-13
 
 ### Added
@@ -73,7 +80,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 First supported public release.
 
-[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/KumaCool/AgentPorter/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/KumaCool/AgentPorter/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/KumaCool/AgentPorter/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/KumaCool/AgentPorter/compare/v0.1.2...v0.1.3

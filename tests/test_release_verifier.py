@@ -6,6 +6,8 @@ import io
 import json
 import re
 import stat
+import subprocess
+import sys
 import tarfile
 import zipfile
 from dataclasses import replace
@@ -13,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.verify_release import ReleaseContract, verify_bootstrap, verify_release
+from scripts.verify_release import ReleaseContract, main, verify_bootstrap, verify_release
 
 
 def _metadata() -> bytes:
@@ -91,6 +93,213 @@ def _contract(repo: Path) -> ReleaseContract:
         entry_points={"agentporter": "agentporter:main"},
         resources=frozenset({"resources/workers.yaml"}),
     )
+
+
+def _standalone_helper_assets(repo: Path, wheel: Path, sdist: Path) -> tuple[Path, Path]:
+    helper_bytes = b'"""transaction helper"""\nVALUE = 1\n'
+    (repo / "src" / "agentporter" / "bootstrap_txn.py").write_bytes(helper_bytes)
+    with zipfile.ZipFile(wheel, "a") as archive:
+        archive.writestr("agentporter/bootstrap_txn.py", helper_bytes)
+    member = tarfile.TarInfo("agentporter-0.1.0/src/agentporter/bootstrap_txn.py")
+    member.size = len(helper_bytes)
+    _rewrite_sdist(sdist, [(member, helper_bytes)])
+    helper = repo / "dist" / "bootstrap_txn.py"
+    helper.write_bytes(helper_bytes)
+    sidecar = helper.with_name(f"{helper.name}.sha256")
+    sidecar.write_text(
+        f"{hashlib.sha256(helper_bytes).hexdigest()}  {helper.name}\n", encoding="utf-8"
+    )
+    return helper, sidecar
+
+
+def _helper_contract(repo: Path) -> ReleaseContract:
+    return replace(_contract(repo), standalone_helper_name="bootstrap_txn.py")
+
+
+def test_accepts_standalone_helper_sidecar_and_identical_archive_copies(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    wheel, sdist = _artifacts(repo)
+    helper, sidecar = _standalone_helper_assets(repo, wheel, sdist)
+
+    assert verify_release(_helper_contract(repo), [wheel, sdist], helper, sidecar) == []
+
+
+@pytest.mark.parametrize("missing", ["helper", "sidecar"])
+def test_required_standalone_helper_assets_fail_closed_when_missing(
+    tmp_path: Path, missing: str
+) -> None:
+    repo = _repository(tmp_path)
+    wheel, sdist = _artifacts(repo)
+    helper, sidecar = _standalone_helper_assets(repo, wheel, sdist)
+    (helper if missing == "helper" else sidecar).unlink()
+
+    errors = verify_release(_helper_contract(repo), [wheel, sdist], helper, sidecar)
+
+    assert any(f"standalone helper {missing}" in error and "missing" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        ("directory-helper", "regular file"),
+        ("symlink-helper", "regular file"),
+        ("oversized-helper", "size exceeds limit"),
+        ("non-utf8-helper", "UTF-8"),
+        ("wrong-helper-path", "helper must be named"),
+        ("directory-sidecar", "regular file"),
+        ("oversized-sidecar", "size exceeds limit"),
+        ("non-utf8-sidecar", "UTF-8"),
+        ("wrong-sidecar-path", "sidecar must be named"),
+        ("multiple-sidecar-records", "exactly one record"),
+        ("wrong-sidecar-grammar", "invalid grammar"),
+        ("wrong-sidecar-basename", "exact helper basename"),
+        ("wrong-sidecar-hash", "does not match helper bytes"),
+        ("replaced-helper", "does not match wheel package copy"),
+        ("replaced-wheel-copy", "does not match wheel package copy"),
+        ("replaced-sdist-copy", "does not match sdist package copy"),
+    ],
+)
+def test_standalone_helper_validation_fails_closed(
+    tmp_path: Path, mutation: str, expected: str
+) -> None:
+    repo = _repository(tmp_path)
+    wheel, sdist = _artifacts(repo)
+    helper, sidecar = _standalone_helper_assets(repo, wheel, sdist)
+    digest = hashlib.sha256(helper.read_bytes()).hexdigest()
+    if mutation == "directory-helper":
+        helper.unlink()
+        helper.mkdir()
+    elif mutation == "symlink-helper":
+        helper.unlink()
+        helper.symlink_to(repo / "src" / "agentporter" / "bootstrap_txn.py")
+    elif mutation == "oversized-helper":
+        helper.write_bytes(b"x" * (1024 * 1024 + 1))
+    elif mutation == "non-utf8-helper":
+        helper.write_bytes(b"\xff")
+    elif mutation == "wrong-helper-path":
+        renamed = helper.with_name("replacement.py")
+        helper.rename(renamed)
+        helper = renamed
+    elif mutation == "directory-sidecar":
+        sidecar.unlink()
+        sidecar.mkdir()
+    elif mutation == "oversized-sidecar":
+        sidecar.write_bytes(b"x" * 4097)
+    elif mutation == "non-utf8-sidecar":
+        sidecar.write_bytes(b"\xff")
+    elif mutation == "wrong-sidecar-path":
+        renamed = sidecar.with_name("checksums.txt")
+        sidecar.rename(renamed)
+        sidecar = renamed
+    elif mutation == "multiple-sidecar-records":
+        sidecar.write_text(f"{digest}  {helper.name}\n{digest}  {helper.name}\n", encoding="utf-8")
+    elif mutation == "wrong-sidecar-grammar":
+        sidecar.write_text(f"{digest} *{helper.name}\n", encoding="utf-8")
+    elif mutation == "wrong-sidecar-basename":
+        sidecar.write_text(f"{digest}  path/{helper.name}\n", encoding="utf-8")
+    elif mutation == "wrong-sidecar-hash":
+        sidecar.write_text(f"{'0' * 64}  {helper.name}\n", encoding="utf-8")
+    elif mutation == "replaced-helper":
+        helper.write_text('VALUE = "replacement"\n', encoding="utf-8")
+        sidecar.write_text(
+            f"{hashlib.sha256(helper.read_bytes()).hexdigest()}  {helper.name}\n", encoding="utf-8"
+        )
+    elif mutation == "replaced-wheel-copy":
+        replacement = repo / "dist" / "replacement.whl"
+        with zipfile.ZipFile(wheel) as source, zipfile.ZipFile(replacement, "w") as target:
+            for info in source.infolist():
+                data = source.read(info)
+                if info.filename == "agentporter/bootstrap_txn.py":
+                    data = b"VALUE = 2\n"
+                target.writestr(info, data)
+        replacement.replace(wheel)
+    elif mutation == "replaced-sdist-copy":
+        replacement = b"VALUE = 2\n"
+        member = tarfile.TarInfo("agentporter-0.1.0/src/agentporter/bootstrap_txn.py")
+        member.size = len(replacement)
+        _rewrite_sdist(sdist, [(member, replacement)])
+
+    errors = verify_release(_helper_contract(repo), [wheel, sdist], helper, sidecar)
+
+    assert any(expected in error for error in errors)
+
+
+def test_legacy_release_contract_does_not_require_standalone_assets(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    wheel, sdist = _artifacts(repo)
+
+    assert verify_release(_contract(repo), [wheel, sdist]) == []
+
+
+def test_v016_cli_call_requires_and_accepts_standalone_assets(tmp_path: Path) -> None:
+    repository = Path(__file__).parents[1]
+    dist = tmp_path / "dist"
+    subprocess.run(
+        [sys.executable, "-m", "build", "--outdir", str(dist)],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    wheel = next(dist.glob("*.whl"))
+    sdist = next(dist.glob("*.tar.gz"))
+    helper = dist / "bootstrap_txn.py"
+    helper.write_bytes((repository / "src" / "agentporter" / "bootstrap_txn.py").read_bytes())
+    sidecar = dist / "bootstrap_txn.py.sha256"
+    sidecar.write_text(
+        f"{hashlib.sha256(helper.read_bytes()).hexdigest()}  bootstrap_txn.py\n", encoding="utf-8"
+    )
+
+    result = main(
+        [
+            str(wheel),
+            str(sdist),
+            "--repository",
+            str(repository),
+            "--version",
+            "0.1.6",
+            "--dependency",
+            "pydantic<3,>=2",
+            "--dependency",
+            "PyYAML<7,>=6",
+            "--entry-point",
+            "agentporter=agentporter:main",
+            "--entry-point",
+            "agentporter-activate=agentporter.activation_entry:main",
+            "--entry-point",
+            "agentporter-uninstall=agentporter.uninstall_entry:main",
+            "--resource",
+            "resources/workers.yaml",
+            "--required-module",
+            "bootstrap_txn.py",
+            "--standalone-helper",
+            str(helper),
+            "--standalone-helper-checksum",
+            str(sidecar),
+        ]
+    )
+
+    assert result == 0
+
+
+def test_cli_rejects_partial_standalone_asset_arguments(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    wheel, sdist = _artifacts(repo)
+
+    result = main(
+        [
+            str(wheel),
+            str(sdist),
+            "--repository",
+            str(repo),
+            "--version",
+            "0.1.0",
+            "--standalone-helper",
+            str(repo / "dist" / "bootstrap_txn.py"),
+        ]
+    )
+
+    assert result == 2
 
 
 def test_phase_f_contract_requires_activation_dispatch_and_observation_modules() -> None:
@@ -177,6 +386,24 @@ def test_bootstrap_contract_requires_three_public_entries_and_readback(tmp_path:
     assert any("public entry publication/readback" in error for error in errors)
 
 
+def test_bootstrap_contract_requires_transaction_helper_release_assets(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    wheel, _ = _artifacts(repo)
+    bootstrap = repo / "install.sh"
+    bootstrap.write_text(
+        _valid_bootstrap_text().replace("TXN_HELPER=bootstrap_txn.py\n", ""), encoding="utf-8"
+    )
+    bootstrap.chmod(0o755)
+    checksum = wheel.with_name(f"{wheel.name}.sha256")
+    checksum.write_text(
+        f"{hashlib.sha256(wheel.read_bytes()).hexdigest()}  {wheel.name}\n", encoding="ascii"
+    )
+
+    errors = verify_bootstrap(_contract(repo), wheel, checksum)
+
+    assert any("transaction helper release asset" in error for error in errors)
+
+
 def _valid_bootstrap_text() -> str:
     return """#!/bin/sh
 VERSION=0.1.0
@@ -185,6 +412,12 @@ WHEEL=agentporter-0.1.0-py3-none-any.whl
 ENTRY_POINTS='agentporter'
 PACKAGED_RESOURCES='agentporter/resources/workers.yaml'
 REQUIRED_MODULES='agentporter'
+TXN_HELPER=bootstrap_txn.py
+TXN_HELPER_CHECKSUM=${TXN_HELPER}.sha256
+"$RELEASE_BASE_URL/$asset"
+verify_checksum "$STAGING/$TXN_HELPER" "$STAGING/$TXN_HELPER_CHECKSUM"
+"$PYTHON" "$INSTALL_ROOT/$TXN_HELPER" apply "$SPEC"
+"$PYTHON" "$INSTALL_ROOT/$TXN_HELPER" recover "$SPEC"
 for entry in $ENTRY_POINTS; do
     ENTRY=${VENV}/bin/${entry}
 done
@@ -206,11 +439,11 @@ done
     ("old", "new"),
     [
         (
-            "WHEEL=agentporter-0.1.5-py3-none-any.whl",
-            "WHEEL=agentporter-0.1.5-py3-none-any.whl\n"
+            "WHEEL=agentporter-0.1.6-py3-none-any.whl",
+            "WHEEL=agentporter-0.1.6-py3-none-any.whl\n"
             "RELEASE_BASE_URL=https://example.com/evil/releases/download/v9",
         ),
-        ('"$RELEASE_BASE_URL/$WHEEL"', '"$ATTACKER_URL/$WHEEL"'),
+        ('"$RELEASE_BASE_URL/$asset"', '"$ATTACKER_URL/$asset"'),
         ("INSTALLED_VERSION=$(", "if false; then\nINSTALLED_VERSION=$("),
     ],
     ids=["release-url-reassignment", "alternate-download-variable", "dead-readback-block"],

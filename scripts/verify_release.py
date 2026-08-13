@@ -66,6 +66,7 @@ _SECRET_PLACEHOLDERS = frozenset(
 _LINK = re.compile(r"(?<!!)\[[^]]*]\(([^) #]+)(?:#[^)]+)?\)")
 _MAX_MEMBER_SIZE = 1024 * 1024
 _MAX_ARCHIVE_SIZE = 5 * 1024 * 1024
+_MAX_SIDECAR_SIZE = 4096
 
 
 def _structured_string_is_secret(value: str) -> bool:
@@ -83,6 +84,7 @@ class ReleaseContract:
     resources: frozenset[str]
     required_modules: frozenset[str] = frozenset()
     bootstrap_source_sha256: str | None = None
+    standalone_helper_name: str | None = None
 
 
 def _canonical_requirement(value: str) -> str:
@@ -347,7 +349,109 @@ def _repository_errors(repository: Path) -> list[str]:
     return errors
 
 
-def verify_release(contract: ReleaseContract, artifacts: Sequence[Path]) -> list[str]:
+def _regular_file_bytes(
+    path: Path, label: str, maximum_size: int
+) -> tuple[bytes | None, list[str]]:
+    try:
+        metadata = path.stat(follow_symlinks=False)
+    except FileNotFoundError:
+        return None, [f"{label} is missing"]
+    except OSError:
+        return None, [f"{label} is unreadable"]
+    if not stat.S_ISREG(metadata.st_mode):
+        return None, [f"{label} must be a regular file"]
+    if metadata.st_size > maximum_size:
+        return None, [f"{label} size exceeds limit"]
+    try:
+        return path.read_bytes(), []
+    except OSError:
+        return None, [f"{label} is unreadable"]
+
+
+def _standalone_helper_errors(
+    contract: ReleaseContract,
+    wheel: Path,
+    sdist: Path,
+    helper: Path | None,
+    sidecar: Path | None,
+) -> list[str]:
+    expected_name = contract.standalone_helper_name
+    if expected_name is None:
+        if helper is not None or sidecar is not None:
+            return ["standalone helper: release contract does not declare a helper"]
+        return []
+    if helper is None:
+        return ["standalone helper helper is missing"]
+    if sidecar is None:
+        return ["standalone helper sidecar is missing"]
+    errors: list[str] = []
+    if helper.name != expected_name:
+        errors.append(f"standalone helper must be named {expected_name!r}")
+    helper_bytes, file_errors = _regular_file_bytes(
+        helper, "standalone helper helper", _MAX_MEMBER_SIZE
+    )
+    errors.extend(file_errors)
+    expected_sidecar_name = f"{expected_name}.sha256"
+    if sidecar.name != expected_sidecar_name:
+        errors.append(f"standalone helper sidecar must be named {expected_sidecar_name!r}")
+    sidecar_bytes, sidecar_errors = _regular_file_bytes(
+        sidecar, "standalone helper sidecar", _MAX_SIDECAR_SIZE
+    )
+    errors.extend(sidecar_errors)
+    if helper_bytes is None or sidecar_bytes is None:
+        return errors
+    try:
+        helper_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        errors.append("standalone helper must be UTF-8")
+    try:
+        sidecar_text = sidecar_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        errors.append("standalone helper sidecar must be UTF-8")
+        return errors
+    match = re.fullmatch(r"([0-9a-f]{64})  ([^/\\\r\n]+)\n", sidecar_text)
+    if match is None:
+        records = sidecar_text.splitlines()
+        if len(records) != 1:
+            errors.append("standalone helper sidecar must contain exactly one record")
+        elif re.fullmatch(r"[0-9a-f]{64}  \S+", records[0]) is None:
+            errors.append("standalone helper sidecar record has invalid grammar")
+        else:
+            errors.append("standalone helper sidecar must name the exact helper basename")
+    else:
+        digest, basename = match.groups()
+        if basename != expected_name:
+            errors.append("standalone helper sidecar must name the exact helper basename")
+        elif not hmac.compare_digest(digest, hashlib.sha256(helper_bytes).hexdigest()):
+            errors.append("standalone helper sidecar SHA-256 does not match helper bytes")
+    wheel_member = f"{contract.package}/{expected_name}"
+    sdist_member = f"{contract.package}-{contract.version}/src/{contract.package}/{expected_name}"
+    try:
+        with zipfile.ZipFile(wheel) as archive:
+            wheel_bytes = archive.read(wheel_member)
+        if not hmac.compare_digest(helper_bytes, wheel_bytes):
+            errors.append("standalone helper does not match wheel package copy")
+    except (OSError, KeyError, RuntimeError, zipfile.BadZipFile):
+        errors.append("standalone helper wheel package copy is missing or unreadable")
+    try:
+        with tarfile.open(sdist, "r:gz") as archive:
+            extracted = archive.extractfile(sdist_member)
+            if extracted is None:
+                raise KeyError(sdist_member)
+            sdist_bytes = extracted.read()
+        if not hmac.compare_digest(helper_bytes, sdist_bytes):
+            errors.append("standalone helper does not match sdist package copy")
+    except (OSError, KeyError, tarfile.TarError):
+        errors.append("standalone helper sdist package copy is missing or unreadable")
+    return errors
+
+
+def verify_release(
+    contract: ReleaseContract,
+    artifacts: Sequence[Path],
+    standalone_helper: Path | None = None,
+    standalone_helper_checksum: Path | None = None,
+) -> list[str]:
     errors = _repository_errors(contract.repository)
     wheels = [path for path in artifacts if path.name.endswith(".whl")]
     sdists = [path for path in artifacts if path.name.endswith(".tar.gz")]
@@ -362,6 +466,15 @@ def verify_release(contract: ReleaseContract, artifacts: Sequence[Path]) -> list
         errors.extend(_sdist_errors(sdists[0], contract))
     except (OSError, KeyError, tarfile.TarError) as exc:
         errors.append(f"{sdists[0].name}: unreadable sdist ({type(exc).__name__})")
+    errors.extend(
+        _standalone_helper_errors(
+            contract,
+            wheels[0],
+            sdists[0],
+            standalone_helper,
+            standalone_helper_checksum,
+        )
+    )
     return errors
 
 
@@ -441,6 +554,16 @@ def verify_bootstrap(contract: ReleaseContract, wheel: Path, checksum: Path) -> 
         errors.append("bootstrap: packaged-resource readback semantics are incomplete")
     if "importlib.import_module(sys.argv[1])" not in text:
         errors.append("bootstrap: required-module readback semantics are incomplete")
+    helper_tokens = (
+        "TXN_HELPER=bootstrap_txn.py",
+        "TXN_HELPER_CHECKSUM=${TXN_HELPER}.sha256",
+        '"$RELEASE_BASE_URL/$asset"',
+        'verify_checksum "$STAGING/$TXN_HELPER" "$STAGING/$TXN_HELPER_CHECKSUM"',
+        '"$PYTHON" "$INSTALL_ROOT/$TXN_HELPER" apply "$SPEC"',
+        '"$PYTHON" "$INSTALL_ROOT/$TXN_HELPER" recover "$SPEC"',
+    )
+    if any(token not in text for token in helper_tokens):
+        errors.append("bootstrap: transaction helper release asset semantics are incomplete")
     expected_name = f"{wheel.name}.sha256"
     if checksum.name != expected_name:
         errors.append(f"bootstrap: checksum asset must be named {expected_name!r}")
@@ -474,6 +597,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--required-module", action="append", default=[])
     parser.add_argument("--bootstrap-checksum", type=Path)
     parser.add_argument("--bootstrap-source-sha256")
+    parser.add_argument("--standalone-helper", type=Path)
+    parser.add_argument("--standalone-helper-checksum", type=Path)
     return parser
 
 
@@ -490,6 +615,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     ):
         print("FAIL: --bootstrap-source-sha256 must be a lowercase SHA-256")
         return 2
+    if (args.standalone_helper is None) != (args.standalone_helper_checksum is None):
+        print("FAIL: --standalone-helper and --standalone-helper-checksum are required together")
+        return 2
     contract = ReleaseContract(
         repository=args.repository.resolve(),
         package=args.package,
@@ -499,8 +627,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         resources=frozenset(args.resource),
         required_modules=frozenset(args.required_module),
         bootstrap_source_sha256=args.bootstrap_source_sha256,
+        standalone_helper_name=("bootstrap_txn.py" if args.standalone_helper is not None else None),
     )
-    errors = verify_release(contract, args.artifacts)
+    errors = verify_release(
+        contract,
+        args.artifacts,
+        args.standalone_helper,
+        args.standalone_helper_checksum,
+    )
     if args.bootstrap_checksum is not None:
         wheels = [path for path in args.artifacts if path.name.endswith(".whl")]
         if len(wheels) == 1:
