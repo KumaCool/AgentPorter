@@ -346,6 +346,18 @@ def verify_bootstrap(contract: ReleaseContract, wheel: Path, checksum: Path) -> 
     )
     if actual_entries != expected_entries or "for entry in $ENTRY_POINTS; do" not in text:
         errors.append("bootstrap: entry-point rewrite does not match release contract")
+    public_tokens = (
+        (
+            'PUBLIC_ENTRIES="${BIN_HOME}/agentporter ${BIN_HOME}/agentporter-activate '
+            '${BIN_HOME}/agentporter-uninstall"'
+        ),
+        'ln -s "$VENV/bin/$entry" "$BIN_HOME/$entry"',
+        '"$(readlink "$PUBLIC_ENTRY")" = "$VENV/bin/$entry"',
+        '[ -x "$PUBLIC_ENTRY" ]',
+        '"public_entries": sys.argv[3:]',
+    )
+    if len(expected_entries) == 3 and any(token not in text for token in public_tokens):
+        errors.append("bootstrap: public entry publication/readback semantics are incomplete")
     expected_resources = {f"{contract.package}/{resource}" for resource in contract.resources}
     actual_resources: set[str] = set(resources_match.group(1).split()) if resources_match else set()
     if (

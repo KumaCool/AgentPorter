@@ -9,7 +9,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "install.sh"
-VERSION = "0.1.4"
+VERSION = "0.1.5"
+PREVIOUS_VERSION = "0.1.4"
 WHEEL_NAME = f"agentporter-{VERSION}-py3-none-any.whl"
 
 
@@ -147,14 +148,20 @@ def test_bootstrap_downloads_verifies_installs_and_runs(tmp_path: Path) -> None:
     install_root = tmp_path / "data" / "agentporter" / VERSION
     assert (install_root / "venv" / "bin" / "agentporter").is_file()
     uninstall = tmp_path / "bin" / "agentporter-uninstall"
-    assert uninstall.is_symlink()
-    assert uninstall.resolve() == install_root / "venv" / "bin" / "agentporter-uninstall"
+    for entry in ("agentporter", "agentporter-activate", "agentporter-uninstall"):
+        public_entry = tmp_path / "bin" / entry
+        assert public_entry.is_symlink()
+        assert public_entry.resolve() == install_root / "venv" / "bin" / entry
     receipt = json.loads((install_root / "bootstrap-install.json").read_text(encoding="utf-8"))
     assert receipt == {
-        "schema_version": 1,
+        "schema_version": 2,
         "product": "agentporter",
         "version": VERSION,
-        "public_entry": str(uninstall),
+        "public_entries": [
+            str(tmp_path / "bin" / "agentporter"),
+            str(tmp_path / "bin" / "agentporter-activate"),
+            str(uninstall),
+        ],
     }
     calls = (tmp_path / "calls.log").read_text(encoding="utf-8")
     assert (
@@ -180,6 +187,24 @@ def test_bootstrap_downloads_verifies_installs_and_runs(tmp_path: Path) -> None:
             (install_root / "venv" / "bin" / entry).read_text(encoding="utf-8").splitlines()[0]
         )
         assert shebang == f"#!{install_root}/venv/bin/python"
+    assert "configuration-required" in result.stdout
+    assert "agentporter-activate" in result.stdout
+
+
+def test_bootstrap_preflights_all_public_entries_before_writing_any(tmp_path: Path) -> None:
+    checksum = hashlib.sha256(b"wheel-bytes").hexdigest()
+    occupied = tmp_path / "bin" / "agentporter-activate"
+    occupied.parent.mkdir(parents=True)
+    occupied.write_text("user-owned", encoding="utf-8")
+
+    result = _run(tmp_path, checksum=checksum)
+
+    assert result.returncode != 0
+    assert "already exists" in result.stderr
+    assert occupied.read_text(encoding="utf-8") == "user-owned"
+    assert not os.path.lexists(tmp_path / "bin" / "agentporter")
+    assert not os.path.lexists(tmp_path / "bin" / "agentporter-uninstall")
+    assert "curl " not in (tmp_path / "calls.log").read_text(encoding="utf-8")
 
 
 def test_documentation_uses_unversioned_latest_bootstrap_url() -> None:
@@ -266,3 +291,39 @@ def test_bootstrap_preserves_uninstaller_when_product_install_fails(tmp_path: Pa
     assert result.returncode != 0
     assert (tmp_path / "bin" / "agentporter-uninstall").is_symlink()
     assert "kept for diagnosis" in result.stderr
+
+
+def test_bootstrap_upgrades_v1_install_and_preserves_external_profile_bytes(tmp_path: Path) -> None:
+    old_root = tmp_path / "data" / "agentporter" / PREVIOUS_VERSION
+    old_private = old_root / "venv" / "bin" / "agentporter-uninstall"
+    old_private.parent.mkdir(parents=True)
+    old_private.write_text("old-uninstaller", encoding="utf-8")
+    old_public = tmp_path / "bin" / "agentporter-uninstall"
+    old_public.parent.mkdir(parents=True)
+    old_public.symlink_to(old_private)
+    (old_root / "bootstrap-install.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "product": "agentporter",
+                "version": PREVIOUS_VERSION,
+                "public_entry": str(old_public),
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    profile = tmp_path / "home" / ".hermes" / "profiles" / "worker" / "config.yaml"
+    profile.parent.mkdir(parents=True)
+    profile.write_bytes(b"provider: fixture\n")
+    before = (profile.read_bytes(), profile.stat().st_mtime_ns)
+
+    result = _run(tmp_path, checksum=hashlib.sha256(b"wheel-bytes").hexdigest())
+
+    assert result.returncode == 0, result.stderr
+    assert not old_root.exists()
+    assert profile.read_bytes() == before[0]
+    assert profile.stat().st_mtime_ns == before[1]
+    for name in ("agentporter", "agentporter-activate", "agentporter-uninstall"):
+        assert (tmp_path / "bin" / name).resolve().is_file()

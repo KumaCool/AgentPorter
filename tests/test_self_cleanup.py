@@ -15,7 +15,7 @@ from agentporter.self_cleanup import (
 VERSION = "0.1.4"
 
 
-def _published_layout(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
+def _published_layout(tmp_path: Path, *, schema_version: int = 2) -> tuple[Path, Path, Path, Path]:
     data_home = tmp_path / "data"
     bin_home = tmp_path / "bin"
     install_root = data_home / "agentporter" / VERSION
@@ -28,16 +28,29 @@ def _published_layout(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     entry.write_text("entry", encoding="utf-8")
     public_entry = bin_home / "agentporter-uninstall"
     public_entry.parent.mkdir(parents=True)
-    public_entry.symlink_to(entry)
+    public_entries: list[Path] = []
+    for name in ("agentporter", "agentporter-activate", "agentporter-uninstall"):
+        private = entry.parent / name
+        if name != "agentporter-uninstall":
+            private.write_text(name, encoding="utf-8")
+        public = bin_home / name
+        public.symlink_to(private)
+        public_entries.append(public)
+    payload = {
+        "schema_version": 2,
+        "product": "agentporter",
+        "version": VERSION,
+        "public_entries": [str(path) for path in public_entries],
+    }
+    if schema_version == 1:
+        payload = {
+            "schema_version": 1,
+            "product": "agentporter",
+            "version": VERSION,
+            "public_entry": str(public_entry),
+        }
     (install_root / "bootstrap-install.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "product": "agentporter",
-                "version": VERSION,
-                "public_entry": str(public_entry),
-            }
-        ),
+        json.dumps(payload),
         encoding="utf-8",
     )
     return install_root, interpreter, entry, public_entry
@@ -60,6 +73,10 @@ def test_bootstrap_layout_builds_exact_version_cleanup_plan(tmp_path: Path) -> N
     assert plan.install_root == install_root
     assert plan.product_root == install_root.parent
     assert plan.public_entry == public_entry
+    assert plan.public_entries == tuple(
+        tmp_path / "bin" / name
+        for name in ("agentporter", "agentporter-activate", "agentporter-uninstall")
+    )
 
 
 def test_bootstrap_layout_accepts_a_standard_venv_interpreter_symlink(tmp_path: Path) -> None:
@@ -146,6 +163,8 @@ def test_execute_cleanup_removes_only_entry_exact_version_and_empty_product_root
     execute_cleanup_plan(plan)
 
     assert not os.path.lexists(public_entry)
+    assert not os.path.lexists(tmp_path / "bin" / "agentporter")
+    assert not os.path.lexists(tmp_path / "bin" / "agentporter-activate")
     assert not install_root.exists()
     assert other_version.is_dir()
     assert install_root.parent.is_dir()
@@ -246,3 +265,27 @@ def test_cleanup_uses_receipt_when_xdg_environment_drifted(tmp_path: Path) -> No
     assert plan.status is CleanupPlanStatus.READY
     assert plan.install_root == install_root
     assert plan.public_entry == public_entry
+
+
+def test_v1_receipt_deletes_only_the_declared_legacy_entry(tmp_path: Path) -> None:
+    install_root, interpreter, _, public_entry = _published_layout(tmp_path, schema_version=1)
+    plan = build_bootstrap_cleanup_plan(executable=interpreter, version=VERSION, env={})
+
+    assert plan.status is CleanupPlanStatus.READY
+    execute_cleanup_plan(plan)
+
+    assert not os.path.lexists(public_entry)
+    assert os.path.lexists(tmp_path / "bin" / "agentporter")
+    assert os.path.lexists(tmp_path / "bin" / "agentporter-activate")
+
+
+def test_v2_receipt_rejects_wrong_or_reordered_entry_set(tmp_path: Path) -> None:
+    install_root, interpreter, _, _ = _published_layout(tmp_path)
+    receipt = install_root / "bootstrap-install.json"
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
+    payload["public_entries"].reverse()
+    receipt.write_text(json.dumps(payload), encoding="utf-8")
+
+    plan = build_bootstrap_cleanup_plan(executable=interpreter, version=VERSION, env={})
+
+    assert plan.status is CleanupPlanStatus.UNSAFE

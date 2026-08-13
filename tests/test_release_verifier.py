@@ -148,6 +148,31 @@ def test_bootstrap_contract_accepts_exact_wheel_checksum(tmp_path: Path) -> None
     assert verify_bootstrap(contract, wheel, checksum) == []
 
 
+def test_bootstrap_contract_requires_three_public_entries_and_readback(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    wheel, _ = _artifacts(repo)
+    bootstrap = repo / "install.sh"
+    bootstrap.write_text(_valid_bootstrap_text(), encoding="utf-8")
+    bootstrap.chmod(0o755)
+    checksum = wheel.with_name(f"{wheel.name}.sha256")
+    checksum.write_text(
+        f"{hashlib.sha256(wheel.read_bytes()).hexdigest()}  {wheel.name}\n", encoding="ascii"
+    )
+    contract = replace(
+        _contract(repo),
+        entry_points={
+            "agentporter": "agentporter:main",
+            "agentporter-activate": "agentporter.activation_entry:main",
+            "agentporter-uninstall": "agentporter.uninstall_entry:main",
+        },
+        bootstrap_source_sha256=hashlib.sha256(bootstrap.read_bytes()).hexdigest(),
+    )
+
+    errors = verify_bootstrap(contract, wheel, checksum)
+
+    assert any("public entry publication/readback" in error for error in errors)
+
+
 def _valid_bootstrap_text() -> str:
     return """#!/bin/sh
 VERSION=0.1.0
@@ -177,8 +202,8 @@ done
     ("old", "new"),
     [
         (
-            "WHEEL=agentporter-0.1.4-py3-none-any.whl",
-            "WHEEL=agentporter-0.1.4-py3-none-any.whl\n"
+            "WHEEL=agentporter-0.1.5-py3-none-any.whl",
+            "WHEEL=agentporter-0.1.5-py3-none-any.whl\n"
             "RELEASE_BASE_URL=https://example.com/evil/releases/download/v9",
         ),
         ('"$RELEASE_BASE_URL/$WHEEL"', '"$ATTACKER_URL/$WHEEL"'),

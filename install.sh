@@ -1,10 +1,11 @@
 #!/bin/sh
-# AgentPorter v0.1.4 release-candidate bootstrap for POSIX systems.
+# AgentPorter v0.1.5 release-candidate bootstrap for POSIX systems.
 set -eu
 
-VERSION=0.1.4
-RELEASE_BASE_URL=https://github.com/KumaCool/AgentPorter/releases/download/v0.1.4
-WHEEL=agentporter-0.1.4-py3-none-any.whl
+VERSION=0.1.5
+PREVIOUS_VERSION=0.1.4
+RELEASE_BASE_URL=https://github.com/KumaCool/AgentPorter/releases/download/v0.1.5
+WHEEL=agentporter-0.1.5-py3-none-any.whl
 CHECKSUM=${WHEEL}.sha256
 ENTRY_POINTS='agentporter agentporter-activate agentporter-uninstall'
 PACKAGED_RESOURCES='agentporter/resources/workers.yaml'
@@ -25,6 +26,8 @@ DATA_HOME=${XDG_DATA_HOME:-"${HOME:?HOME is required}/.local/share"}
 BIN_HOME=${XDG_BIN_HOME:-"${HOME:?HOME is required}/.local/bin"}
 PRODUCT_ROOT=${DATA_HOME}/agentporter
 INSTALL_ROOT=${PRODUCT_ROOT}/${VERSION}
+OLD_ROOT=${PRODUCT_ROOT}/${PREVIOUS_VERSION}
+PUBLIC_ENTRIES="${BIN_HOME}/agentporter ${BIN_HOME}/agentporter-activate ${BIN_HOME}/agentporter-uninstall"
 UNINSTALL_LINK=${BIN_HOME}/agentporter-uninstall
 INPUT_DEVICE=/dev/tty
 if [ "${AGENTPORTER_BOOTSTRAP_TESTING:-}" = 1 ]; then
@@ -34,8 +37,28 @@ fi
 [ -r "$INPUT_DEVICE" ] || fail 'an interactive terminal is required'
 [ ! -e "$INSTALL_ROOT" ] && [ ! -L "$INSTALL_ROOT" ] \
     || fail "installation path already exists: ${INSTALL_ROOT}"
-[ ! -e "$UNINSTALL_LINK" ] && [ ! -L "$UNINSTALL_LINK" ] \
-    || fail "uninstaller path already exists: ${UNINSTALL_LINK}"
+UPGRADE=0
+if [ -d "$OLD_ROOT" ] && [ ! -L "$OLD_ROOT" ]; then
+    OLD_UNINSTALLER=${OLD_ROOT}/venv/bin/agentporter-uninstall
+    OLD_RECEIPT=${OLD_ROOT}/bootstrap-install.json
+    "$PYTHON" -c 'import json, os, pathlib, sys
+receipt, public, private = map(pathlib.Path, sys.argv[1:])
+expected = {"schema_version": 1, "product": "agentporter", "version": "0.1.4", "public_entry": str(public)}
+if (not receipt.is_file() or receipt.is_symlink() or receipt.stat().st_size > 4096
+        or json.loads(receipt.read_bytes()) != expected or not private.is_file()
+        or private.is_symlink() or not public.is_symlink()
+        or pathlib.Path(os.readlink(public)) != private):
+    raise SystemExit(1)' "$OLD_RECEIPT" "$UNINSTALL_LINK" "$OLD_UNINSTALLER" \
+        || fail 'existing 0.1.4 installation is not safe to upgrade'
+    UPGRADE=1
+fi
+for public_entry in $PUBLIC_ENTRIES; do
+    if [ "$UPGRADE" -eq 1 ] && [ "$public_entry" = "$UNINSTALL_LINK" ]; then
+        continue
+    fi
+    [ ! -e "$public_entry" ] && [ ! -L "$public_entry" ] \
+        || fail "public entry path already exists: ${public_entry}"
+done
 
 mkdir -p "$PRODUCT_ROOT" "$BIN_HOME" || fail 'could not create installation directories'
 [ -d "$PRODUCT_ROOT" ] && [ ! -L "$PRODUCT_ROOT" ] \
@@ -43,7 +66,7 @@ mkdir -p "$PRODUCT_ROOT" "$BIN_HOME" || fail 'could not create installation dire
 [ -d "$BIN_HOME" ] && [ ! -L "$BIN_HOME" ] \
     || fail 'binary installation parent must be a real directory'
 
-STAGING=$(mktemp -d "${PRODUCT_ROOT}/.0.1.4-stage.XXXXXX") \
+STAGING=$(mktemp -d "${PRODUCT_ROOT}/.0.1.5-stage.XXXXXX") \
     || fail 'could not create a private staging directory'
 chmod 700 "$STAGING" || fail 'could not secure the staging directory'
 PUBLISHED=0
@@ -135,14 +158,14 @@ done
 "$PYTHON" -c 'import json, pathlib, sys
 path = pathlib.Path(sys.argv[1])
 payload = {
-    "schema_version": 1,
+    "schema_version": 2,
     "product": "agentporter",
     "version": sys.argv[2],
-    "public_entry": sys.argv[3],
+    "public_entries": sys.argv[3:],
 }
 path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
 path.chmod(0o600)' \
-    "$STAGING/bootstrap-install.json" "$VERSION" "$UNINSTALL_LINK" \
+    "$STAGING/bootstrap-install.json" "$VERSION" $PUBLIC_ENTRIES \
     || fail 'could not write the bootstrap ownership receipt'
 mv "$STAGING" "$INSTALL_ROOT" || fail 'could not publish the verified installation'
 PUBLISHED=1
@@ -150,12 +173,33 @@ VENV=${FINAL_VENV}
 [ -x "$VENV/bin/agentporter" ] || fail 'published package is missing the AgentPorter entry point'
 [ -x "$VENV/bin/agentporter-activate" ] || fail 'published package is missing the activation entry point'
 [ -x "$VENV/bin/agentporter-uninstall" ] || fail 'published package is missing the uninstaller entry point'
-ln -s "$VENV/bin/agentporter-uninstall" "$UNINSTALL_LINK" \
-    || fail 'package was installed but the uninstaller entry point could not be published'
+for entry in $ENTRY_POINTS; do
+    if [ "$entry" = agentporter-uninstall ] && [ "$UPGRADE" -eq 1 ]; then
+        NEW_LINK=${INSTALL_ROOT}/.agentporter-uninstall.new
+        ln -s "$VENV/bin/$entry" "$NEW_LINK" || fail 'could not stage upgraded uninstaller'
+        mv "$NEW_LINK" "$BIN_HOME/$entry" || fail 'could not switch upgraded uninstaller'
+    else
+        ln -s "$VENV/bin/$entry" "$BIN_HOME/$entry" \
+            || fail 'package was installed but a public entry point could not be published'
+    fi
+done
+for entry in $ENTRY_POINTS; do
+    PUBLIC_ENTRY=$BIN_HOME/$entry
+    [ -L "$PUBLIC_ENTRY" ] && [ "$(readlink "$PUBLIC_ENTRY")" = "$VENV/bin/$entry" ] \
+        && [ -x "$PUBLIC_ENTRY" ] \
+        || fail 'published entry-point readback failed'
+    READBACK_VERSION=$("$VENV/bin/python" -c 'import agentporter; print(agentporter.__version__)') \
+        || fail 'published entry-point version readback failed'
+    [ "$READBACK_VERSION" = "$VERSION" ] || fail 'published entry-point version readback failed'
+done
+if [ "$UPGRADE" -eq 1 ]; then
+    rm -rf "$OLD_ROOT" || fail 'upgraded package is active but the old root remains'
+fi
 
 printf '\nPackage installed and checksum verified. Starting the interactive AgentPorter plan.\n'
 printf 'No Hermes Profile will be written until you review and confirm that plan.\n\n'
 if "$VENV/bin/agentporter" < "$INPUT_DEVICE"; then
+    printf '\nconfiguration-required\nNext step:\n  %s\n' "$BIN_HOME/agentporter-activate"
     printf '\nAgentPorter completed. Uninstall later with:\n  %s\n' "$UNINSTALL_LINK"
 else
     status=$?
