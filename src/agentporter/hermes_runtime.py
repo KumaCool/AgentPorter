@@ -18,6 +18,8 @@ from typing import Any, Literal, Protocol, cast
 
 from .runtime_probe import ProbeObservation
 
+Popen = subprocess.Popen
+
 RuntimeFailureReason = Literal[
     "runtime-authority-drift",
     "authentication-failed",
@@ -47,9 +49,7 @@ class _OneshotProcess(Protocol):
         self, input: str | None = None, timeout: float | None = None
     ) -> tuple[str, str]: ...
 
-
-def _start_oneshot_process(argv: tuple[str, ...], **kwargs: Any) -> _OneshotProcess:
-    return subprocess.Popen(argv, **kwargs)
+    def kill(self) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +57,6 @@ class HermesRuntime:
     executable: Path
     command_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run
     timeout_seconds: float = 30.0
-    process_factory: Callable[..., _OneshotProcess] = _start_oneshot_process
     _identity: tuple[int, int, int, str] | None = None
 
     def __post_init__(self) -> None:
@@ -153,7 +152,7 @@ class HermesRuntime:
     def _run_oneshot(
         self, argv: tuple[str, ...], source_env: Mapping[str, str] | None
     ) -> subprocess.CompletedProcess[str]:
-        process = self.process_factory(
+        process: _OneshotProcess = Popen(
             argv,
             env=self.minimal_environment(source_env),
             stdout=subprocess.PIPE,
@@ -164,9 +163,15 @@ class HermesRuntime:
         try:
             stdout, stderr = process.communicate(timeout=self.timeout_seconds)
         except subprocess.TimeoutExpired:
-            with suppress(ProcessLookupError):
+            try:
                 os.killpg(process.pid, signal.SIGKILL)
-            process.communicate()
+            except ProcessLookupError:
+                pass
+            except OSError:
+                with suppress(ProcessLookupError, PermissionError, OSError):
+                    process.kill()
+            with suppress(OSError, subprocess.SubprocessError):
+                process.communicate()
             raise
         return subprocess.CompletedProcess(argv, cast(int, process.returncode), stdout, stderr)
 

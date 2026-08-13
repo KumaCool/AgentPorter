@@ -10,6 +10,7 @@ from subprocess import CompletedProcess
 
 import pytest
 
+import agentporter.hermes_runtime as hermes_runtime_module
 from agentporter.hermes_runtime import HermesRuntime, RuntimeCommandError
 
 
@@ -52,6 +53,7 @@ def runtime(
 def oneshot_runtime(
     executable: Path,
     runner: Callable[..., CompletedProcess[str]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> HermesRuntime:
     def process_factory(argv: tuple[str, ...], **kwargs: object) -> object:
         class Process:
@@ -74,38 +76,19 @@ def oneshot_runtime(
 
         return Process()
 
-    return HermesRuntime(executable, process_factory=process_factory)  # type: ignore[arg-type]
+    monkeypatch.setattr(hermes_runtime_module, "Popen", process_factory)
+    return HermesRuntime(executable)
 
 
-def test_oneshot_process_factory_preserves_safe_production_spawn_contract(tmp_path: Path) -> None:
+def test_custom_process_factory_cannot_bypass_safe_spawn_contract(tmp_path: Path) -> None:
     executable = tmp_path / "hermes"
     executable.write_text("#!/bin/sh\n", encoding="utf-8")
     executable.chmod(0o700)
-    calls: list[dict[str, object]] = []
-
-    class Process:
-        pid = 1
-        returncode = 1
-
-        def communicate(
-            self, input: str | None = None, timeout: float | None = None
-        ) -> tuple[str, str]:
-            del input, timeout
-            return "", "failure"
-
-    def process_factory(argv: tuple[str, ...], **kwargs: object) -> Process:
-        calls.append({"argv": argv, **kwargs})
-        return Process()
-
-    with pytest.raises(RuntimeCommandError):
+    with pytest.raises(TypeError, match="process_factory"):
         HermesRuntime(
             executable,
-            process_factory=process_factory,  # type: ignore[arg-type]
-        ).oneshot("worker", "m", "p")
-
-    assert calls[0]["start_new_session"] is True
-    assert calls[0]["stdout"] is subprocess.PIPE
-    assert calls[0]["stderr"] is subprocess.PIPE
+            process_factory=lambda *_args, **_kwargs: None,  # type: ignore[call-arg]
+        )
 
 
 def test_auth_status_logged_out_exit_zero_is_not_authorized(tmp_path: Path) -> None:
@@ -152,7 +135,9 @@ def test_minimal_environment_drops_credentials_and_default_profile(tmp_path: Pat
     assert calls[0]["env"] == {"HOME": "/safe", "PATH": "/bin"}
 
 
-def test_oneshot_uses_explicit_route_nonce_private_usage_and_cleans(tmp_path: Path) -> None:
+def test_oneshot_uses_explicit_route_nonce_private_usage_and_cleans(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     calls: list[dict[str, object]] = []
     executable = tmp_path / "hermes"
     executable.write_text("#!/bin/sh\n", encoding="utf-8")
@@ -173,7 +158,7 @@ def test_oneshot_uses_explicit_route_nonce_private_usage_and_cleans(tmp_path: Pa
         calls.append({"argv": argv, **kwargs})
         return CompletedProcess(argv, 0, f"AGENTPORTER_READY:{nonce}\n", "")
 
-    result = oneshot_runtime(executable, runner).oneshot("worker-one", "m", "p")
+    result = oneshot_runtime(executable, runner, monkeypatch).oneshot("worker-one", "m", "p")
     argv = calls[0]["argv"]
     assert isinstance(argv, tuple)
     assert argv[:3] == (str(executable.resolve()), "-p", "worker-one")
@@ -187,7 +172,9 @@ def test_oneshot_uses_explicit_route_nonce_private_usage_and_cleans(tmp_path: Pa
     assert observed_usage and not observed_usage[0].parent.exists()
 
 
-def test_oneshot_uses_probe_owned_nonce_when_supplied(tmp_path: Path) -> None:
+def test_oneshot_uses_probe_owned_nonce_when_supplied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     calls: list[dict[str, object]] = []
     executable = tmp_path / "hermes"
     executable.write_text("#!/bin/sh\n", encoding="utf-8")
@@ -204,7 +191,9 @@ def test_oneshot_uses_probe_owned_nonce_when_supplied(tmp_path: Path) -> None:
         calls.append({"argv": argv, **kwargs})
         return CompletedProcess(argv, 0, "AGENTPORTER_READY:owned-nonce\n", "")
 
-    oneshot_runtime(executable, runner).oneshot("worker", "m", "p", nonce="owned-nonce")
+    oneshot_runtime(executable, runner, monkeypatch).oneshot(
+        "worker", "m", "p", nonce="owned-nonce"
+    )
     argv = calls[0]["argv"]
     assert isinstance(argv, tuple)
     assert argv[argv.index("-z") + 1] == "Reply exactly AGENTPORTER_READY:owned-nonce"
@@ -267,11 +256,8 @@ def test_oneshot_killpg_lookup_race_remains_probe_timeout_and_reaps(
         raise ProcessLookupError
 
     monkeypatch.setattr(os, "killpg", raced_killpg)
-    adapter = HermesRuntime(
-        executable,
-        timeout_seconds=timeout.timeout,
-        process_factory=process_factory,  # type: ignore[arg-type]
-    )
+    monkeypatch.setattr(hermes_runtime_module, "Popen", process_factory)
+    adapter = HermesRuntime(executable, timeout_seconds=timeout.timeout)
 
     with pytest.raises(RuntimeCommandError) as caught:
         adapter.oneshot("worker", "m", "p")
@@ -279,6 +265,50 @@ def test_oneshot_killpg_lookup_race_remains_probe_timeout_and_reaps(
     assert caught.value.reason == "probe-timeout"
     assert process.communicate_calls == 2
     assert factory_calls[0]["start_new_session"] is True
+
+
+def test_oneshot_killpg_permission_and_reap_errors_still_fallback_to_kill_and_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executable = tmp_path / "hermes"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o700)
+
+    class UncooperativeProcess:
+        pid = 12345
+        returncode = None
+        communicate_calls = 0
+        kill_calls = 0
+
+        def communicate(
+            self, input: str | None = None, timeout: float | None = None
+        ) -> tuple[str, str]:
+            del input
+            self.communicate_calls += 1
+            if timeout is not None:
+                raise subprocess.TimeoutExpired([str(executable)], timeout)
+            raise OSError("reap failed")
+
+        def kill(self) -> None:
+            self.kill_calls += 1
+
+    process = UncooperativeProcess()
+
+    def denied_killpg(_pid: int, _signal: int) -> None:
+        raise PermissionError("group signal denied")
+
+    def fake_popen(*_args: object, **_kwargs: object) -> UncooperativeProcess:
+        return process
+
+    monkeypatch.setattr(hermes_runtime_module, "Popen", fake_popen)
+    monkeypatch.setattr(os, "killpg", denied_killpg)
+
+    with pytest.raises(RuntimeCommandError) as caught:
+        HermesRuntime(executable, timeout_seconds=0.1).oneshot("worker", "m", "p")
+
+    assert caught.value.reason == "probe-timeout"
+    assert process.kill_calls == 1
+    assert process.communicate_calls == 2
 
 
 @pytest.mark.parametrize(
@@ -290,17 +320,21 @@ def test_oneshot_killpg_lookup_race_remains_probe_timeout_and_reaps(
         ("connection refused", "endpoint-unavailable"),
     ],
 )
-def test_oneshot_errors_are_safely_classified(tmp_path: Path, stderr: str, reason: str) -> None:
+def test_oneshot_errors_are_safely_classified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stderr: str, reason: str
+) -> None:
     calls: list[dict[str, object]] = []
     adapter = runtime(tmp_path, calls, CompletedProcess([], 1, "", stderr + " RAW_SECRET"))
-    adapter = oneshot_runtime(adapter.executable, adapter.command_runner)
+    adapter = oneshot_runtime(adapter.executable, adapter.command_runner, monkeypatch)
     with pytest.raises(RuntimeCommandError) as caught:
         adapter.oneshot("worker", "m", "p")
     assert caught.value.reason == reason
     assert "RAW_SECRET" not in str(caught.value)
 
 
-def test_missing_or_malformed_usage_is_invalid_and_cleanup_is_unconditional(tmp_path: Path) -> None:
+def test_missing_or_malformed_usage_is_invalid_and_cleanup_is_unconditional(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     executable = tmp_path / "hermes"
     executable.write_text("#!/bin/sh\n", encoding="utf-8")
     executable.chmod(0o700)
@@ -313,12 +347,14 @@ def test_missing_or_malformed_usage_is_invalid_and_cleanup_is_unconditional(tmp_
         return CompletedProcess(argv, 0, "irrelevant", "")
 
     with pytest.raises(RuntimeCommandError) as caught:
-        oneshot_runtime(executable, runner).oneshot("worker", "m", "p")
+        oneshot_runtime(executable, runner, monkeypatch).oneshot("worker", "m", "p")
     assert caught.value.reason == "usage-evidence-invalid"
     assert not parents[0].exists()
 
 
-def test_usage_file_must_be_exclusively_created_by_runtime(tmp_path: Path) -> None:
+def test_usage_file_must_be_exclusively_created_by_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     executable = tmp_path / "hermes"
     executable.write_text("#!/bin/sh\n", encoding="utf-8")
     executable.chmod(0o700)
@@ -334,7 +370,7 @@ def test_usage_file_must_be_exclusively_created_by_runtime(tmp_path: Path) -> No
         )
         return CompletedProcess(argv, 0, "AGENTPORTER_READY:n\n", "")
 
-    oneshot_runtime(executable, runner).oneshot("worker", "m", "p", nonce="n")
+    oneshot_runtime(executable, runner, monkeypatch).oneshot("worker", "m", "p", nonce="n")
 
 
 def test_executable_must_be_absolute_regular_executable(tmp_path: Path) -> None:

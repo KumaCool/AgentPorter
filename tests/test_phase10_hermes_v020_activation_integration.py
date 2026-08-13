@@ -5,12 +5,15 @@ import os
 from pathlib import Path
 from subprocess import CompletedProcess
 
+import pytest
+
+import agentporter.hermes_runtime as hermes_runtime_module
 from agentporter.hermes_runtime import HermesRuntime
 from agentporter.runtime_probe import run_runtime_probe
 
 
 def test_isolated_hermes_v020_public_cli_shape_is_restricted_without_real_call(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Controlled v0.20 fixture: no credentials, Gateway, Kanban, or outbound model call."""
     hermes = tmp_path / "fixture-hermes-v0.20.0"
@@ -56,11 +59,8 @@ def test_isolated_hermes_v020_public_cli_shape_is_restricted_without_real_call(
 
         return Process()
 
-    adapter = HermesRuntime(
-        hermes,
-        command_runner=runner,
-        process_factory=process_factory,  # type: ignore[arg-type]
-    )
+    monkeypatch.setattr(hermes_runtime_module, "Popen", process_factory)
+    adapter = HermesRuntime(hermes, command_runner=runner)
     assert (
         adapter.auth_status("worker", "fake-provider", source_env={"HOME": str(home)})
         == "logged-out"
