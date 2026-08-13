@@ -14,6 +14,7 @@ CredentialState = Literal["unresolved", "operator-authorized"]
 BindingGateStatus = Literal[
     "configuration-required",
     "credential-required",
+    "credential-source-unsupported",
     "probe-unsupported",
     "probe-started",
     "canary-required",
@@ -161,6 +162,7 @@ def evaluate_binding_gate(
     provider_id: str | None,
     endpoint_value: str | None,
     credential_state: str | None,
+    credential_grant_kind: str = "profile-auth",
     probe_supported: bool,
     runner: Callable[[], object],
     lifecycle_operation: LifecycleOperation = "activate",
@@ -170,6 +172,8 @@ def evaluate_binding_gate(
         return BindingGateResult("canary-required")
     if provider_id is None or not provider_id.strip() or not _valid_endpoint(endpoint_value):
         return BindingGateResult("configuration-required")
+    if credential_grant_kind != "profile-auth":
+        return BindingGateResult("credential-source-unsupported")
     if credential_state != "operator-authorized":
         return BindingGateResult("credential-required")
     if not probe_supported:

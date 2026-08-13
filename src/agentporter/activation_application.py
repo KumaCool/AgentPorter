@@ -42,6 +42,8 @@ class ActivationStatus(StrEnum):
     CANARY_FAILED = "canary-failed"
     CANARY_REQUIRED = "canary-required"
     PROBE_UNSUPPORTED = "probe-unsupported"
+    CREDENTIAL_SOURCE_UNSUPPORTED = "credential-source-unsupported"
+    RESTRICTED = "restricted"
 
 
 @dataclass(frozen=True, slots=True)
@@ -656,7 +658,7 @@ def _write_canary_receipt(
         "nonce_contract_passed": result.nonce_contract_passed,
         "nonce_digest": result.nonce_digest,
     }
-    loaded["canary_status"] = "passed" if result.status == "runtime-ready" else "failed"
+    loaded["canary_status"] = "passed" if result.live_call_passed else "failed"
     loaded["canary_reason_code"] = result.status
     loaded["canary_evidence_digest"] = _digest(
         json.dumps(safe_summary, sort_keys=True, separators=(",", ":")).encode()
@@ -673,10 +675,10 @@ def _write_canary_receipt(
             "hermes_version": target.binding.hermes_version,
             "config_digest": target.binding.config_digest,
             "binding_fingerprint": binding_fingerprint(target.binding),
-            "actual_model": result.actual_model if result.status == "runtime-ready" else None,
-            "actual_provider": result.actual_provider if result.status == "runtime-ready" else None,
-            "api_calls": result.api_calls if result.status == "runtime-ready" else 0,
-            "tool_calls_observed": result.tool_calls if result.status == "runtime-ready" else 0,
+            "actual_model": result.actual_model if result.live_call_passed else None,
+            "actual_provider": result.actual_provider if result.live_call_passed else None,
+            "api_calls": result.api_calls if result.live_call_passed else 0,
+            "tool_calls_observed": result.tool_calls if result.live_call_passed else None,
             "fallback_used": result.fallback_used,
             "response_contract_passed": result.response_contract_passed,
             "nonce_contract_passed": result.nonce_contract_passed,
@@ -746,6 +748,9 @@ def apply_activation(
     after_write: Callable[[ActivationTargetPlan, int], None] | None = None,
     probe_runner: Callable[[RuntimeBindingPlan, str, Path], ProbeObservation] | None = None,
     probe_supported: bool = True,
+    auth_status_runner: Callable[[RuntimeBindingPlan], str] | None = None,
+    auth_add_runner: Callable[[RuntimeBindingPlan], None] | None = None,
+    require_runtime_confirmations: bool = False,
 ) -> ActivationResult:
     """Confirm once, compare/write/read back, and safely compensate on failure."""
     del command_observer  # The secure direct-file seam intentionally executes no command.
@@ -810,10 +815,28 @@ def apply_activation(
     )
     if any(target.binding.credential_state != "operator-authorized" for target in plan.bindings):
         return ActivationResult(ActivationStatus.CREDENTIAL_REQUIRED, items)
+    if any(target.binding.credential_grant_kind != "profile-auth" for target in plan.bindings):
+        return ActivationResult(ActivationStatus.CREDENTIAL_SOURCE_UNSUPPORTED, items)
+    if require_runtime_confirmations and auth_status_runner is not None:
+        for target in plan.bindings:
+            status = auth_status_runner(target.binding)
+            if status != "logged-in" and auth_add_runner is not None:
+                phrase = f"AUTH {target.profile_name}"
+                if input_fn(f"Type {phrase} to let Hermes own Profile auth: ") != phrase:
+                    return ActivationResult(ActivationStatus.CREDENTIAL_REQUIRED, items)
+                auth_add_runner(target.binding)
     if probe_runner is None:
         return ActivationResult(ActivationStatus.CANARY_REQUIRED, items)
     if not probe_supported:
         return ActivationResult(ActivationStatus.PROBE_UNSUPPORTED, items)
+    if require_runtime_confirmations:
+        print(
+            "Live plan: at most 2 Worker calls, possible fees, and Hermes-owned Profile-local "
+            "session/usage/memory state. AgentPorter will not operate on state.db.",
+            file=output,
+        )
+        if input_fn("Type RUN 2 WORKER CALLS to authorize live calls: ") != "RUN 2 WORKER CALLS":
+            return ActivationResult(ActivationStatus.CANARY_REQUIRED, items)
 
     # Binding publication commits before canaries begin. Canary receipt updates
     # form a separate transaction and never roll back authorized configuration.
@@ -849,9 +872,10 @@ def apply_activation(
         return ActivationResult(status, items, residue)
     if all(result.status == "probe-unsupported" for result in results):
         return ActivationResult(ActivationStatus.PROBE_UNSUPPORTED, items)
-    status = (
-        ActivationStatus.ACTIVATED
-        if all(result.status == "runtime-ready" for result in results)
-        else ActivationStatus.CANARY_FAILED
-    )
+    if all(result.status == "runtime-ready" for result in results):
+        status = ActivationStatus.ACTIVATED
+    elif all(result.status in {"runtime-ready", "route-proof-incomplete"} for result in results):
+        status = ActivationStatus.RESTRICTED
+    else:
+        status = ActivationStatus.CANARY_FAILED
     return ActivationResult(status, items)

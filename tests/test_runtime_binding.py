@@ -138,3 +138,23 @@ def test_lifecycle_contracts_never_invoke_model_runner() -> None:
         )
         assert result.status == "canary-required"
         assert calls == 0
+
+
+@pytest.mark.parametrize("grant", ["profile-env", "external-secret"])
+def test_unsupported_credential_sources_make_zero_runner_calls(grant: str) -> None:
+    calls = 0
+
+    def runner() -> None:
+        nonlocal calls
+        calls += 1
+
+    result = evaluate_binding_gate(
+        provider_id="custom",
+        endpoint_value=PRIVATE_ENDPOINT,
+        credential_state="operator-authorized",
+        credential_grant_kind=grant,
+        probe_supported=True,
+        runner=runner,
+    )
+    assert result.status == "credential-source-unsupported"
+    assert calls == 0

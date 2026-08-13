@@ -18,6 +18,7 @@ from .runtime_binding import RuntimeBindingPlan, binding_fingerprint
 
 ProbeStatus = Literal[
     "probe-unsupported",
+    "route-proof-incomplete",
     "runtime-ready",
     "authentication-failed",
     "model-unsupported",
@@ -55,8 +56,8 @@ class ProbeObservation:
     actual_model: str | None = None
     actual_provider: str | None = None
     api_calls: int = 0
-    tool_calls: int = 0
-    fallback_used: bool = False
+    tool_calls: int | None = 0
+    fallback_used: bool | None = False
     http_status: int | None = None
     timed_out: bool = False
 
@@ -67,8 +68,8 @@ class ProbeResult:
     actual_model: str | None = None
     actual_provider: str | None = None
     api_calls: int = 0
-    tool_calls: int = 0
-    fallback_used: bool = False
+    tool_calls: int | None = 0
+    fallback_used: bool | None = False
     response_contract_passed: bool = False
     probe_started_at: datetime | None = None
     probe_finished_at: datetime | None = None
@@ -77,7 +78,7 @@ class ProbeResult:
     nonce_digest: str | None = None
 
     def __post_init__(self) -> None:
-        if self.api_calls < 0 or self.tool_calls < 0:
+        if self.api_calls < 0 or (self.tool_calls is not None and self.tool_calls < 0):
             raise ValueError("call counts cannot be negative")
         if self.status == "runtime-ready" and (
             not self.actual_model
@@ -88,7 +89,10 @@ class ProbeResult:
             or not self.response_contract_passed
         ):
             raise ValueError("runtime-ready result violates the closed probe contract")
-        if self.status != "runtime-ready" and self.response_contract_passed:
+        if (
+            self.status not in {"runtime-ready", "route-proof-incomplete"}
+            and self.response_contract_passed
+        ):
             raise ValueError("failure result cannot pass response contract")
         if self.status == "runtime-ready" and (
             self.probe_started_at is None
@@ -100,6 +104,10 @@ class ProbeResult:
             or not self.nonce_digest
         ):
             raise ValueError("runtime-ready result lacks sealed probe provenance")
+
+    @property
+    def live_call_passed(self) -> bool:
+        return self.status in {"runtime-ready", "route-proof-incomplete"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,7 +207,7 @@ def run_runtime_probe(
             **provenance,  # type: ignore[arg-type]
         )
     if (
-        observation.fallback_used
+        observation.fallback_used is True
         or observation.actual_model != expected_model
         or observation.actual_provider != expected_provider
     ):
@@ -212,11 +220,7 @@ def run_runtime_probe(
             observation.fallback_used,
             **provenance,  # type: ignore[arg-type]
         )
-    if (
-        observation.output != f"AGENTPORTER_READY:{nonce}"
-        or observation.api_calls != 1
-        or observation.tool_calls != 0
-    ):
+    if observation.output != f"AGENTPORTER_READY:{nonce}" or observation.api_calls != 1:
         return ProbeResult(
             "response-contract-failed",
             api_calls=observation.api_calls,
@@ -224,6 +228,24 @@ def run_runtime_probe(
             **provenance,  # type: ignore[arg-type]
         )
     provenance["nonce_contract_passed"] = True
+    if observation.tool_calls is None or observation.fallback_used is None:
+        return ProbeResult(
+            "route-proof-incomplete",
+            observation.actual_model,
+            observation.actual_provider,
+            observation.api_calls,
+            observation.tool_calls,
+            observation.fallback_used,
+            True,
+            **provenance,  # type: ignore[arg-type]
+        )
+    if observation.tool_calls != 0:
+        return ProbeResult(
+            "response-contract-failed",
+            api_calls=observation.api_calls,
+            tool_calls=observation.tool_calls,
+            **provenance,  # type: ignore[arg-type]
+        )
     return ProbeResult(
         "runtime-ready",
         observation.actual_model,
@@ -254,7 +276,7 @@ def probe_readiness_evidence(
         now=now,
         freshness=freshness,
     )
-    ready = result.status == "runtime-ready"
+    ready = result.live_call_passed
     safe_binding = RuntimeBinding(
         binding.portable_id,
         binding.component_id,
@@ -278,4 +300,5 @@ def probe_readiness_evidence(
         response_contract_passed=ready,
         tool_calls_observed=result.tool_calls if ready else 0,
         fresh_until=result.fresh_until or now() + freshness,
+        fallback_used=result.fallback_used,
     )

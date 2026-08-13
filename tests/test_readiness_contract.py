@@ -191,3 +191,40 @@ def test_fresh_install_force_config_and_static_model_change_invalidate_evidence(
     assert item.valid_after_lifecycle("update")
     assert not item.valid_after_lifecycle("update", force_config=True)
     assert not item.valid_after_lifecycle("update", expected_model="changed")
+
+
+def test_live_call_with_missing_route_telemetry_is_restricted_not_operational() -> None:
+    item = evidence(
+        status="route-proof-incomplete",
+        safe_reason_code="route-proof-incomplete",
+        tool_calls_observed=None,
+        fallback_used=None,
+    )
+    now = datetime(2026, 8, 12, 12, 1, tzinfo=UTC)
+    assert item.live_call_passed is True
+    assert item.dispatch_eligibility == "restricted"
+    assert aggregate_readiness([item], now=now) == "restricted"
+
+
+def test_runtime_ready_requires_explicit_tool_and_fallback_telemetry() -> None:
+    with pytest.raises(ValueError, match="route-proof"):
+        evidence(tool_calls_observed=None)
+    with pytest.raises(ValueError, match="route-proof"):
+        evidence(fallback_used=None)
+
+
+@pytest.mark.parametrize(
+    ("event", "kwargs"),
+    [
+        ("fresh-install", {}),
+        ("reinstall", {}),
+        ("uninstall", {}),
+        ("profile-rename", {}),
+        ("update", {"force_config": True}),
+        ("update", {"hermes_version": "0.21.0"}),
+        ("update", {"config_digest": "changed"}),
+        ("update", {"binding_fingerprint": "changed"}),
+    ],
+)
+def test_complete_evidence_invalidation_matrix(event: str, kwargs: dict[str, object]) -> None:
+    assert not evidence().valid_after_lifecycle(event, **kwargs)  # type: ignore[arg-type]

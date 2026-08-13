@@ -161,10 +161,8 @@ def test_formal_activation_entry_prompts_for_workers_in_component_order_only(
         (
             "provider-luna",
             "profile-auth",
-            "operator-authorized",
             "provider-codex",
             "profile-auth",
-            "operator-authorized",
         )
     )
     sentinel_plan = object()
@@ -188,11 +186,7 @@ def test_formal_activation_entry_prompts_for_workers_in_component_order_only(
         return sentinel_plan
 
     monkeypatch.setattr(entry, "build_activation_plan", capture_plan)
-    monkeypatch.setattr(
-        entry,
-        "negotiate_hermes_probe",
-        lambda **kwargs: type("Capability", (), {"supported": False})(),
-    )
+
     monkeypatch.setattr(
         entry,
         "apply_activation",
@@ -200,7 +194,11 @@ def test_formal_activation_entry_prompts_for_workers_in_component_order_only(
     )
 
     result = entry.run_activator(
-        {}, detector=lambda **kwargs: found, input_fn=answer, endpoint_reader=endpoint
+        {},
+        detector=lambda **kwargs: found,
+        input_fn=answer,
+        endpoint_reader=endpoint,
+        runtime_factory=lambda _path: object(),  # type: ignore[arg-type,return-value]
     )
 
     assert result is sentinel_result

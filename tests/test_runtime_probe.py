@@ -299,3 +299,20 @@ def test_unsupported_capability_creates_zero_temporary_or_runner_calls() -> None
     )
     assert result == ProbeResult("probe-unsupported")
     assert calls == []
+
+
+def test_v020_usage_without_tool_or_fallback_telemetry_passes_live_call_only() -> None:
+    result = run_runtime_probe(
+        expected_model="gpt-5.6-luna",
+        expected_provider="custom",
+        runner=lambda nonce, _directory: ProbeObservation(
+            output=f"AGENTPORTER_READY:{nonce}",
+            actual_model="gpt-5.6-luna",
+            actual_provider="custom",
+            api_calls=1,
+            tool_calls=None,
+            fallback_used=None,
+        ),
+    )
+    assert result.status == "route-proof-incomplete"
+    assert result.live_call_passed is True
