@@ -1,10 +1,10 @@
 #!/bin/sh
-# AgentPorter v0.1.3 release bootstrap for POSIX systems.
+# AgentPorter v0.1.4 release-candidate bootstrap for POSIX systems.
 set -eu
 
-VERSION=0.1.3
-RELEASE_BASE_URL=https://github.com/KumaCool/AgentPorter/releases/download/v0.1.3
-WHEEL=agentporter-0.1.3-py3-none-any.whl
+VERSION=0.1.4
+RELEASE_BASE_URL=https://github.com/KumaCool/AgentPorter/releases/download/v0.1.4
+WHEEL=agentporter-0.1.4-py3-none-any.whl
 CHECKSUM=${WHEEL}.sha256
 
 fail() {
@@ -40,7 +40,7 @@ mkdir -p "$PRODUCT_ROOT" "$BIN_HOME" || fail 'could not create installation dire
 [ -d "$BIN_HOME" ] && [ ! -L "$BIN_HOME" ] \
     || fail 'binary installation parent must be a real directory'
 
-STAGING=$(mktemp -d "${PRODUCT_ROOT}/.0.1.3-stage.XXXXXX") \
+STAGING=$(mktemp -d "${PRODUCT_ROOT}/.0.1.4-stage.XXXXXX") \
     || fail 'could not create a private staging directory'
 chmod 700 "$STAGING" || fail 'could not secure the staging directory'
 PUBLISHED=0
@@ -96,6 +96,7 @@ env -i PATH="$PATH" HOME="$HOME" PIP_CONFIG_FILE=/dev/null PIP_REQUIRE_VIRTUALEN
     "$STAGING/$WHEEL" \
     || fail 'package installation failed'
 [ -x "$VENV/bin/agentporter" ] || fail 'installed package is missing the AgentPorter entry point'
+[ -x "$VENV/bin/agentporter-activate" ] || fail 'installed package is missing the activation entry point'
 [ -x "$VENV/bin/agentporter-uninstall" ] || fail 'installed package is missing the uninstaller entry point'
 INSTALLED_VERSION=$(
     "$VENV/bin/python" -c 'import agentporter; print(agentporter.__version__)'
@@ -104,7 +105,7 @@ INSTALLED_VERSION=$(
 
 rm -f "$STAGING/$WHEEL" "$STAGING/$CHECKSUM"
 FINAL_VENV=${INSTALL_ROOT}/venv
-for entry in agentporter agentporter-uninstall; do
+for entry in agentporter agentporter-activate agentporter-uninstall; do
     ENTRY=${VENV}/bin/${entry}
     "$PYTHON" -c 'from pathlib import Path; import sys
 path = Path(sys.argv[1])
@@ -133,6 +134,7 @@ mv "$STAGING" "$INSTALL_ROOT" || fail 'could not publish the verified installati
 PUBLISHED=1
 VENV=${FINAL_VENV}
 [ -x "$VENV/bin/agentporter" ] || fail 'published package is missing the AgentPorter entry point'
+[ -x "$VENV/bin/agentporter-activate" ] || fail 'published package is missing the activation entry point'
 [ -x "$VENV/bin/agentporter-uninstall" ] || fail 'published package is missing the uninstaller entry point'
 ln -s "$VENV/bin/agentporter-uninstall" "$UNINSTALL_LINK" \
     || fail 'package was installed but the uninstaller entry point could not be published'

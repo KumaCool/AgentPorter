@@ -1,6 +1,20 @@
 # 可移植 Worker 规范
 
-> **当前状态：** v0.1.0 schema 只定义两个执行 Worker，已用于安装基础。面向工作组自动分解与路由的 `role/routing/execution` 扩展由 [Plan 02](plan/02-multi-agent-orchestration.md) 设计并实现；下文不得被理解为编排主链已接通。
+## 0. 0.1.4 发布候选状态（Phase F）
+
+| 维度 | 当前证据状态 |
+|---|---|
+| installation | fresh 三 Profile 与 legacy 双 Worker → 三 Profile 的安装、升级、读回、改名、卸载已通过离线及隔离 Hermes v0.20 验证。 |
+| binding | `agentporter-activate` 的 snapshot/确认/精确写入读回/compare-before-restore 事务已离线通过；只作用两个 Worker。 |
+| credential | 由操作者授权并由 Hermes/用户持有；AgentPorter 不读取、复制或持久化秘密。 |
+| canary | v0.20 为 `probe-unsupported`，在模型适配调用前关闭，零模型调用；未达到 runtime-ready。 |
+| dispatcher | 专用 orchestrator 配置静态读回通过；未启动 Gateway，未验收 live dispatcher。 |
+| route | v0.20 为 `mutation-unsupported`，在 Kanban adapter 调用前关闭，零 Kanban mutation 调用。 |
+| continuity | DispatchReceipt、任务级订阅、运行观察、结构性恢复合同仅离线通过；未验收真实投递/接续。 |
+
+`hermes config check` 仅证明静态配置可解析。无任务时 `notify-list == []` 正常；只有正式任务创建后，精确 task/subscription 读回与安全 `DispatchReceipt` 才是解锁 dispatch 的必要条件。本候选未发布、未 tag、未 push，不声称 `operational`、真实 canary 或 live routing passed。
+
+> **当前状态：** 0.1.4 候选 schema 定义两个执行 Worker 和一个专用 orchestrator；三组件生命周期已验证，但 activation 仍只绑定两个 Worker。v0.20 的 probe 与 Kanban mutation 均 fail closed 为 unsupported，本文不得被理解为编排主链已真实接通。
 
 ## 1. 权威文件
 

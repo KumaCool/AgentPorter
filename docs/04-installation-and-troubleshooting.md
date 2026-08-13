@@ -2,7 +2,7 @@
 
 English | [简体中文](04-installation-and-troubleshooting.zh-CN.md)
 
-AgentPorter v0.1.3 is the current supported patch release of the one-shot installation foundation for the Hermes multi-agent Worker team. The repository has offline contract tests and isolated real-Hermes evidence for v0.20.0; that observed version is **not** a promised minimum or universal compatibility range.
+AgentPorter v0.1.4 is the current supported patch release of the one-shot installation foundation for the Hermes multi-agent Worker team. The repository has offline contract tests and isolated real-Hermes evidence for v0.20.0; that observed version is **not** a promised minimum or universal compatibility range.
 
 ## One-line POSIX install
 
@@ -28,13 +28,13 @@ Linux has the strongest real-Hermes acceptance evidence. macOS and Windows are c
 
 ## Install from a release artifact
 
-To install a downloaded v0.1.3 wheel manually, verify its published checksum and create a disposable environment:
+To install a downloaded v0.1.4 wheel manually, verify its published checksum and create a disposable environment:
 
 ```bash
 python -m venv .venv
 # POSIX: source .venv/bin/activate
 # Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install agentporter-0.1.3-py3-none-any.whl
+python -m pip install agentporter-0.1.4-py3-none-any.whl
 agentporter
 ```
 
@@ -57,7 +57,7 @@ The source checkout and artifact must come from a commit you trust. Do not run f
 
 Terminal statuses distinguish success, cancellation, preflight failure, install failure with compensation, incomplete compensation, and readback failure. Treat anything other than the explicit success result as not installed or requiring inspection; never infer success from some profile directories being present.
 
-AgentPorter v0.1.3 installs two dedicated Worker Profiles. It does not overwrite existing profiles, copy provider credentials, invoke a model, install a daemon, or create a task database. Profile-local credentials and runtime data remain managed by Hermes and the user.
+AgentPorter v0.1.4 installs two dedicated Worker Profiles. It does not overwrite existing profiles, copy provider credentials, invoke a model, install a daemon, or create a task database. Profile-local credentials and runtime data remain managed by Hermes and the user.
 
 This release does **not** configure automatic decomposition, start the gateway dispatcher, create Kanban tasks, or prove live task routing. Those capabilities are tracked in the [multi-agent orchestration plan](plan/02-multi-agent-orchestration.md).
 
@@ -74,6 +74,20 @@ There are no silent flags. The uninstaller scans read-only for one complete mark
 When deliberately running from a trusted source checkout instead, use `python uninstall.py`. Source-checkout execution removes Profiles only; it does not delete the checkout or its virtual environment.
 
 If discovery is absent, incomplete, duplicated, conflicting, malformed, changed, symlinked, or path-escaped, uninstall stops without widening scope. If one deletion fails, the result may be partial; do not manually delete unknown paths. Back up needed profile-local data before confirmation.
+
+## Runtime readiness and orchestration status
+
+| Dimension | 0.1.4 candidate state |
+|---|---|
+| installation | Fresh three-Profile and legacy two-to-three upgrade/readback/rename/uninstall are verified offline and with isolated Hermes v0.20 fixtures. |
+| binding | Run `agentporter-activate`; the offline-verified transaction snapshots, confirms, writes, reads back, and compare-before-restores only transaction-owned values. |
+| credential | Operator-authorized and Hermes/user-owned; secret values are never read or copied by AgentPorter. |
+| canary | `probe-unsupported` on v0.20, with zero model calls; `config check` remains static-only. |
+| dispatcher | Dedicated-orchestrator configuration is static-readback verified; Gateway is not started. |
+| route | `mutation-unsupported` before adapter invocation, with zero Kanban mutation calls. |
+| continuity | DispatchReceipt/subscription/observation/structural-resume contracts are offline-only, not live accepted. |
+
+Activation failure keeps the Profiles and credential ownership intact. Unchanged transaction writes are restored; concurrent drift is preserved and reported as bounded residue. An empty `notify-list` is normal when no task exists. Once a formal task is created, exact task-specific subscription readback and a safe `DispatchReceipt` are required before dispatch; v0.20 does not currently expose the required mutation seam.
 
 ## Troubleshooting
 
@@ -101,12 +115,20 @@ Never post raw config files, marker paths, credentials, sessions, memories, or p
 
    ```bash
    python scripts/verify_release.py \
-     --version 0.1.3 \
+     --version 0.1.4 \
      --dependency 'pydantic<3,>=2' \
      --dependency 'PyYAML<7,>=6' \
      --entry-point 'agentporter=agentporter:main' \
+     --entry-point 'agentporter-activate=agentporter.activation_entry:main' \
      --entry-point 'agentporter-uninstall=agentporter.uninstall_entry:main' \
      --resource 'resources/workers.yaml' \
+     --required-module activation_application.py \
+     --required-module activation_entry.py \
+     --required-module dispatch_application.py \
+     --required-module dispatch_planning.py \
+     --required-module kanban_runtime.py \
+     --required-module runtime_observation.py \
+     --required-module runtime_probe.py \
      --bootstrap-checksum <wheel>.sha256 \
      <wheel> <sdist>
    ```
@@ -114,4 +136,4 @@ Never post raw config files, marker paths, credentials, sessions, memories, or p
 6. Inspect checksums, commit identity, tag, changelog, license, README, and verifier output before upload. Publish only the exact verified bytes.
 7. Download hosted artifacts, recompute checksums, and rerun verification. A tag or successful upload alone is not acceptance.
 
-The example resource path is the v0.1.3 release contract. Hosted release acceptance additionally downloads every published asset, recomputes checksums, reruns this verifier, and checks the public `latest/download/install.sh` endpoint.
+The example resource path is the v0.1.4 release contract. Hosted release acceptance additionally downloads every published asset, recomputes checksums, reruns this verifier, and checks the public `latest/download/install.sh` endpoint.

@@ -14,7 +14,7 @@
 
 ### 已确认事实
 
-- 当前候选：AgentPorter `0.1.3`，仓库 `main` 与 `origin/main` 同步，工作树干净。
+- 历史事故基线为已发布 AgentPorter `0.1.3`；Phase F 形成 `0.1.4` 本地发布候选，不 tag、不发布、不 push。
 - 两个 Worker 的 `config.yaml` 只有 `model.default` 和 `agent.reasoning_effort`；`model.provider`、`model.base_url` 均未设置。
 - 两个真实 one-shot 都以 `No inference provider configured`、退出码 `1` 失败。
 - `hermes config check` 返回 `0` 只证明配置可解析，不能证明主模型调用成功。
@@ -389,7 +389,11 @@ sdist/wheel build: passed
 
 集中复审的 6 个 finding family 已关闭；限定 closure review 的 5 项机械复现（完整正文桥接、全图 DAG、ready replay reblock、严格 CAS 协议、必填 current-run authority）由主代理逐项重放并随完整门禁验收。
 
-## Phase F：文档、打包、门禁与发布候选
+## Phase F：文档、打包、门禁与发布候选（已完成本地候选）
+
+**Status:** 0.1.4 本地发布候选已完成文档同步、打包契约与完整离线门禁。Hermes v0.20 probe 为 `probe-unsupported` 且零模型调用；Kanban 为 `mutation-unsupported` 且零 Kanban mutation 调用；未执行真实模型、Gateway、凭据或 Kanban 网络操作，未 tag、未发布、未 push。
+
+**Phase F evidence:** TDD RED 为版本仍是 0.1.3、用户文档缺 0.1.4 七维状态、缺 activation/receipt 边界共 4 个预期失败；GREEN 为 focused 5 passed。最终门禁：offline pytest 527 passed（2 个既有 duplicate-archive adversarial fixture warnings）；Ruff format/check 通过；Pyright strict 0 errors/0 warnings；sdist/wheel build 通过；正式 release verifier 对 0.1.4 wheel/sdist、三 entry points、workers resource 与 activation/dispatch/runtime 必需模块验证通过；fresh wheel 隔离安装、0.1.4 import 与三 entry points 读回通过；Markdown links、added-line privacy、diff-check 通过。环境未安装 twine，因此 `twine check` 明确记为 unavailable，不伪称通过。
 
 **Objective:** 使代码、计划索引、用户文档和发行契约一致。
 

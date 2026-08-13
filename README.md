@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
 
 AgentPorter is an open-source deployment kit for a reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) multi-agent Worker team. It installs role-specific Profiles in one run and is evolving toward verified task decomposition and routing through Hermes-native Kanban orchestration.
 
-> **Current capability:** v0.1.3 safely installs and uninstalls the two-Profile Worker foundation. It writes routing descriptions and Hermes can enumerate both assignees, but AgentPorter has not yet configured or accepted automatic decomposition, dispatcher execution, or live Worker routing. That is the next implementation plan—not a current release claim.
+> **0.1.4 release candidate:** AgentPorter installs, upgrades, reads back, renames, and uninstalls one three-Profile set (two Workers plus a dedicated orchestrator), and provides offline-verified activation, dispatch, receipt, and continuity contracts. Hermes v0.20 cannot prove the required tool-free/no-fallback probe or revision-safe Kanban mutation seam, so the formal paths return `probe-unsupported` / `mutation-unsupported` before adapters run: zero model calls and zero Kanban mutation calls. This candidate is not published and does not claim `operational` or live routing acceptance.
 
 ## One-line install (POSIX)
 
@@ -31,12 +31,13 @@ If the command is not on `PATH`, run:
 
 Uninstall deletes the Worker Profiles installed by AgentPorter, including their local data and later customization, so back them up before confirming. After successful Profile deletion (or when they are already absent), a bootstrap-installed uninstaller also removes its exact published entry and versioned private Python environment. A trusted source-checkout `python uninstall.py` removes Profiles only and never deletes the checkout or its virtual environment. See the [installation guide](docs/04-installation-and-troubleshooting.md) for the inspect-first flow, PATH, trust boundary, and complete uninstall details.
 
-## What v0.1.3 installs
+## What v0.1.4 installs
 
-One launch installs the repository's current two-Profile Worker foundation:
+One launch installs the current three-Profile foundation:
 
 - `luna_worker` — bounded implementation and analysis after the parent fixes goal, scope, constraints, and acceptance;
-- `codex-5-3-small-worker` — narrower, strictly mechanical delegation.
+- `codex-5-3-small-worker` — narrower, strictly mechanical delegation;
+- `agentporter-orchestrator` — dedicated Kanban control-plane owner; it does not execute implementation tasks.
 
 Each Profile contains Hermes-native configuration, instructions, routing description, and a non-secret ownership marker. AgentPorter composes Hermes primitives instead of replacing Profile storage, the Kanban task database, the decomposer, dispatcher, worktrees, or provider configuration.
 
@@ -44,12 +45,29 @@ Each Profile contains Hermes-native configuration, instructions, routing descrip
 
 The product goal is not merely to copy Profile files. A complete AgentPorter deployment should let a user submit a task, have a dedicated AgentPorter orchestrator obtain Hermes decomposition candidates, validate role and assignee policy before any task write, let Hermes execute approved children in appropriate workspaces, and return verifiable handoffs.
 
-The current release provides only the safe installation foundation for that flow. The repository now tracks the missing orchestration work explicitly:
+The 0.1.4 candidate implements this as fail-closed offline contracts; current Hermes v0.20 still blocks real probe and mutation acceptance. The authority chain is:
 
 - [Plan index and current product status](docs/plan/00-index.md)
 - [Multi-agent orchestration and routing plan](docs/plan/02-multi-agent-orchestration.md)
 
-Until that plan passes live acceptance, use Hermes-native Kanban manually and do not treat Profile installation or description readback as proof of automatic routing.
+Until a later Hermes seam passes separately authorized live acceptance, use Hermes-native Kanban manually and do not treat installation, `config check`, a running Gateway, or offline tests as proof of automatic routing.
+
+
+## Runtime state matrix
+
+| Dimension | 0.1.4 candidate state |
+|---|---|
+| installation | Offline and isolated Hermes v0.20 install/update/readback/rename/uninstall passed for fresh three-Profile and legacy two-to-three-Profile paths. |
+| binding | `agentporter-activate` transaction is offline verified; it targets only the two Workers and preserves the orchestrator and user-owned drift. |
+| credential | Operator authorization is required and remains Hermes/user-owned; AgentPorter never copies or reads secret values. |
+| canary | `probe-unsupported` on Hermes v0.20; zero model calls; not `runtime-ready`. |
+| dispatcher | Static dedicated-orchestrator configuration is read back; no Gateway is started and dispatcher is not live-accepted. |
+| route | `mutation-unsupported` on Hermes v0.20 before adapter invocation; zero Kanban mutation calls. |
+| continuity | DispatchReceipt, task subscription, observation, and structural-resume contracts pass offline only; no live notification or continuation is claimed. |
+
+`hermes config check` is a static parse/configuration check only. It is never canary or runtime-readiness evidence. With an installed set, run `agentporter-activate` interactively: it discovers the unique complete set, snapshots typed configuration, accepts non-secret binding choices without printing private endpoint values, previews one plan, confirms once, writes and reads back exact keys, and then negotiates the safe probe seam. On failure it restores only unchanged transaction-owned values (`compare-before-restore`), preserves concurrent user drift, keeps Profiles and credentials, reports bounded residue, and leaves canary required.
+
+An empty `notify-list` is normal before any task exists. After formal task creation, exact task and subscription readback plus a safe `DispatchReceipt` are mandatory before dispatch can unlock; current v0.20 cannot meet that mutation contract, so no formal task is created.
 
 ## Safety boundary
 

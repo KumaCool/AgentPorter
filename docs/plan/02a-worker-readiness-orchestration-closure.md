@@ -1,12 +1,26 @@
 # AgentPorter Worker Readiness 与编排闭环优化实施计划
 
+## 0. 0.1.4 发布候选状态（Phase F）
+
+| 维度 | 当前证据状态 |
+|---|---|
+| installation | fresh 三 Profile 与 legacy 双 Worker → 三 Profile 的安装、升级、读回、改名、卸载已通过离线及隔离 Hermes v0.20 验证。 |
+| binding | `agentporter-activate` 的 snapshot/确认/精确写入读回/compare-before-restore 事务已离线通过；只作用两个 Worker。 |
+| credential | 由操作者授权并由 Hermes/用户持有；AgentPorter 不读取、复制或持久化秘密。 |
+| canary | v0.20 为 `probe-unsupported`，在模型适配调用前关闭，零模型调用；未达到 runtime-ready。 |
+| dispatcher | 专用 orchestrator 配置静态读回通过；未启动 Gateway，未验收 live dispatcher。 |
+| route | v0.20 为 `mutation-unsupported`，在 Kanban adapter 调用前关闭，零 Kanban mutation 调用。 |
+| continuity | DispatchReceipt、任务级订阅、运行观察、结构性恢复合同仅离线通过；未验收真实投递/接续。 |
+
+`hermes config check` 仅证明静态配置可解析。无任务时 `notify-list == []` 正常；只有正式任务创建后，精确 task/subscription 读回与安全 `DispatchReceipt` 才是解锁 dispatch 的必要条件。本候选未发布、未 tag、未 push，不声称 `operational`、真实 canary 或 live routing passed。
+
 > **For Hermes:** 使用 `continuous-plan-orchestration`、`parallel-development-convergence` 与 `test-driven-development`，按本计划逐项执行；普通阶段边界是检查点，不是等待用户再次说“继续”的停止点。
 
 **Goal:** 在不复制 Hermes Kanban、dispatcher、凭据系统或 workspace 引擎的前提下，把 AgentPorter 从“Profile 已安装、可作为 assignee”提升为“Worker 推理已验证、任务路由可回到原 Telegram 会话、主代理能依据真实运行证据自动接续、暂停恢复和并发文件所有权可验证”的稳定工作组。
 
 **Architecture:** 保留一次性安装器与独立卸载器；新增的运行能力属于专用 AgentPorter orchestrator Profile 的薄控制面。安装仍保持零模型调用，运行激活在用户显式授权后执行真实、最小、无业务副作用的模型探针；任务、run、heartbeat、PID、通知订阅和 workspace 继续以 Hermes 原生 Kanban/Gateway 为权威。AgentPorter 只增加领域合同、写入前验证、只读聚合和安全操作编排，不新建任务数据库、dispatcher、常驻 daemon 或通用 CLI 命令体系。
 
-**Current status:** Phase A capability evidence is frozen. Phase B readiness contract and Phase C delegation contract are implemented with focused offline tests passing; runtime probe, Kanban dispatch, runtime observation, lifecycle control, orchestrator integration, and real-model acceptance remain unimplemented and must not be described as delivered.
+**Current status:** Superseded by Plan 04 Phase A–F implementation. Runtime probe, dispatch planning/runtime, observation, activation lifecycle, and orchestrator integration now exist and pass offline contracts. Hermes v0.20 still returns `probe-unsupported` and `mutation-unsupported` before model/Kanban adapter calls, so real-model and live routing acceptance remain unperformed.
 
 ---
 

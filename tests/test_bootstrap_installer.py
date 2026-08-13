@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "install.sh"
-VERSION = "0.1.3"
+VERSION = "0.1.4"
 WHEEL_NAME = f"agentporter-{VERSION}-py3-none-any.whl"
 
 
@@ -68,7 +68,7 @@ if [ "${1-}" = '-m' ] && [ "${2-}" = 'pip' ]; then
   case " $* " in
     *' --force-reinstall '*)
       venv_bin=$(dirname "$0")
-      for entry in agentporter agentporter-uninstall; do
+      for entry in agentporter agentporter-activate agentporter-uninstall; do
         body=$(sed -n '2,$p' "$venv_bin/$entry")
         printf '#!%s/python\n%s\n' "$venv_bin" "$body" > "$venv_bin/$entry"
         chmod +x "$venv_bin/$entry"
@@ -92,6 +92,11 @@ Path(os.environ["CALL_LOG"]).open("a", encoding="utf-8").write("agentporter \\n"
 raise SystemExit(int(os.environ.get("AGENTPORTER_EXIT_CODE", "0")))
 EOF
   chmod +x "$3/bin/agentporter"
+  printf '#!%s/bin/python\n' "$3" > "$3/bin/agentporter-activate"
+  cat >> "$3/bin/agentporter-activate" <<'EOF'
+raise SystemExit(0)
+EOF
+  chmod +x "$3/bin/agentporter-activate"
   printf '#!%s/bin/python\n' "$3" > "$3/bin/agentporter-uninstall"
   cat >> "$3/bin/agentporter-uninstall" <<'EOF'
 raise SystemExit(0)
@@ -170,7 +175,7 @@ def test_bootstrap_downloads_verifies_installs_and_runs(tmp_path: Path) -> None:
     assert all("--retry-delay 2" in line for line in curl_argv)
     assert all("--retry-all-errors" not in line for line in curl_argv)
     assert "agentporter \n" in calls
-    for entry in ("agentporter", "agentporter-uninstall"):
+    for entry in ("agentporter", "agentporter-activate", "agentporter-uninstall"):
         shebang = (
             (install_root / "venv" / "bin" / entry).read_text(encoding="utf-8").splitlines()[0]
         )

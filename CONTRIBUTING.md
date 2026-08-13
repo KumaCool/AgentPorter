@@ -1,6 +1,6 @@
 # Contributing to AgentPorter
 
-AgentPorter v0.1.0 implements the fail-closed Profile installation foundation; the product roadmap now continues with Hermes-native multi-agent orchestration and task routing. Contributions must preserve the one-shot installation and independent uninstall safety contracts while keeping new orchestration work inside the approved Plan 02 boundaries.
+AgentPorter 0.1.4 is a local release candidate for the fail-closed three-Profile lifecycle plus offline activation, dispatch, receipt, and continuity contracts. Contributions must preserve one-shot installation, worker-only activation, independent uninstall, and the Hermes v0.20 `probe-unsupported` / `mutation-unsupported` zero-call boundaries in Plan 04.
 
 ## Before you start
 
@@ -32,13 +32,15 @@ python -m pytest \
   --ignore=tests/test_phase3_real_hermes.py \
   --ignore=tests/test_phase4_real_hermes.py \
   --ignore=tests/test_phase5_formal_acceptance.py \
-  --ignore=tests/test_phase5_stress_acceptance.py
+  --ignore=tests/test_phase5_stress_acceptance.py \
+  --ignore=tests/test_phase7_real_hermes_orchestration.py \
+  --ignore=tests/test_phase8_authorized_live_probe.py
 python -m build
 ```
 
 The multiline `pytest` form above is for POSIX shells. The default GitHub Actions matrix runs the complete portable offline suite and package/release contracts on Linux and macOS with Python 3.11–3.13. Windows runs format, lint, Linux-targeted strict typing, and distribution builds; it does not claim native execution of descriptor-bound POSIX lifecycle or archive-mode contracts. The resource-backed Phase 5 stress suite is Linux-only and remains covered by the Linux release gate.
 
-Real-Hermes tests are deliberately separate because they need a known Hermes executable at `/usr/local/lib/hermes-agent/venv/bin/hermes`. A maintainer may run the manual **Real Hermes acceptance** workflow with the observed Hermes version. These tests make no model calls and require no provider credentials; do not add credentials to that workflow.
+Real-Hermes tests are deliberately separate because they need a known Hermes executable at `/usr/local/lib/hermes-agent/venv/bin/hermes`. A maintainer may run the manual **Real Hermes acceptance** workflow with the observed Hermes version. These static/lifecycle tests make no model calls and require no provider credentials; do not add credentials to that workflow. The separately authorized live probe remains unsupported on Hermes v0.20 and must not be made green by using an ordinary one-shot. Kanban mutation acceptance is likewise unsupported and must make zero adapter calls.
 
 After packaging is reconciled, build into an empty temporary directory and run `scripts/verify_release.py` with the exact package version, dependency, entry-point, and resource contract documented by the release commit. Do not weaken the verifier to make an unexpected artifact pass.
 

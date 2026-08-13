@@ -57,6 +57,7 @@ class ReleaseContract:
     dependencies: frozenset[str]
     entry_points: Mapping[str, str]
     resources: frozenset[str]
+    required_modules: frozenset[str] = frozenset()
 
 
 def _canonical_requirement(value: str) -> str:
@@ -173,6 +174,11 @@ def _wheel_errors(path: Path, contract: ReleaseContract) -> list[str]:
         expected_package = expected_modules | set(contract.resources)
         if package_files != expected_package:
             errors.append(f"{path.name}: package content mismatch")
+        missing_modules = contract.required_modules - package_files
+        if missing_modules:
+            errors.append(
+                f"{path.name}: missing required runtime modules: {sorted(missing_modules)}"
+            )
         unexpected_metadata = {
             name.removeprefix(f"{dist_info}/") for name in names if name.startswith(f"{dist_info}/")
         } - _METADATA_ALLOWLIST
@@ -236,6 +242,14 @@ def _sdist_errors(path: Path, contract: ReleaseContract) -> list[str]:
         }
         if actual_package != expected_package:
             errors.append(f"{path.name}: source package content mismatch")
+        required_modules = {
+            f"src/{contract.package}/{module}" for module in contract.required_modules
+        }
+        missing_modules = required_modules - actual_package
+        if missing_modules:
+            errors.append(
+                f"{path.name}: missing required source runtime modules: {sorted(missing_modules)}"
+            )
         pkg_info = archive.extractfile(f"{expected_root}/PKG-INFO")
         if pkg_info is not None:
             errors.extend(
@@ -339,6 +353,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--dependency", action="append", default=[])
     parser.add_argument("--entry-point", action="append", default=[])
     parser.add_argument("--resource", action="append", default=[])
+    parser.add_argument("--required-module", action="append", default=[])
     parser.add_argument("--bootstrap-checksum", type=Path)
     return parser
 
@@ -357,6 +372,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         dependencies=frozenset(args.dependency),
         entry_points=entries,
         resources=frozenset(args.resource),
+        required_modules=frozenset(args.required_module),
     )
     errors = verify_release(contract, args.artifacts)
     if args.bootstrap_checksum is not None:

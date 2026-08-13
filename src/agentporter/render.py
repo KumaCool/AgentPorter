@@ -19,7 +19,7 @@ ORCHESTRATOR_CONFIG = {
     "auto_subscribe_on_create": True,
 }
 
-DISTRIBUTION_VERSION = "0.1.3"
+DISTRIBUTION_VERSION = "0.1.4"
 DISTRIBUTION_OWNED = ("SOUL.md", "config.yaml", "agentporter-profile.json")
 
 

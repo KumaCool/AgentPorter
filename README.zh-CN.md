@@ -4,7 +4,7 @@
 
 AgentPorter 是一个开源的 [Hermes Agent](https://hermes-agent.nousresearch.com/) 多代理工作组部署方案：一次安装多个职责明确的 Worker Profile，并逐步接通 Hermes 原生 Kanban 的任务分解与合理路由。
 
-> **当前能力：** v0.1.3 已安全交付双 Profile 安装/卸载基础，并写入 routing description；Hermes 能只读枚举两个 assignee。但 AgentPorter 尚未配置或验收自动分解、dispatcher 执行和真实 Worker 路由。这是下一阶段计划，不是当前发布能力。
+> **0.1.4 发布候选：** AgentPorter 已具备一个三 Profile 集合（两个 Worker + 专用 orchestrator）的安装、升级、读回、改名与卸载，以及离线验证的激活、派发、收据和接续合同。Hermes v0.20 无法证明要求的无工具/无 fallback 探针与 revision-safe Kanban mutation seam，因此正式路径会在调用适配器前返回 `probe-unsupported` / `mutation-unsupported`：零模型调用、零 Kanban mutation 调用。本候选未发布，不声称 `operational` 或真实路由验收通过。
 
 ## curl 一键安装（POSIX）
 
@@ -31,12 +31,13 @@ agentporter-uninstall
 
 卸载会删除 AgentPorter 安装的 Worker Profile 及其中的本地数据和后续自定义；确认前请先备份。Profile 删除成功（或已不存在）后，通过发布版引导脚本安装的卸载器还会删除自身的精确公开入口和对应版本私有 Python 环境。从可信源码检出运行的 `python uninstall.py` 只删除 Profile，绝不删除源码仓库或其虚拟环境。检查后执行方式、PATH、信任边界与完整卸载说明见[安装指南](docs/04-installation-and-troubleshooting.zh-CN.md)。
 
-## v0.1.3 安装内容
+## v0.1.4 安装内容
 
-一次运行会安装仓库当前的双 Profile Worker 基础：
+一次运行会安装当前三 Profile 基础：
 
 - `luna_worker`：在父 Agent 已明确目标、范围、约束和验收标准后，执行有边界的实现与分析任务；
-- `codex-5-3-small-worker`：负责范围更窄、严格机械化的委派任务。
+- `codex-5-3-small-worker`：仅接受更窄、严格机械化的委派；
+- `agentporter-orchestrator`：专用 Kanban 控制面 owner，不执行实现任务。
 
 每个 Profile 都包含 Hermes 原生配置、指令、路由描述以及一个非秘密的所有权标记。AgentPorter 组合 Hermes 原生能力，不替代 Profile 存储、Kanban 任务库、decomposer、dispatcher、worktree 或供应商配置。
 
@@ -50,6 +51,23 @@ agentporter-uninstall
 - [多代理编排与路由实施计划](docs/plan/02-multi-agent-orchestration.md)
 
 在该计划通过真实验收前，请使用 Hermes 原生 Kanban 手动指定任务；不要把 Profile 安装或 description 读回当作自动路由已经可用。
+
+
+## 运行状态矩阵
+
+| 维度 | 0.1.4 候选状态 |
+|---|---|
+| installation | fresh 三 Profile 与 legacy 双→三 Profile 的安装/升级/读回/改名/卸载已通过离线及隔离 Hermes v0.20 验证。 |
+| binding | `agentporter-activate` 事务已离线验证；仅绑定两个 Worker，保留 orchestrator 与用户并发漂移。 |
+| credential | 必须由操作者授权并由 Hermes/用户持有；AgentPorter 不复制、不读取秘密值。 |
+| canary | Hermes v0.20 返回 `probe-unsupported`，零模型调用，未达到 `runtime-ready`。 |
+| dispatcher | 专用 orchestrator 静态配置已读回；不启动 Gateway，未做真实 dispatcher 验收。 |
+| route | Hermes v0.20 在适配器调用前返回 `mutation-unsupported`，零 Kanban mutation 调用。 |
+| continuity | DispatchReceipt、任务订阅、运行观察与结构性恢复仅通过离线合同；不声称真实通知或接续。 |
+
+`hermes config check` 只做静态解析/配置检查，不是 canary 或 runtime readiness 证据。安装后可交互运行 `agentporter-activate`：它发现唯一完整集合、取得 typed snapshot、接收不回显私有 endpoint 的非秘密绑定选择、一次预览确认、精确写入/读回，然后协商安全 probe seam。失败时只恢复仍等于本事务写入值的键（compare-before-restore），保留用户并发漂移、Profile 与凭据，报告有界 residue，并继续要求 canary。
+
+尚无任务时 `notify-list` 为空是正常状态。正式任务创建后必须精确读回 task/subscription 并生成安全 `DispatchReceipt`，才能解锁 dispatch；当前 v0.20 无法满足 mutation 合同，因此正式路径不会建卡。
 
 ## 安全边界
 

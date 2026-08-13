@@ -91,6 +91,34 @@ def _contract(repo: Path) -> ReleaseContract:
     )
 
 
+def test_phase_f_contract_requires_activation_dispatch_and_observation_modules() -> None:
+    repository = Path(__file__).parents[1]
+    expected = {
+        "activation_application.py",
+        "activation_entry.py",
+        "dispatch_application.py",
+        "dispatch_planning.py",
+        "kanban_runtime.py",
+        "runtime_observation.py",
+        "runtime_probe.py",
+    }
+
+    assert expected <= {path.name for path in (repository / "src" / "agentporter").glob("*.py")}
+    project = (repository / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'agentporter-activate = "agentporter.activation_entry:main"' in project
+
+
+def test_rejects_missing_explicit_phase_f_runtime_module(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    wheel, sdist = _artifacts(repo)
+    contract = replace(_contract(repo), required_modules=frozenset({"activation_entry.py"}))
+
+    errors = verify_release(contract, [wheel, sdist])
+
+    assert any("missing required runtime modules" in error for error in errors)
+    assert any("missing required source runtime modules" in error for error in errors)
+
+
 def test_accepts_complete_wheel_sdist_and_public_repository(tmp_path: Path) -> None:
     repo = _repository(tmp_path)
     wheel, sdist = _artifacts(repo)

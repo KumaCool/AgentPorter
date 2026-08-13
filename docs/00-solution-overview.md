@@ -1,5 +1,19 @@
 # AgentPorter 方案总览
 
+## 0. 0.1.4 发布候选状态（Phase F）
+
+| 维度 | 当前证据状态 |
+|---|---|
+| installation | fresh 三 Profile 与 legacy 双 Worker → 三 Profile 的安装、升级、读回、改名、卸载已通过离线及隔离 Hermes v0.20 验证。 |
+| binding | `agentporter-activate` 的 snapshot/确认/精确写入读回/compare-before-restore 事务已离线通过；只作用两个 Worker。 |
+| credential | 由操作者授权并由 Hermes/用户持有；AgentPorter 不读取、复制或持久化秘密。 |
+| canary | v0.20 为 `probe-unsupported`，在模型适配调用前关闭，零模型调用；未达到 runtime-ready。 |
+| dispatcher | 专用 orchestrator 配置静态读回通过；未启动 Gateway，未验收 live dispatcher。 |
+| route | v0.20 为 `mutation-unsupported`，在 Kanban adapter 调用前关闭，零 Kanban mutation 调用。 |
+| continuity | DispatchReceipt、任务级订阅、运行观察、结构性恢复合同仅离线通过；未验收真实投递/接续。 |
+
+`hermes config check` 仅证明静态配置可解析。无任务时 `notify-list == []` 正常；只有正式任务创建后，精确 task/subscription 读回与安全 `DispatchReceipt` 才是解锁 dispatch 的必要条件。本候选未发布、未 tag、未 push，不声称 `operational`、真实 canary 或 live routing passed。
+
 ## 1. 产品定位
 
 AgentPorter 的核心产品是 **Hermes 多代理工作组的一键部署与任务路由方案**：把一组职责明确、能力边界不同的 Worker Profile 作为一个可移植工作组安装到 Hermes，并依托 Hermes 原生 Profile description、Kanban、decomposer、dispatcher 与 workspace，把任务分解、路由和执行到合适的 Worker。
@@ -8,10 +22,10 @@ AgentPorter 的核心产品是 **Hermes 多代理工作组的一键部署与任�
 
 当前状态分层如下：
 
-- **已发布基础层（v0.1.0）：** 一次启动安装两个 Worker Profile，完成集合预检、确认、原生安装、静态读回、有限失败补偿和名称无关卸载；
-- **已静态接通：** 两个 Profile 具有职责指令和 routing description，Hermes Kanban 可枚举其 assignee；
-- **尚未实现/验收：** 面向“提交一个任务后自动分解并合理分配”的工作组编排配置、正式任务入口、真实 dispatcher 运行、Worker 行为与路由验收；
-- **下一权威交付：** [多代理编排与路由实施计划](plan/02-multi-agent-orchestration.md)。
+- **已发布版本（v0.1.3）：** 双 Worker 安装基础与完整自清理卸载。
+- **0.1.4 本地发布候选：** 三 Profile 生命周期、双 Worker 激活事务、离线 probe/dispatch/receipt/continuity 合同已实现。
+- **仍不受支持：** Hermes v0.20 真实安全 probe 与 revision-safe Kanban mutation；因此真实 dispatcher、路由、通知与接续均未验收。
+- **权威收口：** [Plan 04](plan/04-runtime-readiness-closure-implementation.md)。
 
 首个工作组当前包含：
 
@@ -115,5 +129,5 @@ AgentPorter 负责定义和部署工作组、配置专用 orchestrator 控制面
 - [Hermes Adapter 方案](02-platform-adapters.md)：Hermes Profile、Kanban、decomposer、dispatcher 与 workspace 的原生映射；
 - [安装、卸载与验收设计](03-installation-and-uninstall-design.md)：工作组组件安装事务、身份、补偿与卸载的权威设计；
 - [安装基础实施记录](plan/01-installation-foundation.md)：v0.1.0 已交付安装/卸载基础；
-- [多代理编排与路由实施计划](plan/02-multi-agent-orchestration.md)：下一阶段产品主线；
+- [多代理编排与路由实施计划](plan/02-multi-agent-orchestration.md)：历史设计与当前离线合同；最终状态以 [Plan 04](plan/04-runtime-readiness-closure-implementation.md) 为准；
 - [Worker 验证与基准计划](plan/03-agent-validation-and-benchmark.md)：编排接通后的真实代理质量、性能、成本和稳定性评测。

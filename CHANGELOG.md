@@ -4,6 +4,24 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-08-13
+
+### Added
+
+- Added a dedicated orchestrator Profile, a worker-only `agentporter-activate` entry point, non-secret runtime-binding receipts, fail-closed probe negotiation, dispatch planning/runtime receipts, and runtime observation/structural-continuity contracts.
+- Added verified fresh three-Profile and legacy two-to-three-Profile lifecycle support while preserving existing Worker markers, instance-owned configuration, credentials, and concurrent drift.
+
+### Changed
+
+- Package and release contracts now include activation, dispatch, Kanban runtime, probe, and observation modules plus the activation console entry.
+- Documentation now reports installation, binding, credential, canary, dispatcher, route, and continuity independently; `config check` is static-only and an empty `notify-list` is normal before task creation.
+
+### Security
+
+- Hermes v0.20 probe capability is `probe-unsupported` and performs zero model calls because no public seam proves both zero tool calls and disabled fallback.
+- Hermes v0.20 Kanban capability is `mutation-unsupported` and performs zero mutation calls because delivery-metadata write and board-revision CAS contracts are unavailable. No live canary, Gateway change, credential use, task creation, or routing acceptance was performed for this candidate.
+
+
 ## [0.1.3] - 2026-08-13
 
 ### Changed
@@ -45,7 +63,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 First supported public release.
 
-[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/KumaCool/AgentPorter/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/KumaCool/AgentPorter/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/KumaCool/AgentPorter/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/KumaCool/AgentPorter/compare/v0.1.0...v0.1.1

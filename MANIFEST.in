@@ -2,6 +2,13 @@ include LICENSE
 include README.md
 include pyproject.toml
 recursive-include src/agentporter *.py
+include src/agentporter/activation_application.py
+include src/agentporter/activation_entry.py
+include src/agentporter/dispatch_application.py
+include src/agentporter/dispatch_planning.py
+include src/agentporter/kanban_runtime.py
+include src/agentporter/runtime_observation.py
+include src/agentporter/runtime_probe.py
 recursive-include src/agentporter/resources *.yaml
 prune tests
 global-exclude __pycache__ *.py[cod]

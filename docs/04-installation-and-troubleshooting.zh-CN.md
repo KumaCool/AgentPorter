@@ -2,7 +2,7 @@
 
 [English](04-installation-and-troubleshooting.md) | 简体中文
 
-AgentPorter v0.1.3 是 Hermes 多代理工作组一次性安装基础的当前受支持修复版本。仓库已经具备离线契约测试，并在隔离环境中对 Hermes v0.20.0 做过真实验收；这个版本只是**已观察版本**，不是承诺的最低版本或通用兼容范围。
+AgentPorter v0.1.4 是 Hermes 多代理工作组一次性安装基础的当前受支持修复版本。仓库已经具备离线契约测试，并在隔离环境中对 Hermes v0.20.0 做过真实验收；这个版本只是**已观察版本**，不是承诺的最低版本或通用兼容范围。
 
 ## curl 一键安装（POSIX）
 
@@ -28,13 +28,13 @@ Linux 的真实 Hermes 验收证据最强。macOS 和 Windows 纳入离线 CI �
 
 ## 从发布制品安装
 
-如需手动安装已下载的 v0.1.3 wheel，请先验证发布校验和并建立隔离环境：
+如需手动安装已下载的 v0.1.4 wheel，请先验证发布校验和并建立隔离环境：
 
 ```bash
 python -m venv .venv
 # POSIX: source .venv/bin/activate
 # Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install agentporter-0.1.3-py3-none-any.whl
+python -m pip install agentporter-0.1.4-py3-none-any.whl
 agentporter
 ```
 
@@ -57,7 +57,7 @@ python install.py
 
 终端状态会区分：成功、取消、预检失败、安装失败且补偿完成、补偿不完整、回读失败。只有明确成功结果才表示安装成功；不能根据部分 Profile 目录存在就推断成功。
 
-AgentPorter v0.1.3 安装两个专用 Worker Profile。它不会覆盖现有 Profile、复制供应商凭据、调用模型、安装常驻服务或创建任务数据库。Profile 内凭据和其他运行数据仍由 Hermes 与用户管理。
+AgentPorter v0.1.4 安装两个专用 Worker Profile。它不会覆盖现有 Profile、复制供应商凭据、调用模型、安装常驻服务或创建任务数据库。Profile 内凭据和其他运行数据仍由 Hermes 与用户管理。
 
 当前版本**不会**配置自动分解、启动 gateway dispatcher、创建 Kanban 任务或证明真实任务路由。上述能力由[多代理编排与路由计划](plan/02-multi-agent-orchestration.md)负责。
 
@@ -74,6 +74,20 @@ agentporter-uninstall
 如明确从可信源码检出运行，则改用 `python uninstall.py`。源码运行只删除 Profile，不删除源码仓库或其虚拟环境。
 
 如果发现缺失、不完整、重复、冲突、标记损坏、确认后变化、符号链接或路径逃逸，卸载器会停止且不会扩大范围。单项删除失败可能造成部分完成；不要手工递归删除未知目录。确认前先备份需要的 Profile 本地数据。
+
+## Runtime readiness 与编排状态
+
+| 维度 | 0.1.4 候选状态 |
+|---|---|
+| installation | fresh 三 Profile 与 legacy 双→三升级/读回/改名/卸载已通过离线和隔离 Hermes v0.20 fixture。 |
+| binding | 运行 `agentporter-activate`；事务会 snapshot、确认、写入、读回，并只 compare-before-restore 本事务所有值。 |
+| credential | 由操作者授权、Hermes/用户持有；AgentPorter 不读取或复制秘密值。 |
+| canary | v0.20 为 `probe-unsupported`，零模型调用；`config check` 仍仅是静态检查。 |
+| dispatcher | 专用 orchestrator 配置通过静态读回；不启动 Gateway。 |
+| route | 适配器调用前 `mutation-unsupported`，零 Kanban mutation 调用。 |
+| continuity | DispatchReceipt/订阅/观察/结构性恢复仅通过离线合同，未做真实验收。 |
+
+激活失败会保留 Profile 与凭据所有权；未漂移的事务写入被恢复，并发漂移保留并以有界 residue 报告。无任务时 `notify-list` 为空正常；正式任务创建后，必须先精确读回任务级订阅并生成安全 `DispatchReceipt` 才能解锁 dispatch，当前 v0.20 尚无所需 mutation seam。
 
 ## 故障排查
 
@@ -101,12 +115,20 @@ agentporter-uninstall
 
    ```bash
    python scripts/verify_release.py \
-     --version 0.1.3 \
+     --version 0.1.4 \
      --dependency 'pydantic<3,>=2' \
      --dependency 'PyYAML<7,>=6' \
      --entry-point 'agentporter=agentporter:main' \
+     --entry-point 'agentporter-activate=agentporter.activation_entry:main' \
      --entry-point 'agentporter-uninstall=agentporter.uninstall_entry:main' \
      --resource 'resources/workers.yaml' \
+     --required-module activation_application.py \
+     --required-module activation_entry.py \
+     --required-module dispatch_application.py \
+     --required-module dispatch_planning.py \
+     --required-module kanban_runtime.py \
+     --required-module runtime_observation.py \
+     --required-module runtime_probe.py \
      --bootstrap-checksum <wheel>.sha256 \
      <wheel> <sdist>
    ```
@@ -114,4 +136,4 @@ agentporter-uninstall
 6. 上传前检查校验和、提交身份、标签、变更日志、许可证、README 与验证器输出；只发布已经验证的同一字节序列。
 7. 下载托管制品，重新计算校验和并重跑验证。仅有标签或上传成功不构成验收。
 
-示例资源路径是 v0.1.3 发布契约。托管发布验收还会下载全部公开制品、重新计算校验和、重跑验证器，并检查公开的 `latest/download/install.sh` 端点。
+示例资源路径是 v0.1.4 发布契约。托管发布验收还会下载全部公开制品、重新计算校验和、重跑验证器，并检查公开的 `latest/download/install.sh` 端点。
