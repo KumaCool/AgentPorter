@@ -41,7 +41,26 @@ def test_isolated_hermes_v020_public_cli_shape_is_restricted_without_real_call(
         )
         return CompletedProcess(argv, 0, f"AGENTPORTER_READY:{nonce}\n", "")
 
-    adapter = HermesRuntime(hermes, command_runner=runner)
+    def process_factory(argv: tuple[str, ...], **_kwargs: object) -> object:
+        class Process:
+            pid = 1
+            returncode = 0
+
+            def communicate(
+                self, input: str | None = None, timeout: float | None = None
+            ) -> tuple[str, str]:
+                del input, timeout
+                result = runner(argv)
+                self.returncode = result.returncode
+                return result.stdout, result.stderr
+
+        return Process()
+
+    adapter = HermesRuntime(
+        hermes,
+        command_runner=runner,
+        process_factory=process_factory,  # type: ignore[arg-type]
+    )
     assert (
         adapter.auth_status("worker", "fake-provider", source_env={"HOME": str(home)})
         == "logged-out"

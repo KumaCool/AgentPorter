@@ -22,6 +22,8 @@ from email.message import Message
 from pathlib import Path, PurePosixPath
 from typing import cast
 
+import yaml
+
 _METADATA_ALLOWLIST = {
     "METADATA",
     "WHEEL",
@@ -127,15 +129,20 @@ def _duplicate_errors(names: Sequence[str], label: str) -> list[str]:
 
 
 def _contains_structured_secret(data: object) -> bool:
-    if isinstance(data, dict):
-        mapping = cast(dict[object, object], data)
+    if isinstance(data, Mapping):
+        mapping = cast(Mapping[object, object], data)
         return any(
-            (isinstance(key, str) and key.casefold() in _STRUCTURED_SECRET_KEYS)
+            (
+                isinstance(key, str)
+                and key.casefold() in _STRUCTURED_SECRET_KEYS
+                and isinstance(value, str)
+                and re.fullmatch(r"[A-Za-z0-9_./+\-=]{16,}", value.strip()) is not None
+            )
             or _contains_structured_secret(value)
             for key, value in mapping.items()
         )
-    if isinstance(data, list):
-        return any(_contains_structured_secret(value) for value in cast(list[object], data))
+    if isinstance(data, Sequence) and not isinstance(data, (str, bytes, bytearray)):
+        return any(_contains_structured_secret(value) for value in cast(Sequence[object], data))
     return False
 
 
@@ -144,6 +151,9 @@ def _contains_secret_text(text: str, name: str) -> bool:
     if name.casefold().endswith(".json"):
         with contextlib.suppress(json.JSONDecodeError):
             structured_secret = _contains_structured_secret(json.loads(text))
+    elif name.casefold().endswith((".yaml", ".yml")):
+        with contextlib.suppress(yaml.YAMLError):
+            structured_secret = _contains_structured_secret(yaml.safe_load(text))
     return bool(_SECRET_ASSIGNMENT.search(text) or _TOKEN_LITERAL.search(text) or structured_secret)
 
 

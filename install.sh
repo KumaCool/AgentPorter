@@ -58,23 +58,28 @@ try:
     if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid != os.getuid() or info.st_size > 16384: reject()
     data = json.loads(journal.read_bytes())
 except (OSError, ValueError, TypeError): reject()
-if set(data) != {"schema_version", "from", "to", "state", "old_root", "old_receipt", "old_uninstaller", "entries"}: reject()
+if set(data) != {"schema_version", "from", "to", "state", "old_root", "old_receipt", "old_uninstaller", "new_root", "new_receipt", "entries"}: reject()
 if data["schema_version"] != 2 or data["from"] != "0.1.4" or data["to"] != "0.1.5" or data["state"] not in states: reject()
-for key in ("old_root", "old_receipt", "old_uninstaller"):
+for key in ("old_root", "old_receipt", "old_uninstaller", "new_root", "new_receipt"):
     if not isinstance(data[key], dict) or not {"device", "inode", "type", "target"} <= set(data[key]): reject()
-if not isinstance(data["old_receipt"].get("sha256"), str): reject()
+if not isinstance(data["old_receipt"].get("sha256"), str) or not isinstance(data["old_uninstaller"].get("sha256"), str) or not isinstance(data["new_receipt"].get("sha256"), (str, type(None))): reject()
 entries = data["entries"]
 if not isinstance(entries, list) or [item.get("name") for item in entries if isinstance(item, dict)] != list(names): reject()
 if any(set(item) != {"name", "device", "inode", "type", "target"} for item in entries): reject()
 committed = data["state"] in {"RECEIPT_V2_COMMITTED", "OLD_014_QUARANTINED"}
+quarantine_removed = data["state"] == "OLD_014_QUARANTINED" and not quarantine.exists()
 legacy = quarantine if committed and quarantine.exists() else old_root
 receipt = legacy / "bootstrap-install.json"
 uninstaller = legacy / "venv/bin/agentporter-uninstall"
-if not sealed_matches(legacy, data["old_root"]) or not sealed_matches(receipt, data["old_receipt"]): reject()
-try:
-    if __import__("hash" + "lib").sha256(receipt.read_bytes()).hexdigest() != data["old_receipt"]["sha256"]: reject()
-except OSError: reject()
-if not sealed_matches(uninstaller, data["old_uninstaller"]): reject()
+if not quarantine_removed:
+    if not sealed_matches(legacy, data["old_root"]) or not sealed_matches(receipt, data["old_receipt"]): reject()
+    try:
+        if __import__("hash" + "lib").sha256(receipt.read_bytes()).hexdigest() != data["old_receipt"]["sha256"]: reject()
+    except OSError: reject()
+    if not sealed_matches(uninstaller, data["old_uninstaller"]): reject()
+    try:
+        if __import__("hash" + "lib").sha256(uninstaller.read_bytes()).hexdigest() != data["old_uninstaller"]["sha256"]: reject()
+    except OSError: reject()
 expected = {name: install_root / "venv/bin" / name for name in names}
 for item in entries:
     public = bin_home / item["name"]
@@ -85,16 +90,19 @@ for item in entries:
 receipt2 = install_root / "bootstrap-install.json"
 install_present = install_root.exists() or install_root.is_symlink()
 if install_present:
+    if not sealed_matches(install_root, data["new_root"]) or not sealed_matches(receipt2, data["new_receipt"]): reject()
     try:
-        installed = json.loads(receipt2.read_bytes())
+        receipt2_bytes = receipt2.read_bytes()
+        installed = json.loads(receipt2_bytes)
     except (OSError, ValueError, TypeError): reject()
+    if __import__("hash" + "lib").sha256(receipt2_bytes).hexdigest() != data["new_receipt"]["sha256"]: reject()
     if installed != {"schema_version": 2, "product": "agentporter", "version": "0.1.5", "public_entries": [str(bin_home / name) for name in names]}: reject()
     if not install_root.is_dir() or install_root.is_symlink(): reject()
 if committed and not install_present: reject()
 if committed:
     if any(observed(bin_home / name)["target"] != str(expected[name]) for name in names): reject()
-    if legacy != quarantine or old_root.exists(): reject()
-    shutil.rmtree(quarantine)
+    if old_root.exists() or (data["state"] == "RECEIPT_V2_COMMITTED" and legacy != quarantine): reject()
+    if quarantine.exists(): shutil.rmtree(quarantine)
     journal.unlink()
     print("completed")
 else:
@@ -110,8 +118,7 @@ else:
     if install_present: shutil.rmtree(install_root)
     journal.unlink()
     print("recovered")' \
-            "$JOURNAL" "$OLD_ROOT" "$OLD_QUARANTINE" "$INSTALL_ROOT" "$BIN_HOME" \
-            2>/dev/null
+            "$JOURNAL" "$OLD_ROOT" "$OLD_QUARANTINE" "$INSTALL_ROOT" "$BIN_HOME"
     ) || fail 'partial/mixed interrupted upgrade; residue retained'
     case "$recovery" in
         completed)
@@ -166,7 +173,7 @@ journal_state() {
     [ "$UPGRADE" -eq 1 ] || return 0
     tmp=${JOURNAL}.tmp.$$
     "$PYTHON" -c 'import json, os, pathlib, stat, sys
-out, journal, state, old_root, old_receipt, old_uninstaller, bin_home, install_root = sys.argv[1:]
+out, journal, state, old_root, old_receipt, old_uninstaller, bin_home, install_root, staging = sys.argv[1:]
 def seal(path, target=None):
     try: value = os.lstat(path)
     except OSError: return {"device": None, "inode": None, "type": "absent", "target": target}
@@ -175,6 +182,9 @@ def seal(path, target=None):
 receipt = seal(old_receipt)
 try: receipt["sha256"] = __import__("hash"+"lib").sha256(pathlib.Path(old_receipt).read_bytes()).hexdigest()
 except OSError: receipt["sha256"] = None
+uninstaller = seal(old_uninstaller)
+try: uninstaller["sha256"] = __import__("hash"+"lib").sha256(pathlib.Path(old_uninstaller).read_bytes()).hexdigest()
+except OSError: uninstaller["sha256"] = None
 entries = []
 for name in ("agentporter", "agentporter-activate", "agentporter-uninstall"):
     expected = str(pathlib.Path(install_root) / "venv" / "bin" / name)
@@ -182,14 +192,23 @@ for name in ("agentporter", "agentporter-activate", "agentporter-uninstall"):
 previous = {}
 try: previous = json.loads(pathlib.Path(journal).read_text(encoding="utf-8"))
 except (OSError, ValueError): pass
+new_authority = pathlib.Path(install_root)
+if not new_authority.exists() and staging: new_authority = pathlib.Path(staging)
+new_root = seal(new_authority)
+new_receipt = seal(str(new_authority / "bootstrap-install.json"))
+try: new_receipt["sha256"] = __import__("hash"+"lib").sha256((new_authority / "bootstrap-install.json").read_bytes()).hexdigest()
+except OSError: new_receipt["sha256"] = None
+if previous.get("new_root", {}).get("type") not in (None, "absent"): new_root = previous["new_root"]
+if previous.get("new_receipt", {}).get("type") not in (None, "absent"): new_receipt = previous["new_receipt"]
 payload = {"schema_version": 2, "from": "0.1.4", "to": "0.1.5", "state": state,
            "old_root": previous.get("old_root", seal(old_root)),
            "old_receipt": previous.get("old_receipt", receipt),
-           "old_uninstaller": previous.get("old_uninstaller", seal(old_uninstaller)),
+           "old_uninstaller": previous.get("old_uninstaller", uninstaller),
+           "new_root": new_root, "new_receipt": new_receipt,
            "entries": entries}
 pathlib.Path(out).write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")' \
         "$tmp" "$JOURNAL" "$STATE" "$OLD_ROOT" "$OLD_RECEIPT" "$OLD_UNINSTALLER" \
-        "$BIN_HOME" "$INSTALL_ROOT"
+        "$BIN_HOME" "$INSTALL_ROOT" "$STAGING"
     chmod 600 "$tmp"
     mv "$tmp" "$JOURNAL"
     if [ "${AGENTPORTER_BOOTSTRAP_FAIL_AFTER_STATE:-}" = "$STATE" ]; then
@@ -398,6 +417,7 @@ path.chmod(0o600)' \
 journal_state RECEIPT_V2_STAGED
 mv "$STAGING" "$INSTALL_ROOT" || fail 'could not publish the verified installation'
 PUBLISHED=1
+journal_state RECEIPT_V2_STAGED
 fail_at after-install-root-rename
 journal_state AGENTPORTER_PUBLISHED
 VENV=${FINAL_VENV}

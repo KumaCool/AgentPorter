@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -60,9 +61,24 @@ case "${AGENTPORTER_TEST_INTERRUPT_AFTER_MOVE:-}:$destination" in
   install-root:*/0.1.5|old-quarantine:*/.0.1.4-upgrade-quarantine)
     kill -KILL "$PPID"
     ;;
+  quarantine-removed:*/.0.1.4-upgrade-quarantine)
+    if [ ! -e "$destination" ]; then kill -KILL "$PPID"; fi
+    ;;
   prepared:*/.0.1.5-upgrade-journal)
     if grep -q '"state": "PREPARED"' "$destination"; then kill -KILL "$PPID"; fi
     ;;
+esac
+""",
+    )
+    _write_executable(
+        tools / "rm",
+        """#!/bin/sh
+set -eu
+destination=''
+for argument in "$@"; do destination=$argument; done
+/bin/rm "$@"
+case "${AGENTPORTER_TEST_INTERRUPT_AFTER_REMOVE:-}:$destination" in
+  quarantine:*/.0.1.4-upgrade-quarantine) kill -KILL "$PPID" ;;
 esac
 """,
     )
@@ -468,6 +484,7 @@ def test_upgrade_journal_seals_authority_and_per_entry_objects(tmp_path: Path) -
     assert journal["old_root"]["type"] == "directory"
     assert journal["old_receipt"]["sha256"]
     assert journal["old_uninstaller"]["type"] == "file"
+    assert journal["old_uninstaller"]["sha256"]
     assert [item["name"] for item in journal["entries"]] == [
         "agentporter",
         "agentporter-activate",
@@ -555,6 +572,32 @@ def test_restart_safely_completes_committed_upgrade_interrupted_during_old_quara
     assert (tmp_path / "calls.log").read_text(encoding="utf-8").count("curl ") == calls_before
 
 
+def test_restart_safely_completes_committed_upgrade_after_quarantine_was_removed(
+    tmp_path: Path,
+) -> None:
+    old_root, _ = _seed_v1_upgrade(tmp_path)
+    checksum = hashlib.sha256(b"wheel-bytes").hexdigest()
+
+    interrupted = _run(
+        tmp_path,
+        checksum=checksum,
+        extra_env={"AGENTPORTER_TEST_INTERRUPT_AFTER_REMOVE": "quarantine"},
+    )
+
+    assert interrupted.returncode == -9
+    journal = tmp_path / "data" / "agentporter" / ".0.1.5-upgrade-journal"
+    assert json.loads(journal.read_text(encoding="utf-8"))["state"] == "OLD_014_QUARANTINED"
+    assert not old_root.exists()
+    assert not (tmp_path / "data" / "agentporter" / ".0.1.4-upgrade-quarantine").exists()
+
+    restarted = _run(tmp_path, checksum=checksum)
+
+    assert restarted.returncode == 0, restarted.stderr
+    assert "completed interrupted upgrade" in restarted.stderr
+    assert not journal.exists()
+    assert (tmp_path / "data" / "agentporter" / VERSION).is_dir()
+
+
 def test_restart_rejects_mixed_residue_without_changing_any_object(tmp_path: Path) -> None:
     old_root, old_public = _seed_v1_upgrade(tmp_path)
     checksum = hashlib.sha256(b"wheel-bytes").hexdigest()
@@ -581,3 +624,85 @@ def test_restart_rejects_mixed_residue_without_changing_any_object(tmp_path: Pat
     assert old_public.is_symlink()
     assert new_root.is_dir()
     assert journal.read_bytes() == journal_before
+
+
+def test_restart_does_not_delete_uncommitted_external_install_root_replacement(
+    tmp_path: Path,
+) -> None:
+    old_root, old_public = _seed_v1_upgrade(tmp_path)
+    checksum = hashlib.sha256(b"wheel-bytes").hexdigest()
+    interrupted = _run(
+        tmp_path,
+        checksum=checksum,
+        extra_env={"AGENTPORTER_TEST_INTERRUPT_AFTER_MOVE": "install-root"},
+    )
+    assert interrupted.returncode == -9
+    new_root = tmp_path / "data" / "agentporter" / VERSION
+    displaced = new_root.with_name("displaced-authorized-root")
+    new_root.rename(displaced)
+    shutil.copytree(displaced, new_root)
+    marker = new_root / "external-replacement"
+    marker.write_bytes(b"must survive")
+    journal = tmp_path / "data" / "agentporter" / ".0.1.5-upgrade-journal"
+    journal_before = journal.read_bytes()
+
+    restarted = _run(tmp_path, checksum=checksum)
+
+    assert restarted.returncode != 0
+    assert "partial/mixed interrupted upgrade" in restarted.stderr
+    assert marker.read_bytes() == b"must survive"
+    assert old_root.is_dir()
+    assert old_public.is_symlink()
+    assert journal.read_bytes() == journal_before
+
+
+@pytest.mark.parametrize(
+    "drift",
+    ["old-root", "old-receipt", "old-uninstaller", "public-entry", "new-root", "new-receipt"],
+)
+def test_restart_fails_closed_on_every_sealed_object_drift_without_writes(
+    tmp_path: Path, drift: str
+) -> None:
+    old_root, old_public = _seed_v1_upgrade(tmp_path)
+    checksum = hashlib.sha256(b"wheel-bytes").hexdigest()
+    interrupted = _run(
+        tmp_path,
+        checksum=checksum,
+        extra_env={"AGENTPORTER_TEST_INTERRUPT_AFTER_MOVE": "install-root"},
+    )
+    assert interrupted.returncode == -9
+    new_root = tmp_path / "data" / "agentporter" / VERSION
+    if drift == "old-root":
+        moved = old_root.with_name("moved-old-root")
+        old_root.rename(moved)
+        shutil.copytree(moved, old_root)
+    elif drift == "old-receipt":
+        old_root.joinpath("bootstrap-install.json").write_bytes(b"external receipt")
+    elif drift == "old-uninstaller":
+        old_root.joinpath("venv/bin/agentporter-uninstall").write_bytes(b"external uninstaller")
+    elif drift == "public-entry":
+        old_public.unlink()
+        old_public.write_bytes(b"external entry")
+    elif drift == "new-root":
+        moved = new_root.with_name("moved-new-root")
+        new_root.rename(moved)
+        shutil.copytree(moved, new_root)
+    else:
+        new_root.joinpath("bootstrap-install.json").write_bytes(b"external receipt")
+    journal = tmp_path / "data" / "agentporter" / ".0.1.5-upgrade-journal"
+    journal_before = journal.read_bytes()
+    watched = [old_root, old_public, new_root, journal]
+    before = {
+        path: (path.read_bytes() if path.is_file() and not path.is_symlink() else None)
+        for path in watched
+    }
+
+    restarted = _run(tmp_path, checksum=checksum)
+
+    assert restarted.returncode != 0
+    assert "partial/mixed interrupted upgrade" in restarted.stderr
+    assert journal.read_bytes() == journal_before
+    for path, content in before.items():
+        assert os.path.lexists(path)
+        if content is not None:
+            assert path.read_bytes() == content

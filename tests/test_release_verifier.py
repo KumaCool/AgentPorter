@@ -361,6 +361,59 @@ def test_rejects_structured_json_secret_fields(tmp_path: Path, secret_key: str) 
     assert f"repository: secret-like value in {relative}" in errors
 
 
+@pytest.mark.parametrize("suffix", ["json", "yaml"])
+@pytest.mark.parametrize("secret_key", ["token", "api_key", "password"])
+def test_rejects_nested_structured_secrets_in_repository_and_archives(
+    tmp_path: Path, suffix: str, secret_key: str
+) -> None:
+    repo = _repository(tmp_path)
+    wheel, sdist = _artifacts(repo)
+    if suffix == "json":
+        payload = f'{{"outer": [{{"{secret_key}": "abcdefghijklmnop"}}]}}\n'
+    else:
+        payload = f"outer:\n  - {secret_key}: abcdefghijklmnop\n"
+    source = repo / "src" / "agentporter" / f"secret.{suffix}"
+    source.write_text(payload, encoding="utf-8")
+    with zipfile.ZipFile(wheel, "a") as archive:
+        archive.writestr(f"agentporter/secret.{suffix}", payload)
+    member = tarfile.TarInfo(f"agentporter-0.1.0/src/agentporter/secret.{suffix}")
+    encoded = payload.encode()
+    member.size = len(encoded)
+    _rewrite_sdist(sdist, [(member, encoded)])
+
+    errors = verify_release(_contract(repo), [wheel, sdist])
+
+    assert any(error.startswith("repository:") and "secret-like value" in error for error in errors)
+    assert any(error.startswith(wheel.name) and "secret-like value" in error for error in errors)
+    assert any(error.startswith(sdist.name) and "secret-like value" in error for error in errors)
+
+
+@pytest.mark.parametrize("suffix", ["json", "yaml"])
+@pytest.mark.parametrize("value", [None, "", "example", "changeme", "your-token-here"])
+def test_accepts_empty_and_benign_structured_secret_placeholders(
+    tmp_path: Path, suffix: str, value: str | None
+) -> None:
+    repo = _repository(tmp_path)
+    wheel, sdist = _artifacts(repo)
+    if suffix == "json":
+        payload = __import__("json").dumps({"outer": {"token": value}}) + "\n"
+    else:
+        rendered = "null" if value is None else __import__("json").dumps(value)
+        payload = f"outer:\n  token: {rendered}\n"
+    source = repo / "src" / "agentporter" / f"placeholder.{suffix}"
+    source.write_text(payload, encoding="utf-8")
+    with zipfile.ZipFile(wheel, "a") as archive:
+        archive.writestr(f"agentporter/placeholder.{suffix}", payload)
+    member = tarfile.TarInfo(f"agentporter-0.1.0/src/agentporter/placeholder.{suffix}")
+    encoded = payload.encode()
+    member.size = len(encoded)
+    _rewrite_sdist(sdist, [(member, encoded)])
+
+    errors = verify_release(_contract(repo), [wheel, sdist])
+
+    assert not any("secret-like value" in error for error in errors)
+
+
 def test_rejects_wrong_metadata_and_extra_artifact(tmp_path: Path) -> None:
     repo = _repository(tmp_path)
     wheel, sdist = _artifacts(repo)

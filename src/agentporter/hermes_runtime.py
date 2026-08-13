@@ -11,9 +11,10 @@ import stat
 import subprocess
 import tempfile
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, Protocol, cast
 
 from .runtime_probe import ProbeObservation
 
@@ -38,11 +39,25 @@ class RuntimeCommandError(RuntimeError):
         super().__init__(reason)
 
 
+class _OneshotProcess(Protocol):
+    pid: int
+    returncode: int | None
+
+    def communicate(
+        self, input: str | None = None, timeout: float | None = None
+    ) -> tuple[str, str]: ...
+
+
+def _start_oneshot_process(argv: tuple[str, ...], **kwargs: Any) -> _OneshotProcess:
+    return subprocess.Popen(argv, **kwargs)
+
+
 @dataclass(frozen=True, slots=True)
 class HermesRuntime:
     executable: Path
     command_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run
     timeout_seconds: float = 30.0
+    process_factory: Callable[..., _OneshotProcess] = _start_oneshot_process
     _identity: tuple[int, int, int, str] | None = None
 
     def __post_init__(self) -> None:
@@ -138,7 +153,7 @@ class HermesRuntime:
     def _run_oneshot(
         self, argv: tuple[str, ...], source_env: Mapping[str, str] | None
     ) -> subprocess.CompletedProcess[str]:
-        process = subprocess.Popen(
+        process = self.process_factory(
             argv,
             env=self.minimal_environment(source_env),
             stdout=subprocess.PIPE,
@@ -149,10 +164,11 @@ class HermesRuntime:
         try:
             stdout, stderr = process.communicate(timeout=self.timeout_seconds)
         except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
             process.communicate()
             raise
-        return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+        return subprocess.CompletedProcess(argv, cast(int, process.returncode), stdout, stderr)
 
     def oneshot(
         self,
@@ -187,17 +203,7 @@ class HermesRuntime:
             )
             try:
                 self._revalidate()
-                if self.command_runner is subprocess.run:
-                    completed = self._run_oneshot(argv, source_env)
-                else:
-                    completed = self.command_runner(
-                        argv,
-                        env=self.minimal_environment(source_env),
-                        capture_output=True,
-                        text=True,
-                        timeout=self.timeout_seconds,
-                        check=False,
-                    )
+                completed = self._run_oneshot(argv, source_env)
             except subprocess.TimeoutExpired as error:
                 raise RuntimeCommandError("probe-timeout") from error
             if completed.returncode != 0:
