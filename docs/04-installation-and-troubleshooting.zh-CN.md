@@ -2,7 +2,7 @@
 
 [English](04-installation-and-troubleshooting.md) | 简体中文
 
-AgentPorter v0.1.4 是 Hermes 多代理工作组一次性安装基础的未发布、未打标签的发布候选。仓库已经具备离线契约测试，并在隔离环境中对 Hermes v0.20.0 做过真实验收；这个版本只是**已观察版本**，不是承诺的最低版本或通用兼容范围。
+AgentPorter v0.1.4 已正式发布。它可以安装并读回三个 Profile，但当前发布版只公开 `agentporter-uninstall`；公共 `agentporter-activate` 缺失，正式 probe也固定为 unsupported，因此安装后两个 Worker仍需要后续 AgentPorter修复才能自动完成 provider/endpoint/Profile-local凭据和真实调用接续。Hermes v0.20.0 是**已观察版本**，不是承诺的最低版本或通用兼容范围。
 
 ## curl 一键安装（POSIX）
 
@@ -81,17 +81,17 @@ agentporter-uninstall
 
 ## Runtime readiness 与编排状态
 
-| 维度 | 0.1.4 候选状态 |
+| 维度 | 当前状态 |
 |---|---|
-| installation | fresh 三 Profile 与 legacy 双→三升级/读回/改名/卸载已通过离线和隔离 Hermes v0.20 fixture。 |
-| binding | 运行 `agentporter-activate`；事务会 snapshot、确认、写入、读回，并只 compare-before-restore 本事务所有值。 |
-| credential | 由操作者授权、Hermes/用户持有；AgentPorter 不读取或复制秘密值。 |
-| canary | v0.20 为 `probe-unsupported`，零模型调用；`config check` 仍仅是静态检查。 |
-| dispatcher | 专用 orchestrator 配置通过静态读回；不启动 Gateway。 |
-| route | 适配器调用前 `mutation-unsupported`，零 Kanban mutation 调用。 |
-| continuity | DispatchReceipt/订阅/观察/结构性恢复仅通过离线合同，未做真实验收。 |
+| installation | 0.1.4 已正式发布；fresh/legacy三 Profile生命周期合同和实际安装读回通过。 |
+| public entries | 当前公开 `agentporter-uninstall`；`agentporter-activate`只在私有环境，待0.1.5发布。 |
+| binding/credential | 两 Worker仍缺 provider/endpoint/Profile-local凭据，保持 `configuration-required`。 |
+| canary/live call | 真实调用以 `No inference provider configured`失败；`config check`仍只证明静态有效，不是canary证据。 |
+| route proof | Hermes v0.20 usage可提供 model/provider/api_calls，但缺 tool/fallback字段；0.1.5成功调用先标为 incomplete proof。 |
+| dispatcher/route | Gateway未由AgentPorter启动；Kanban mutation和live routing未验收。 |
+| continuity | `DispatchReceipt`、任务订阅（`notify-list`）、运行观察和结构性恢复仍仅有离线合同；不声称真实通知或接续。 |
 
-激活失败会保留 Profile 与凭据所有权；未漂移的事务写入被恢复，并发漂移保留并以有界 residue 报告。无任务时 `notify-list` 为空正常；正式任务创建后，必须先精确读回任务级订阅并生成安全 `DispatchReceipt` 才能解锁 dispatch，当前 v0.20 尚无所需 mutation seam。
+当前0.1.4不能通过公共命令完成 activation。后续[0.1.5设计](05-runtime-activation-and-live-call-design.md)将只修改 AgentPorter，发布三公共入口、编排 Hermes原生Profile auth并执行单独授权的真实 one-shot；不会修改 Hermes源码。
 
 ## 故障排查
 

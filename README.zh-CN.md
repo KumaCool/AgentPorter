@@ -4,7 +4,7 @@
 
 AgentPorter 是一个开源的 [Hermes Agent](https://hermes-agent.nousresearch.com/) 多代理工作组部署方案：一次安装多个职责明确的 Worker Profile，并逐步接通 Hermes 原生 Kanban 的任务分解与合理路由。
 
-> **0.1.4 发布候选：** AgentPorter 已具备一个三 Profile 集合（两个 Worker + 专用 orchestrator）的安装、升级、读回、改名与卸载，以及离线验证的激活、派发、收据和接续合同。Hermes v0.20 无法证明要求的无工具/无 fallback 探针与 revision-safe Kanban mutation seam，因此正式路径会在调用适配器前返回 `probe-unsupported` / `mutation-unsupported`：零模型调用、零 Kanban mutation 调用。本候选未发布，不声称 `operational` 或真实路由验收通过。
+> **当前状态：** 0.1.4 已正式发布并可安装三 Profile，但实际安装证明公共 `agentporter-activate` 未发布，两个 Worker 也未完成 provider/endpoint/Profile-local 凭据和真实调用接续。已批准的 [0.1.5 设计](docs/05-runtime-activation-and-live-call-design.md)与 [Plan 05](docs/plan/05-runtime-activation-and-live-call-closure.md)只修改 AgentPorter：认证/one-shot使用 Hermes公共 CLI，非秘密binding使用AgentPorter受控配置事务；不修改或import Hermes源码。Hermes v0.20 缺少 tool/fallback 遥测时，成功调用只能如实标为 `live-call-passed + route-proof-incomplete`。
 
 ## curl 一键安装（POSIX）
 
@@ -55,19 +55,17 @@ agentporter-uninstall
 
 ## 运行状态矩阵
 
-| 维度 | 0.1.4 候选状态 |
+| 维度 | 当前状态 |
 |---|---|
-| installation | fresh 三 Profile 与 legacy 双→三 Profile 的安装/升级/读回/改名/卸载已通过离线及隔离 Hermes v0.20 验证。 |
-| binding | `agentporter-activate` 事务已离线验证；仅绑定两个 Worker，保留 orchestrator 与用户并发漂移。 |
-| credential | 必须由操作者授权并由 Hermes/用户持有；AgentPorter 不复制、不读取秘密值。 |
-| canary | Hermes v0.20 返回 `probe-unsupported`，零模型调用，未达到 `runtime-ready`。 |
-| dispatcher | 专用 orchestrator 静态配置已读回；不启动 Gateway，未做真实 dispatcher 验收。 |
-| route | Hermes v0.20 在适配器调用前返回 `mutation-unsupported`，零 Kanban mutation 调用。 |
-| continuity | DispatchReceipt、任务订阅、运行观察与结构性恢复仅通过离线合同；不声称真实通知或接续。 |
+| installation | 0.1.4 已正式发布；三 Profile实际安装和读回成功。 |
+| public entries | 私有环境有三个 entry point，但公共 bin只发布 `agentporter-uninstall`；activation公共入口待0.1.5修复。 |
+| binding/credential | 两 Worker当前缺 provider/endpoint/Profile-local凭据，仍为 `configuration-required`。 |
+| canary/live call | 两 Worker实际调用均以 `No inference provider configured`失败；`config check=0`仅为静态有效，不是canary证据。 |
+| route proof | 0.1.5将使用 Hermes usage报告验证 model/provider/api_calls；v0.20缺 tool/fallback遥测时只到 `route-proof-incomplete`。 |
+| dispatcher/route | orchestrator静态配置已读回；Gateway、Kanban mutation和live routing未验收。 |
+| continuity | `DispatchReceipt`、任务订阅（`notify-list`）、运行观察与结构性恢复仍仅有离线合同；不声称真实通知或接续。 |
 
-`hermes config check` 只做静态解析/配置检查，不是 canary 或 runtime readiness 证据。安装后可交互运行 `agentporter-activate`：它发现唯一完整集合、取得 typed snapshot、接收不回显私有 endpoint 的非秘密绑定选择、一次预览确认、精确写入/读回，然后协商安全 probe seam。失败时只恢复仍等于本事务写入值的键（compare-before-restore），保留用户并发漂移、Profile 与凭据，报告有界 residue，并继续要求 canary。
-
-尚无任务时 `notify-list` 为空是正常状态。正式任务创建后必须精确读回 task/subscription 并生成安全 `DispatchReceipt`，才能解锁 dispatch；当前 v0.20 无法满足 mutation 合同，因此正式路径不会建卡。
+当前0.1.4不能通过公共命令完成激活。0.1.5设计将发布 `agentporter-activate`，编排 Hermes Profile-scoped auth，事务化写入非秘密binding并执行单独授权的真实 one-shot；不会读取或复制凭据，也不会修改 Hermes源码。在0.1.5发布前，不应把两个 Worker标记为可派发。当前unsupported probe与Kanban路径继续保持零模型调用、零 Kanban mutation 调用。
 
 ## 安全边界
 

@@ -2,7 +2,7 @@
 
 English | [简体中文](04-installation-and-troubleshooting.zh-CN.md)
 
-AgentPorter v0.1.4 is an unpublished, untagged release candidate of the one-shot installation foundation for the Hermes multi-agent Worker team. The repository has offline contract tests and isolated real-Hermes evidence for v0.20.0; that observed version is **not** a promised minimum or universal compatibility range.
+AgentPorter v0.1.4 is released. It installs and reads back three Profiles, but the released bootstrap publishes only `agentporter-uninstall`; the public `agentporter-activate` command is missing and the formal probe remains fixed to unsupported. The two Workers therefore still need a subsequent AgentPorter fix to automate provider/endpoint/Profile-local credentials and the live-call continuation. Hermes v0.20.0 is an **observed version**, not a promised minimum or universal compatibility range.
 
 ## One-line POSIX install
 
@@ -81,17 +81,17 @@ If discovery is absent, incomplete, duplicated, conflicting, malformed, changed,
 
 ## Runtime readiness and orchestration status
 
-| Dimension | 0.1.4 candidate state |
+| Dimension | Current state |
 |---|---|
-| installation | Fresh three-Profile and legacy two-to-three upgrade/readback/rename/uninstall are verified offline and with isolated Hermes v0.20 fixtures. |
-| binding | Run `agentporter-activate`; the offline-verified transaction snapshots, confirms, writes, reads back, and compare-before-restores only transaction-owned values. |
-| credential | Operator-authorized and Hermes/user-owned; secret values are never read or copied by AgentPorter. |
-| canary | `probe-unsupported` on v0.20, with zero model calls; `config check` remains static-only. |
-| dispatcher | Dedicated-orchestrator configuration is static-readback verified; Gateway is not started. |
-| route | `mutation-unsupported` before adapter invocation, with zero Kanban mutation calls. |
-| continuity | DispatchReceipt/subscription/observation/structural-resume contracts are offline-only, not live accepted. |
+| installation | 0.1.4 is released; fresh/legacy three-Profile lifecycle contracts and target-host installation readback passed. |
+| public entries | `agentporter-uninstall` is public; `agentporter-activate` exists only in the private environment until 0.1.5. |
+| binding/credential | Both Workers lack provider/endpoint/Profile-local credentials and remain `configuration-required`. |
+| canary/live call | Real calls failed with `No inference provider configured`; `config check` remains static-only and is not canary evidence. |
+| route proof | Hermes v0.20 usage exposes model/provider/api_calls but not tool/fallback fields; a 0.1.5 success initially has incomplete proof. |
+| dispatcher/route | AgentPorter does not start Gateway; Kanban mutation and live routing remain unaccepted. |
+| continuity | `DispatchReceipt`, task subscription (`notify-list`), observation, and structural resume remain offline-only; no live notification or continuation is claimed. |
 
-Activation failure keeps the Profiles and credential ownership intact. Unchanged transaction writes are restored; concurrent drift is preserved and reported as bounded residue. An empty `notify-list` is normal when no task exists. Once a formal task is created, exact task-specific subscription readback and a safe `DispatchReceipt` are required before dispatch; v0.20 does not currently expose the required mutation seam.
+Released 0.1.4 cannot complete activation through a public command. The subsequent [0.1.5 design](05-runtime-activation-and-live-call-design.md) changes AgentPorter only: it publishes all three public entries, orchestrates native Profile auth, and runs a separately authorized real one-shot. It does not modify Hermes source.
 
 ## Troubleshooting
 

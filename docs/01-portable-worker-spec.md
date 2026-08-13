@@ -12,9 +12,9 @@
 | route | v0.20 为 `mutation-unsupported`，在 Kanban adapter 调用前关闭，零 Kanban mutation 调用。 |
 | continuity | DispatchReceipt、任务级订阅、运行观察、结构性恢复合同仅离线通过；未验收真实投递/接续。 |
 
-`hermes config check` 仅证明静态配置可解析。无任务时 `notify-list == []` 正常；只有正式任务创建后，精确 task/subscription 读回与安全 `DispatchReceipt` 才是解锁 dispatch 的必要条件。本候选未发布、未打标签，不声称 `operational`、真实 canary 或 live routing passed。
+`hermes config check` 仅证明静态配置可解析。0.1.4 schema已正式发布；实际安装后的公共 activation和真实调用缺口由 [0.1.5设计](05-runtime-activation-and-live-call-design.md)与 [Plan 05](plan/05-runtime-activation-and-live-call-closure.md)负责。本文不得被理解为 Worker已可派发或编排主链已接通。
 
-> **当前状态：** 0.1.4 候选 schema 定义两个执行 Worker 和一个专用 orchestrator；三组件生命周期已验证，但 activation 仍只绑定两个 Worker。v0.20 的 probe 与 Kanban mutation 均 fail closed 为 unsupported，本文不得被理解为编排主链已真实接通。
+> **当前状态：** 0.1.4 schema已正式发布，定义两个执行 Worker和一个专用 orchestrator；三组件生命周期已验证，但公共 activation与真实调用尚未闭合。0.1.5只通过 AgentPorter适配 Hermes公共能力修复，不修改 Hermes源码。
 
 ## 1. 权威文件
 

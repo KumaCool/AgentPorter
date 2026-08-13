@@ -64,7 +64,7 @@ def test_activation_and_notify_receipt_boundaries_are_documented() -> None:
     assert "DispatchReceipt" in corpus
 
 
-def test_release_candidate_docs_do_not_persist_transient_or_supported_release_claims() -> None:
+def test_released_baseline_and_next_candidate_are_distinguished() -> None:
     corpus = "\n".join(path.read_text(encoding="utf-8") for path in ROOT.rglob("*.md"))
     for stale in (
         "current supported patch release",
@@ -73,8 +73,9 @@ def test_release_candidate_docs_do_not_persist_transient_or_supported_release_cl
         "不 push",
     ):
         assert stale not in corpus
-    assert "unpublished, untagged release candidate" in corpus
-    assert "未发布、未打标签的发布候选" in corpus
+    assert "0.1.4 is released" in corpus or "0.1.4 已正式发布" in corpus
+    assert "0.1.5" in corpus
+    assert "Phase A–F 离线实现完成" in corpus
 
 
 def test_install_guides_describe_three_entries_three_profiles_and_candidate_boundary() -> None:
@@ -98,7 +99,7 @@ def test_plan_authority_marks_offline_completion_and_historical_baselines() -> N
     index = _text("docs/plan/00-index.md")
     plan02 = _text("docs/plan/02-multi-agent-orchestration.md")
     plan04 = _text("docs/plan/04-runtime-readiness-closure-implementation.md")
-    assert "Phase A-F" in index
+    assert "Phase A–F" in index
     assert "离线实现完成" in index
     assert "Plan 03" in index and "live" in index
     assert "Phase A 前历史基线" in plan02

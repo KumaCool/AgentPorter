@@ -1,18 +1,18 @@
 # AgentPorter 方案总览
 
-## 0. 0.1.4 发布候选状态（Phase F）
+## 0. 当前发布与实施状态
 
 | 维度 | 当前证据状态 |
 |---|---|
-| installation | fresh 三 Profile 与 legacy 双 Worker → 三 Profile 的安装、升级、读回、改名、卸载已通过离线及隔离 Hermes v0.20 验证。 |
-| binding | `agentporter-activate` 的 snapshot/确认/精确写入读回/compare-before-restore 事务已离线通过；只作用两个 Worker。 |
-| credential | 由操作者授权并由 Hermes/用户持有；AgentPorter 不读取、复制或持久化秘密。 |
-| canary | v0.20 为 `probe-unsupported`，在模型适配调用前关闭，零模型调用；未达到 runtime-ready。 |
-| dispatcher | 专用 orchestrator 配置静态读回通过；未启动 Gateway，未验收 live dispatcher。 |
-| route | v0.20 为 `mutation-unsupported`，在 Kanban adapter 调用前关闭，零 Kanban mutation 调用。 |
-| continuity | DispatchReceipt、任务级订阅、运行观察、结构性恢复合同仅离线通过；未验收真实投递/接续。 |
+| installation | 0.1.4 已正式发布；fresh 三 Profile 与 legacy 双 Worker → 三 Profile 生命周期通过离线及隔离 Hermes v0.20 验证，本机 curl 安装和三 Profile读回成功。 |
+| public entries | 0.1.4 私有环境包含三个 entry point，但公共 bin 目录只发布 `agentporter-uninstall`；`agentporter` / `agentporter-activate` 公共入口缺失。 |
+| binding | 0.1.4 配置事务离线通过，但已发布正式入口固定为 `probe-unsupported`，未形成“安装 → 激活 → 真实调用”接续。 |
+| credential | 两 Worker未配置可用 provider/endpoint/Profile-local 凭据；AgentPorter仍不得读取、复制或持久化秘密。 |
+| live call | 实际调用在网络请求前以 `No inference provider configured` 失败；`config check=0` 只是静态假绿。 |
+| route proof | Hermes v0.20 `--usage-file`可报告 model/provider/api_calls，但不报告 tool_calls/fallback；未来成功调用应分层为 `live-call-passed + route-proof-incomplete`。 |
+| dispatcher | 专用 orchestrator静态配置已读回；未启动 Gateway，未验收 live dispatcher/Kanban。 |
 
-`hermes config check` 仅证明静态配置可解析。无任务时 `notify-list == []` 正常；只有正式任务创建后，精确 task/subscription 读回与安全 `DispatchReceipt` 才是解锁 dispatch 的必要条件。本候选未发布、未打标签，不声称 `operational`、真实 canary 或 live routing passed。
+当前实施主线是[0.1.5 运行激活与真实调用闭环设计](05-runtime-activation-and-live-call-design.md)及[Plan 05](plan/05-runtime-activation-and-live-call-closure.md)。方案只修改AgentPorter：认证/one-shot使用Hermes公共CLI，非秘密provider/endpoint binding使用AgentPorter受控配置事务；不得修改或import Hermes源码。
 
 ## 1. 产品定位
 
@@ -22,10 +22,11 @@ AgentPorter 的核心产品是 **Hermes 多代理工作组的一键部署与任�
 
 当前状态分层如下：
 
-- **已发布版本（v0.1.3）：** 双 Worker 安装基础与完整自清理卸载。
-- **0.1.4 本地发布候选：** 三 Profile 生命周期、双 Worker 激活事务、离线 probe/dispatch/receipt/continuity 合同已实现。
-- **仍不受支持：** Hermes v0.20 真实安全 probe 与 revision-safe Kanban mutation；因此真实 dispatcher、路由、通知与接续均未验收。
-- **权威收口：** [Plan 04](plan/04-runtime-readiness-closure-implementation.md)。
+- **已发布版本（v0.1.4）：** 三 Profile 生命周期、双 Worker绑定事务和离线派发/观察合同已发布；本机 curl安装读回通过。
+- **已确认产品缺口：** 公共 `agentporter` / `agentporter-activate` 未发布；两个 Worker缺 provider/endpoint/Profile-local凭据，真实调用失败；正式 probe固定为 unsupported。
+- **当前实施主线：** [0.1.5 运行激活与真实调用闭环设计](05-runtime-activation-and-live-call-design.md)和[Plan 05](plan/05-runtime-activation-and-live-call-closure.md)。
+- **证据边界：** Hermes v0.20 可通过 usage报告 model/provider/api_calls，但不提供 tool_calls/fallback证明；成功调用最多先达到 `live-call-passed + route-proof-incomplete`。
+- **仍不受支持：** revision-safe Kanban mutation和完整 live routing；不得声称 `operational`。
 
 首个工作组当前包含：
 
@@ -130,4 +131,6 @@ AgentPorter 负责定义和部署工作组、配置专用 orchestrator 控制面
 - [安装、卸载与验收设计](03-installation-and-uninstall-design.md)：工作组组件安装事务、身份、补偿与卸载的权威设计；
 - [安装基础实施记录](plan/01-installation-foundation.md)：v0.1.0 已交付安装/卸载基础；
 - [多代理编排与路由实施计划](plan/02-multi-agent-orchestration.md)：历史设计与当前离线合同；最终状态以 [Plan 04](plan/04-runtime-readiness-closure-implementation.md) 为准；
-- [Worker 验证与基准计划](plan/03-agent-validation-and-benchmark.md)：编排接通后的真实代理质量、性能、成本和稳定性评测。
+- [Worker 验证与基准计划](plan/03-agent-validation-and-benchmark.md)：运行激活闭环后的真实代理质量、性能、成本和稳定性评测；
+- [0.1.5 运行激活与真实调用闭环设计](05-runtime-activation-and-live-call-design.md)：公共入口、凭据接续、真实 one-shot、分层 readiness 与升级/卸载边界；
+- [0.1.5 运行激活与真实调用闭环计划](plan/05-runtime-activation-and-live-call-closure.md)：当前批准的实施主线。

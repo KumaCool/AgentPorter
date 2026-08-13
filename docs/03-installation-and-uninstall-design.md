@@ -1,18 +1,16 @@
 # AgentPorter 安装、卸载与验收设计
 
-## 0. 0.1.4 发布候选状态（Phase F）
+## 0. 0.1.4 已发布状态与后续修复
 
 | 维度 | 当前证据状态 |
 |---|---|
-| installation | fresh 三 Profile 与 legacy 双 Worker → 三 Profile 的安装、升级、读回、改名、卸载已通过离线及隔离 Hermes v0.20 验证。 |
-| binding | `agentporter-activate` 的 snapshot/确认/精确写入读回/compare-before-restore 事务已离线通过；只作用两个 Worker。 |
-| credential | 由操作者授权并由 Hermes/用户持有；AgentPorter 不读取、复制或持久化秘密。 |
-| canary | v0.20 为 `probe-unsupported`，在模型适配调用前关闭，零模型调用；未达到 runtime-ready。 |
-| dispatcher | 专用 orchestrator 配置静态读回通过；未启动 Gateway，未验收 live dispatcher。 |
-| route | v0.20 为 `mutation-unsupported`，在 Kanban adapter 调用前关闭，零 Kanban mutation 调用。 |
-| continuity | DispatchReceipt、任务级订阅、运行观察、结构性恢复合同仅离线通过；未验收真实投递/接续。 |
+| installation | 0.1.4 已正式发布；fresh 三 Profile 与 legacy 双 Worker → 三 Profile 的生命周期合同通过，实际 curl 安装已读回三个 Profile。 |
+| binding | 配置事务离线通过，但公共 `agentporter-activate` 未发布且正式 probe固定为 unsupported，真实激活接续未闭合。 |
+| credential | 两 Worker当前没有可用 provider/endpoint/Profile-local凭据；AgentPorter仍不得读取、复制或持久化秘密。 |
+| live call | 实际调用以 `No inference provider configured` 失败；`config check=0` 仍只证明静态配置可解析。 |
+| dispatcher/route | 专用 orchestrator静态配置已读回；Gateway、revision-safe Kanban mutation和live routing仍未验收。 |
 
-`hermes config check` 仅证明静态配置可解析。无任务时 `notify-list == []` 正常；只有正式任务创建后，精确 task/subscription 读回与安全 `DispatchReceipt` 才是解锁 dispatch 的必要条件。本候选未发布、未打标签，不声称 `operational`、真实 canary 或 live routing passed。
+本文继续作为安装/卸载事务权威。三公共入口、0.1.4软件升级、Hermes原生凭据接续和真实 one-shot 的后续变更由[0.1.5设计](05-runtime-activation-and-live-call-design.md)与[Plan 05](plan/05-runtime-activation-and-live-call-closure.md)实施；不得修改 Hermes源码。
 
 ## 1. 文档职责与当前状态
 
@@ -21,7 +19,7 @@
 - **设计/代码/验收状态：** v0.1.0 的安装、静态读回、有限补偿、名称无关独立卸载及完整 INS/UN/GATE 已实现、验收并发布；
 - **安装入口：** 一次启动，无子命令、平台参数、静默模式或后台服务；
 - **卸载入口：** 独立 `uninstall.py`，不是命令体系或长期管理界面；
-- **能力边界：** 现有证据只证明两个 Worker Profile 可安全安装、读回和卸载；Kanban 仅验证 parser 与只读 assignee 枚举，未创建任务、运行 dispatcher 或调用 Worker/模型；
+- **能力边界（v0.1.0历史）：** 当时证据只证明两个 Worker Profile可安全安装、读回和卸载；0.1.4后来已扩展为三Profile生命周期，但Kanban/live routing仍未验收；
 - **后续产品主线：** 自动分解、按职责路由和多 Worker 执行由 [Plan 02](plan/02-multi-agent-orchestration.md) 定义。
 
 文档分工：
@@ -302,7 +300,7 @@ Hermes v0.20 的 `profile delete` 仅按名称执行，没有原子 identity-con
 
 ## 6. 安装后的职责边界
 
-临时 staging 会被删除，而 Hermes 记录的本地 source 随后失效，因此 v0.1.0 不承诺原生 `profile update`。现有代码只提供工作组 Profile 的一次性安装入口和独立卸载脚本；它没有创建 Kanban 任务、配置自动分解、运行 dispatcher 或启动 gateway。
+以下段落记录 **v0.1.0历史实现边界**：临时 staging会被删除，而Hermes记录的本地source随后失效，因此v0.1.0不承诺原生 `profile update`；当时代码只提供双Worker的一次性安装入口和独立卸载脚本。0.1.4已增加专用orchestrator和三组件生命周期，但仍没有真实Kanban mutation、live dispatcher或Gateway启动验收。
 
 这不再是 AgentPorter 的完整产品边界。后续 [Plan 02](plan/02-multi-agent-orchestration.md) 将在不回退本安装/卸载合同的前提下，复用 Hermes 原生 Kanban/decomposer/dispatcher 接通任务分解与路由。Plan 02 新增 orchestrator 时不得回写 v0.1.0 两个 Worker 的 marker schema 或 distribution version；新组件继续使用当前可解析的 `MarkerV1`，并记录包含它的新产品发布版本。安装/升级/卸载必须兼容两种完整集合：legacy 双组件，以及按同一 installation ID 附加 orchestrator 的三组件；任何 partial、未知 component、重复、旧组件 drift 或无法解释的版本组合继续 fail closed。三组件卸载默认保留共享 Kanban boards/tasks，运行中的 orchestrator gateway/dispatcher 或 running tasks 会阻断删除。
 

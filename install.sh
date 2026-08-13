@@ -9,7 +9,7 @@ WHEEL=agentporter-0.1.5-py3-none-any.whl
 CHECKSUM=${WHEEL}.sha256
 ENTRY_POINTS='agentporter agentporter-activate agentporter-uninstall'
 PACKAGED_RESOURCES='agentporter/resources/workers.yaml'
-REQUIRED_MODULES='agentporter.activation_application agentporter.activation_entry agentporter.dispatch_application agentporter.dispatch_planning agentporter.hermes_runtime agentporter.kanban_runtime agentporter.readiness agentporter.runtime_binding agentporter.runtime_observation agentporter.runtime_probe'
+REQUIRED_MODULES='agentporter.activation_application agentporter.activation_entry agentporter.dispatch_application agentporter.dispatch_planning agentporter.hermes_runtime agentporter.kanban_runtime agentporter.readiness agentporter.runtime_authority agentporter.runtime_binding agentporter.runtime_observation agentporter.runtime_probe'
 
 fail() {
     printf 'AgentPorter bootstrap: %s\n' "$*" >&2

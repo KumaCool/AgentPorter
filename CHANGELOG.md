@@ -4,6 +4,14 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+### Added
+
+- Implemented the AgentPorter-only 0.1.5 runtime-activation path: three public lifecycle entries, safe 0.1.4 software upgrade, Profile-scoped Hermes authentication orchestration, transactional provider/endpoint binding, authoritative readiness receipts, and separately authorized one-shot evidence.
+
+### Security
+
+- Runtime activation preserves Profile authority, seals the Hermes executable and evidence files, never copies credentials, and reports successful Hermes v0.20 calls as `route-proof-incomplete` unless tool/fallback telemetry is available. Real model calls, Gateway changes, and Kanban mutations remain separately authorized.
+
 ## [0.1.4] - 2026-08-13
 
 ### Added

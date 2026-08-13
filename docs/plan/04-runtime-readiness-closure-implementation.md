@@ -14,7 +14,7 @@
 
 ### 已确认事实
 
-- 历史事故基线为已发布 AgentPorter `0.1.3`；Phase F 形成 `0.1.4` 本地发布候选，未发布、未打标签。
+- 历史事故基线为已发布 AgentPorter `0.1.3`；Phase F 形成的 `0.1.4` 候选后来已正式发布并完成外部制品读回。
 - 两个 Worker 的 `config.yaml` 只有 `model.default` 和 `agent.reasoning_effort`；`model.provider`、`model.base_url` 均未设置。
 - 两个真实 one-shot 都以 `No inference provider configured`、退出码 `1` 失败。
 - `hermes config check` 返回 `0` 只证明配置可解析，不能证明主模型调用成功。
@@ -391,7 +391,7 @@ sdist/wheel build: passed
 
 ## Phase F：文档、打包、门禁与发布候选（已完成本地候选）
 
-**Status:** 0.1.4 本地发布候选已完成文档同步、打包契约与完整离线门禁。Hermes v0.20 probe 为 `probe-unsupported` 且零模型调用；Kanban 为 `mutation-unsupported` 且零 Kanban mutation 调用；未执行真实模型、Gateway、凭据或 Kanban 网络操作，未发布、未打标签。
+**Status:** 0.1.4 发布候选当时已完成文档同步、打包契约与完整离线门禁；随后已创建正式 tag/GitHub Release并完成外部制品读回。Hermes v0.20 probe仍为 `probe-unsupported` 且零模型调用；Kanban仍为 `mutation-unsupported` 且零 Kanban mutation调用。本段记录Phase F候选时证据，不代表安装后的真实激活链路已闭合。
 
 **Phase F evidence:** 初始 TDD RED 为版本仍是 0.1.3、用户文档缺 0.1.4 七维状态、缺 activation/receipt 边界共 4 个预期失败；首轮 GREEN 为 focused 5 passed。closure repair 的机械 RED 为 9 个预期失败（错误 release URL host/path/tag、入口/resource/module 安装语义及文档状态冲突），随后补充 closed-grammar 语义 adversarial 覆盖；GREEN 为 focused 35 passed。最终完整离线门禁使用精确命令 `PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 python -m pytest -p no:cacheprovider -q`：pytest 685 passed、1 个预期 unsupported skip、2 个既有 duplicate-archive adversarial fixture warnings；Ruff format/check 通过；Pyright strict 0 errors/0 warnings；sdist/wheel build通过；正式 release verifier 对 0.1.4 wheel/sdist、精确 immutable release URL、三 entry points、workers resource 与 activation/dispatch/runtime 必需模块验证通过；fresh wheel 隔离安装、0.1.4 import 与三 entry points 读回通过；Markdown links、added-line privacy、diff-check 通过。环境未安装 twine，因此 `twine check` 明确记为 unavailable，不伪称通过。
 

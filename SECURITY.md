@@ -23,8 +23,8 @@ AgentPorter:
 - refuses to overwrite existing/default Profiles;
 - compensates only Profiles proven to have been created by the current transaction;
 - never copies credentials and makes no model call during install, update, static readback, compensation, or uninstall;
-- keeps runtime binding, credential authorization, canary, dispatcher, route, and continuity as separate states; `config check` is static-only;
-- fails closed on Hermes v0.20 as `probe-unsupported` / `mutation-unsupported` before model or Kanban adapter calls;
+- keeps runtime binding, credential authorization, live-call evidence, route proof, dispatcher, route, and continuity as separate states; `config check` is static-only;
+- 0.1.4 fails closed as `probe-unsupported` / `mutation-unsupported`; the approved 0.1.5 work may use only public Hermes Profile auth/one-shot/usage interfaces and must report missing tool/fallback telemetry as `route-proof-incomplete`, never as strict runtime readiness;
 - discovers uninstall targets by fixed product/component identity and a random per-installation ID, never by editable names;
 - requires an installation-bound confirmation and warns that Profile-local credentials, memories, sessions, logs, skills, and later customizations will be deleted;
 - fails closed on malformed, incomplete, duplicated, conflicting, symlinked, escaped, or changed candidates;
@@ -34,7 +34,7 @@ The local `agentporter-profile.json` marker is an ownership claim, not a signatu
 
 ## Safe release boundary
 
-Release candidates must pass offline format, lint, type, test, build, Markdown-link, privacy, and artifact-content checks. Real-Hermes acceptance is a separate Linux test against an explicitly selected version and uses isolated homes with blank provider credentials and no model commands. Passing either gate does not prove compatibility with every Hermes version, platform, provider, or model. The 0.1.4 candidate has no live model/Gateway/credential/Kanban acceptance: v0.20 unsupported paths make zero model and zero Kanban mutation calls.
+Release candidates must pass offline format, lint, type, test, build, Markdown-link, privacy, and artifact-content checks. Real-Hermes acceptance is a separate Linux test against an explicitly selected version. Passing either gate does not prove compatibility with every Hermes version, platform, provider, or model. Published 0.1.4 performed no live model/Gateway/credential/Kanban acceptance. Any 0.1.5 live one-shot requires separate authorization, Profile-owned credentials, bounded call counts, and truthful incomplete-proof reporting; Gateway and Kanban remain separately authorized.
 
 Release artifacts must contain only the expected package modules/resources and distribution metadata. Tests, caches, private directories, credentials, sessions, memories, bytecode, and secret-like content are forbidden. A mismatch blocks publication; it must not be waived by deleting the expected item from the release contract.
 
