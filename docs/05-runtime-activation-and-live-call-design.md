@@ -490,7 +490,7 @@ public_entries:
 10. 完整测试、Ruff、Pyright、build、隐私扫描和外部 release asset readback 通过；
 11. 真实模型调用、Gateway 或 Kanban mutation仅在用户分别授权后执行。
 
-## 12. 未发布修订：custom Provider 继承与安装串联
+## 12. 0.1.7 发布候选修订：custom Provider 继承与安装串联
 
 本修订替代本文中“custom Provider 必须走 Profile-scoped auth”以及“安装只提示下一步”的旧合同：
 

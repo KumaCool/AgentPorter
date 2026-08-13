@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from pathlib import Path
 
-from test_bootstrap_installer import VERSION, _run  # pyright: ignore[reportPrivateUsage]
+from test_bootstrap_installer import _run  # pyright: ignore[reportPrivateUsage]
+
+VERSION = "0.1.6"
 
 PREVIOUS_VERSION = "0.1.5"
 NAMES = ("agentporter", "agentporter-activate", "agentporter-uninstall")
@@ -38,7 +39,9 @@ def _seed_015(tmp_path: Path) -> Path:
     return root
 
 
-def test_bootstrap_upgrades_completed_015_and_preserves_profiles(tmp_path: Path) -> None:
+def test_v017_rejects_direct_upgrade_from_completed_015_without_mutating_profiles(
+    tmp_path: Path,
+) -> None:
     old_root = _seed_015(tmp_path)
     profile = tmp_path / "home" / ".hermes" / "profiles" / "worker" / "config.yaml"
     profile.parent.mkdir(parents=True)
@@ -47,12 +50,9 @@ def test_bootstrap_upgrades_completed_015_and_preserves_profiles(tmp_path: Path)
 
     result = _run(tmp_path, checksum=hashlib.sha256(b"wheel-bytes").hexdigest())
 
-    assert result.returncode == 0, result.stderr
-    assert not old_root.exists()
+    assert result.returncode == 1
+    assert "public entry path already exists" in result.stderr
+    assert old_root.exists()
     assert profile.read_bytes() == before[0]
     assert profile.stat().st_mtime_ns == before[1]
-    new_root = tmp_path / "data" / "agentporter" / VERSION
-    for name in NAMES:
-        public = tmp_path / "bin" / name
-        assert public.is_symlink()
-        assert os.readlink(public) == str(new_root / "venv" / "bin" / name)
+    assert not (tmp_path / "data" / "agentporter" / "0.1.7").exists()

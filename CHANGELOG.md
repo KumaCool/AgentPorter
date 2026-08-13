@@ -4,10 +4,16 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-08-14
+
 ### Changed
 
 - The POSIX bootstrap now starts `agentporter-activate` immediately after successful Profile installation without an additional opt-in prompt; activation failure keeps the installed retry entry and returns non-zero.
-- Hermes v0.20 custom-provider activation no longer calls unsupported bare-provider auth commands. It transactionally inherits the exact selected provider definition from the main/default Profile into each Worker, while keeping that potentially secret definition out of output, argv, fingerprints, and receipts.
+- Hermes v0.20 custom-provider activation no longer calls unsupported bare-provider auth commands. It transactionally inherits the exact selected provider definition from either the current keyed `providers` schema or compatible `custom_providers` schema into each Worker, while keeping that potentially secret definition out of output, argv, fingerprints, and receipts.
+
+### Security
+
+- Binding receipts now revalidate the authoritative main Profile and complete Worker configuration immediately before each publication and again after the receipt set is published; concurrent drift is compensated or reported as residue rather than certified.
 
 ## [0.1.6] - 2026-08-13
 
@@ -85,7 +91,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 First supported public release.
 
-[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/KumaCool/AgentPorter/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/KumaCool/AgentPorter/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/KumaCool/AgentPorter/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/KumaCool/AgentPorter/compare/v0.1.3...v0.1.4

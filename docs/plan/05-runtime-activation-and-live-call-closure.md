@@ -358,7 +358,7 @@ restricted dispatch
 - 开源提交前扫描个人信息、token、endpoint、私人路径和运行输出。
 - 阶段验收后按项目规则push到远端；tag/Release、真实模型、Gateway和Kanban仍分别需要明确授权。
 
-## 未发布修订验收矩阵
+## 0.1.7 发布候选修订验收矩阵
 
 - [x] custom Provider 激活不调用 Hermes v0.20 `auth add/status`。
 - [x] 主/default Profile 中唯一且 endpoint 一致的完整 Provider 定义被复制到两个 Worker。

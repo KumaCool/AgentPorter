@@ -174,7 +174,7 @@ def test_successful_bootstrap_uninstall_removes_the_published_package(
     uninstall.main()
 
     assert calls == [
-        (Path("/sealed/agentporter/venv/bin/python"), "0.1.6", True),
+        (Path("/sealed/agentporter/venv/bin/python"), "0.1.7", True),
         plan,
     ]
 

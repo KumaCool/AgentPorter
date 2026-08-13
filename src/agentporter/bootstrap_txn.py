@@ -144,7 +144,7 @@ def validate_spec(spec: dict[str, Any]) -> None:
         or Path(spec["new_receipt"]) != new / "bootstrap-install.json"
     ):
         raise DriftError("receipt path binding failure")
-    if Path(spec["journal"]) != new.parent / ".0.1.6-entry-transaction.json":
+    if Path(spec["journal"]) != new.parent / ".0.1.7-entry-transaction.json":
         raise DriftError("journal path binding failure")
     for entry in typed_entries:
         name = entry["name"]
@@ -203,8 +203,8 @@ def build_plan(spec: dict[str, Any], spec_seal: dict[str, Any] | None = None) ->
         "journal": spec["journal"],
         "spec": spec_seal,
         "committed": False,
-        "old_root_quarantine": str(Path(spec["old_root"]).with_name(".0.1.5-txn-quarantine")),
-        "new_root_quarantine": str(Path(spec["new_root"]).with_name(".0.1.6-txn-quarantine")),
+        "old_root_quarantine": str(Path(spec["old_root"]).with_name(".0.1.6-txn-quarantine")),
+        "new_root_quarantine": str(Path(spec["new_root"]).with_name(".0.1.7-txn-quarantine")),
         "old_root_cleanup_authorized": False,
         "new_root_cleanup_authorized": False,
         "roots": roots,

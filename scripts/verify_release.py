@@ -519,10 +519,11 @@ def verify_bootstrap(contract: ReleaseContract, wheel: Path, checksum: Path) -> 
             'PUBLIC_ENTRIES="${BIN_HOME}/agentporter ${BIN_HOME}/agentporter-activate '
             '${BIN_HOME}/agentporter-uninstall"'
         ),
-        'ln -s "$VENV/bin/$entry" "$BIN_HOME/$entry"',
-        '"$(readlink "$PUBLIC_ENTRY")" = "$VENV/bin/$entry"',
+        'names=("agentporter","agentporter-activate","agentporter-uninstall")',
+        '"$PYTHON" "$INSTALL_ROOT/$TXN_HELPER" apply "$SPEC"',
+        '"$(readlink "$PUBLIC_ENTRY")" = "$FINAL_VENV/bin/$entry"',
         '[ -x "$PUBLIC_ENTRY" ]',
-        '"public_entries": sys.argv[3:]',
+        '"public_entries":sys.argv[3:]',
     )
     if len(expected_entries) == 3 and any(token not in text for token in public_tokens):
         errors.append("bootstrap: public entry publication/readback semantics are incomplete")
@@ -547,7 +548,7 @@ def verify_bootstrap(contract: ReleaseContract, wheel: Path, checksum: Path) -> 
     if any(token not in text for token in version_tokens):
         errors.append("bootstrap: installed-version readback semantics are incomplete")
     resource_tokens = (
-        "target = files(package).joinpath(relative)",
+        "files(package).joinpath(relative)",
         "not target.is_file() or not target.read_bytes()",
     )
     if any(token not in text for token in resource_tokens):

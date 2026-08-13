@@ -52,6 +52,6 @@ Update user, security, design, and changelog documentation when behavior or rele
 
 Report vulnerabilities privately according to [SECURITY.md](SECURITY.md). Contributions are licensed under the [MIT License](LICENSE).
 
-## Unreleased activation amendment
+0.1.7 runtime-activation release candidate
 
 The current candidate chains activation after install and supports Hermes v0.20 custom providers by transactionally inheriting one exact main/default Profile provider definition. Tests must prove no `auth add/status` calls, source-config CAS/revalidation, preservation of unrelated Worker providers, no provider-definition disclosure in output/receipts/argv, and retained retryability after activation failure. No real model call belongs in the portable gate.
