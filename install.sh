@@ -352,7 +352,7 @@ rm -f "$JOURNAL"
 
 printf '\nPackage installed and checksum verified. Starting the interactive AgentPorter plan.\n'
 printf 'No Hermes Profile will be written until you review and confirm that plan.\n\n'
-if "$VENV/bin/agentporter" < "$INPUT_DEVICE"; then
+if "$VENV/bin/python" "$VENV/bin/agentporter" < "$INPUT_DEVICE"; then
     printf '\nconfiguration-required\nNext step:\n  %s\n' "$BIN_HOME/agentporter-activate"
     printf '\nAgentPorter completed. Uninstall later with:\n  %s\n' "$UNINSTALL_LINK"
 else

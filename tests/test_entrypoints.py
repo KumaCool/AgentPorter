@@ -192,6 +192,8 @@ def test_activation_entry_forwards_only_minimal_noncredential_environment(
     monkeypatch.setenv("HOME", "/safe/home")
     monkeypatch.setenv("HERMES_HOME", "/safe/hermes")
     monkeypatch.setenv("LANG", "C.UTF-8")
+    for name in ("LC_ALL", "LC_CTYPE", "TMPDIR"):
+        monkeypatch.delenv(name, raising=False)
 
     def fake_activator(env: dict[str, str]) -> object:
         captured.update(env)
