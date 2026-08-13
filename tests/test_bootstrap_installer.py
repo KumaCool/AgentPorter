@@ -405,3 +405,53 @@ def test_upgrade_compensation_preserves_occupied_drift_and_reports_partial(tmp_p
     assert (tmp_path / "data" / "agentporter" / VERSION).is_dir()
     journal = tmp_path / "data" / "agentporter" / ".0.1.5-upgrade-journal"
     assert json.loads(journal.read_text(encoding="utf-8"))["state"] == "UNINSTALLER_SWITCHED"
+
+
+@pytest.mark.parametrize(
+    "point",
+    [
+        "after-install-root-rename",
+        "after-agentporter-link",
+        "after-agentporter-activate-link",
+        "after-agentporter-uninstall-link",
+        "before-agentporter-readback",
+        "before-agentporter-activate-readback",
+        "before-agentporter-uninstall-readback",
+    ],
+)
+def test_fresh_install_is_one_compensating_entry_set(tmp_path: Path, point: str) -> None:
+    result = _run(
+        tmp_path,
+        checksum=hashlib.sha256(b"wheel-bytes").hexdigest(),
+        extra_env={"AGENTPORTER_BOOTSTRAP_FAIL_AT": point},
+    )
+
+    assert result.returncode != 0
+    assert not (tmp_path / "data" / "agentporter" / VERSION).exists()
+    for name in ("agentporter", "agentporter-activate", "agentporter-uninstall"):
+        assert not os.path.lexists(tmp_path / "bin" / name)
+    assert not (tmp_path / "data" / "agentporter" / ".0.1.5-upgrade-journal").exists()
+
+
+def test_upgrade_journal_seals_authority_and_per_entry_objects(tmp_path: Path) -> None:
+    _seed_v1_upgrade(tmp_path)
+    result = _run(
+        tmp_path,
+        checksum=hashlib.sha256(b"wheel-bytes").hexdigest(),
+        extra_env={"AGENTPORTER_BOOTSTRAP_DRIFT_AFTER_STATE": "UNINSTALLER_SWITCHED"},
+    )
+
+    assert result.returncode != 0
+    journal = json.loads(
+        (tmp_path / "data" / "agentporter" / ".0.1.5-upgrade-journal").read_text(encoding="utf-8")
+    )
+    assert journal["schema_version"] == 2
+    assert journal["old_root"]["type"] == "directory"
+    assert journal["old_receipt"]["sha256"]
+    assert journal["old_uninstaller"]["type"] == "file"
+    assert [item["name"] for item in journal["entries"]] == [
+        "agentporter",
+        "agentporter-activate",
+        "agentporter-uninstall",
+    ]
+    assert all({"device", "inode", "type", "target"} <= set(item) for item in journal["entries"])

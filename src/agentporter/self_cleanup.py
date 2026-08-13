@@ -292,11 +292,21 @@ def execute_cleanup_plan(plan: BootstrapCleanupPlan) -> None:
         with suppress(OSError):
             plan.product_root.rmdir()
     except BaseException:
-        if plan.quarantine.exists() and not plan.install_root.exists():
-            with suppress(OSError):
+        root_isolated = os.path.lexists(plan.quarantine)
+        restore_safe = not os.path.lexists(plan.install_root)
+        if root_isolated:
+            restore_safe = restore_safe and _same_identity(plan.quarantine, plan.install_identity)
+        for public, link_quarantine in moved:
+            index = plan.public_entries.index(public)
+            restore_safe = restore_safe and (
+                not os.path.lexists(public)
+                and _same_identity(link_quarantine, plan.link_identities[index])
+                and link_quarantine.is_symlink()
+                and Path(os.readlink(link_quarantine)) == plan.private_entries[index]
+            )
+        if restore_safe:
+            if root_isolated:
                 plan.quarantine.rename(plan.install_root)
-        for public, link_quarantine in reversed(moved):
-            if os.path.lexists(link_quarantine) and not os.path.lexists(public):
-                with suppress(OSError):
-                    link_quarantine.rename(public)
+            for public, link_quarantine in reversed(moved):
+                link_quarantine.rename(public)
         raise

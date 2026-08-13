@@ -102,6 +102,9 @@ def test_phase_f_contract_requires_activation_dispatch_and_observation_modules()
         "kanban_runtime.py",
         "runtime_observation.py",
         "runtime_probe.py",
+        "hermes_runtime.py",
+        "readiness.py",
+        "runtime_binding.py",
     }
 
     assert expected <= {path.name for path in (repository / "src" / "agentporter").glob("*.py")}

@@ -218,7 +218,9 @@ def test_execute_cleanup_revalidates_the_directory_after_isolation(
     assert plan.link_quarantine is not None
     isolated_link = install_root.with_name("authorized-original") / plan.link_quarantine.name
     assert isolated_link.is_symlink()
-    assert (install_root / "do-not-delete").is_file()
+    assert not install_root.exists()
+    assert plan.quarantine is not None
+    assert (plan.quarantine / "do-not-delete").is_file()
 
 
 def test_public_entry_replacement_during_isolation_is_not_deleted(
@@ -316,3 +318,32 @@ def test_cleanup_does_not_restore_quarantine_over_rename_and_occupy_drift(
     assert (install_root / "external").read_text(encoding="utf-8") == "keep"
     assert plan.quarantine is not None
     assert plan.quarantine.is_dir()
+
+
+def test_cleanup_does_not_restore_same_target_replacement_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_root, _, _, _ = _published_layout(tmp_path)
+    plan = build_bootstrap_cleanup_plan(
+        executable=install_root / "venv/bin/python", version=VERSION, env={}
+    )
+    first_public = plan.public_entries[0]
+    first_quarantine = plan.link_quarantines[0]
+    original_rename = Path.rename
+
+    def replace_quarantine_before_second_move(path: Path, target: Path) -> Path:
+        if path == plan.public_entries[1]:
+            original_target = os.readlink(first_quarantine)
+            first_quarantine.unlink()
+            first_quarantine.symlink_to(original_target)
+            raise RuntimeError("injected same-target replacement")
+        return original_rename(path, target)
+
+    monkeypatch.setattr(Path, "rename", replace_quarantine_before_second_move)
+
+    with pytest.raises(RuntimeError, match="same-target replacement"):
+        execute_cleanup_plan(plan)
+
+    assert not os.path.lexists(first_public)
+    assert first_quarantine.is_symlink()
+    assert install_root.is_dir()

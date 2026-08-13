@@ -9,7 +9,7 @@ WHEEL=agentporter-0.1.5-py3-none-any.whl
 CHECKSUM=${WHEEL}.sha256
 ENTRY_POINTS='agentporter agentporter-activate agentporter-uninstall'
 PACKAGED_RESOURCES='agentporter/resources/workers.yaml'
-REQUIRED_MODULES='agentporter.activation_application agentporter.activation_entry agentporter.dispatch_application agentporter.dispatch_planning agentporter.kanban_runtime agentporter.runtime_observation agentporter.runtime_probe'
+REQUIRED_MODULES='agentporter.activation_application agentporter.activation_entry agentporter.dispatch_application agentporter.dispatch_planning agentporter.hermes_runtime agentporter.kanban_runtime agentporter.readiness agentporter.runtime_binding agentporter.runtime_observation agentporter.runtime_probe'
 
 fail() {
     printf 'AgentPorter bootstrap: %s\n' "$*" >&2
@@ -74,8 +74,31 @@ journal_state() {
     STATE=$1
     [ "$UPGRADE" -eq 1 ] || return 0
     tmp=${JOURNAL}.tmp.$$
-    printf '{"schema_version":1,"from":"%s","to":"%s","state":"%s"}\n' \
-        "$PREVIOUS_VERSION" "$VERSION" "$STATE" > "$tmp"
+    "$PYTHON" -c 'import json, os, pathlib, stat, sys
+out, journal, state, old_root, old_receipt, old_uninstaller, bin_home, install_root = sys.argv[1:]
+def seal(path, target=None):
+    try: value = os.lstat(path)
+    except OSError: return {"device": None, "inode": None, "type": "absent", "target": target}
+    kind = "symlink" if stat.S_ISLNK(value.st_mode) else "directory" if stat.S_ISDIR(value.st_mode) else "file" if stat.S_ISREG(value.st_mode) else "other"
+    return {"device": value.st_dev, "inode": value.st_ino, "type": kind, "target": os.readlink(path) if kind == "symlink" else target}
+receipt = seal(old_receipt)
+try: receipt["sha256"] = __import__("hash"+"lib").sha256(pathlib.Path(old_receipt).read_bytes()).hexdigest()
+except OSError: receipt["sha256"] = None
+entries = []
+for name in ("agentporter", "agentporter-activate", "agentporter-uninstall"):
+    expected = str(pathlib.Path(install_root) / "venv" / "bin" / name)
+    entries.append({"name": name, **seal(str(pathlib.Path(bin_home) / name), expected)})
+previous = {}
+try: previous = json.loads(pathlib.Path(journal).read_text(encoding="utf-8"))
+except (OSError, ValueError): pass
+payload = {"schema_version": 2, "from": "0.1.4", "to": "0.1.5", "state": state,
+           "old_root": previous.get("old_root", seal(old_root)),
+           "old_receipt": previous.get("old_receipt", receipt),
+           "old_uninstaller": previous.get("old_uninstaller", seal(old_uninstaller)),
+           "entries": entries}
+pathlib.Path(out).write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")' \
+        "$tmp" "$JOURNAL" "$STATE" "$OLD_ROOT" "$OLD_RECEIPT" "$OLD_UNINSTALLER" \
+        "$BIN_HOME" "$INSTALL_ROOT"
     chmod 600 "$tmp"
     mv "$tmp" "$JOURNAL"
     if [ "${AGENTPORTER_BOOTSTRAP_FAIL_AFTER_STATE:-}" = "$STATE" ]; then
@@ -93,6 +116,12 @@ journal_state() {
     fi
 }
 same_link() { [ -L "$1" ] && [ "$(readlink "$1")" = "$2" ]; }
+fail_at() {
+    if [ "${AGENTPORTER_BOOTSTRAP_TESTING:-}" = 1 ] \
+            && [ "${AGENTPORTER_BOOTSTRAP_FAIL_AT:-}" = "$1" ]; then
+        fail "injected failure at $1"
+    fi
+}
 compensate_upgrade() {
     [ "$UPGRADE" -eq 1 ] || return 0
     [ "$STATE" != COMPLETE ] || return 0
@@ -147,7 +176,30 @@ STAGING=
 PUBLISHED=0
 cleanup() {
     status=$?
-    if [ "$status" -ne 0 ]; then compensate_upgrade || :; fi
+    if [ "$status" -ne 0 ]; then
+        if [ "$UPGRADE" -eq 1 ]; then
+            compensate_upgrade || :
+        elif [ "$PUBLISHED" -eq 1 ] && [ "$STATE" != COMPLETE ]; then
+            safe=1
+            for entry in $ENTRY_POINTS; do
+                public=${BIN_HOME}/${entry}; expected=${INSTALL_ROOT}/venv/bin/${entry}
+                if { [ -e "$public" ] || [ -L "$public" ]; } \
+                        && ! same_link "$public" "$expected"; then safe=0; fi
+            done
+            if [ "$safe" -eq 1 ]; then
+                for entry in $ENTRY_POINTS; do
+                    public=${BIN_HOME}/${entry}; expected=${INSTALL_ROOT}/venv/bin/${entry}
+                    if same_link "$public" "$expected"; then rm "$public"; fi
+                done
+                if [ -d "$INSTALL_ROOT" ] && [ ! -L "$INSTALL_ROOT" ]; then
+                    rm -rf "$INSTALL_ROOT"
+                fi
+            else
+                printf 'AgentPorter bootstrap: partial/mixed install; residue retained: %s\n' \
+                    "$INSTALL_ROOT" >&2
+            fi
+        fi
+    fi
     if [ "$PUBLISHED" -eq 0 ] && [ -n "$STAGING" ] \
             && [ -d "$STAGING" ] && [ ! -L "$STAGING" ]; then
         rm -rf "$STAGING"
@@ -255,6 +307,7 @@ path.chmod(0o600)' \
 journal_state RECEIPT_V2_STAGED
 mv "$STAGING" "$INSTALL_ROOT" || fail 'could not publish the verified installation'
 PUBLISHED=1
+fail_at after-install-root-rename
 journal_state AGENTPORTER_PUBLISHED
 VENV=${FINAL_VENV}
 [ -x "$VENV/bin/agentporter" ] || fail 'published package is missing the AgentPorter entry point'
@@ -274,9 +327,11 @@ for entry in $ENTRY_POINTS; do
             journal_state ACTIVATE_PUBLISHED
         fi
     fi
+    fail_at "after-${entry}-link"
 done
 journal_state UNINSTALLER_SWITCHED
 for entry in $ENTRY_POINTS; do
+    fail_at "before-${entry}-readback"
     PUBLIC_ENTRY=$BIN_HOME/$entry
     [ -L "$PUBLIC_ENTRY" ] && [ "$(readlink "$PUBLIC_ENTRY")" = "$VENV/bin/$entry" ] \
         && [ -x "$PUBLIC_ENTRY" ] \
