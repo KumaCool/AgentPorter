@@ -10,6 +10,7 @@ from agentporter.dispatch_planning import (
     WorkspaceBinding,
 )
 from agentporter.readiness import ReadinessEvidence, RuntimeBinding
+from agentporter.runtime_authority import ValidatedReadiness
 
 NOW = datetime(2026, 8, 13, tzinfo=UTC)
 SHA = "7cc1dad4e49aecfeadf4eb033802a5a990794c69"
@@ -40,6 +41,10 @@ def evidence(*, component: str = "worker-a", profile: str = "worker-a", fresh=Tr
         tool_calls_observed=0,
         fresh_until=NOW + (timedelta(minutes=5) if fresh else timedelta(seconds=-1)),
     )
+
+
+def validated(*items: ReadinessEvidence) -> ValidatedReadiness:
+    return ValidatedReadiness(items)
 
 
 def contract():
@@ -100,7 +105,7 @@ def test_plan_is_immutable_blocked_and_binds_all_authorities():
         creator_session="creator-session-runtime",
         route=route(),
         tasks=(task(),),
-        readiness=(evidence(),),
+        readiness=validated(evidence()),
         now=NOW,
         expected_base_sha=SHA,
         expected_board_revision="board-rev-1",
@@ -112,6 +117,22 @@ def test_plan_is_immutable_blocked_and_binds_all_authorities():
     assert len(plan.fingerprint) == 64
     with pytest.raises(AttributeError):
         plan.board = "other"  # type: ignore[misc]
+
+
+def test_plan_rejects_unvalidated_in_memory_evidence():
+    with pytest.raises(TypeError, match="validated readiness"):
+        DispatchPlan.create(
+            board="agentporter",
+            tenant="tenant-a",
+            creator_session="creator-session-runtime",
+            route=route(),
+            tasks=(task(),),
+            readiness=(evidence(),),  # type: ignore[arg-type]
+            now=NOW,
+            expected_base_sha=SHA,
+            expected_board_revision="board-rev-1",
+            structural_roots=("root",),
+        )
 
 
 @pytest.mark.parametrize(
@@ -135,7 +156,7 @@ def test_rejects_missing_stale_or_mismatched_assignee_evidence(task_change, evid
             creator_session="creator-session-runtime",
             route=route(),
             tasks=(task(**task_change),),
-            readiness=(evidence(**evidence_change),),
+            readiness=validated(evidence(**evidence_change)),
             now=NOW,
             expected_base_sha=SHA,
             expected_board_revision="board-rev-1",
@@ -151,7 +172,7 @@ def test_rejects_wrong_base_duplicate_keys_and_unbound_parent():
             creator_session="s",
             route=route(),
             tasks=(task(),),
-            readiness=(evidence(),),
+            readiness=validated(evidence()),
             now=NOW,
             expected_base_sha="0" * 40,
             expected_board_revision="r",
@@ -164,7 +185,7 @@ def test_rejects_wrong_base_duplicate_keys_and_unbound_parent():
             creator_session="s",
             route=route(),
             tasks=(task(), task(local_id="other")),
-            readiness=(evidence(),),
+            readiness=validated(evidence()),
             now=NOW,
             expected_base_sha=SHA,
             expected_board_revision="r",
@@ -177,7 +198,7 @@ def test_rejects_wrong_base_duplicate_keys_and_unbound_parent():
             creator_session="s",
             route=route(),
             tasks=(task(parents=("missing",)),),
-            readiness=(evidence(),),
+            readiness=validated(evidence()),
             now=NOW,
             expected_base_sha=SHA,
             expected_board_revision="r",

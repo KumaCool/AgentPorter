@@ -2,7 +2,7 @@ from dataclasses import replace
 from datetime import timedelta
 
 import pytest
-from test_dispatch_planning import NOW, SHA, evidence, route, task
+from test_dispatch_planning import NOW, SHA, evidence, route, task, validated
 from test_kanban_runtime import FakeAdapter, mutation
 from test_runtime_observation import snapshot
 
@@ -24,7 +24,7 @@ def make_plan(*tasks, roots=("root",)):
         creator_session="session-secret",
         route=route(),
         tasks=tasks,
-        readiness=(evidence(),),
+        readiness=validated(evidence()),
         now=NOW,
         expected_base_sha=SHA,
         expected_board_revision="rev-1",

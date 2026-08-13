@@ -9,6 +9,27 @@ import pytest
 from agentporter.hermes_runtime import HermesRuntime, RuntimeCommandError
 
 
+def test_minimal_environment_preserves_explicit_hermes_home() -> None:
+    assert HermesRuntime.minimal_environment(
+        {"HOME": "/tmp/home", "HERMES_HOME": "/tmp/hermes", "API_KEY": "secret"}
+    ) == {"HOME": "/tmp/home", "HERMES_HOME": "/tmp/hermes"}
+
+
+def test_executable_drift_stops_before_runner(tmp_path: Path) -> None:
+    executable = tmp_path / "hermes"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o755)
+    calls: list[object] = []
+    adapter = HermesRuntime(executable, command_runner=lambda *a, **k: calls.append(a))  # type: ignore[arg-type]
+    replacement = tmp_path / "replacement"
+    replacement.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    replacement.chmod(0o755)
+    replacement.replace(executable)
+    with pytest.raises(RuntimeCommandError, match="runtime-authority-drift"):
+        adapter.auth_status("worker", "provider")
+    assert calls == []
+
+
 def runtime(
     tmp_path: Path, calls: list[dict[str, object]], result: CompletedProcess[str]
 ) -> HermesRuntime:
@@ -162,6 +183,25 @@ def test_missing_or_malformed_usage_is_invalid_and_cleanup_is_unconditional(tmp_
         HermesRuntime(executable, command_runner=runner).oneshot("worker", "m", "p")
     assert caught.value.reason == "usage-evidence-invalid"
     assert not parents[0].exists()
+
+
+def test_usage_file_must_be_exclusively_created_by_runtime(tmp_path: Path) -> None:
+    executable = tmp_path / "hermes"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o700)
+
+    def runner(argv: tuple[str, ...], **_kwargs: object) -> CompletedProcess[str]:
+        usage = Path(argv[argv.index("--usage-file") + 1])
+        assert usage.is_file()
+        usage.write_text(
+            json.dumps(
+                {"model": "m", "provider": "p", "api_calls": 1, "completed": True, "failed": False}
+            ),
+            encoding="utf-8",
+        )
+        return CompletedProcess(argv, 0, "AGENTPORTER_READY:n\n", "")
+
+    HermesRuntime(executable, command_runner=runner).oneshot("worker", "m", "p", nonce="n")
 
 
 def test_executable_must_be_absolute_regular_executable(tmp_path: Path) -> None:

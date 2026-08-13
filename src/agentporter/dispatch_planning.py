@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Literal
 
 from .delegation_contract import DelegationContract, validate_delegation_contracts
-from .readiness import ReadinessEvidence
+from .runtime_authority import ValidatedReadiness
 
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 
@@ -109,7 +109,7 @@ class DispatchPlan:
         creator_session: str,
         route: NotificationRoute,
         tasks: tuple[TaskSpec, ...],
-        readiness: tuple[ReadinessEvidence, ...],
+        readiness: object,
         now: datetime,
         expected_base_sha: str,
         expected_board_revision: str,
@@ -119,8 +119,10 @@ class DispatchPlan:
             raise ValueError("board, tenant, creator session and revision are required")
         if route.source == "creator-session" and not creator_session:
             raise ValueError("creator session route is unbound")
-        evidence_by_component = {item.binding.component_id: item for item in readiness}
-        if len(evidence_by_component) != len(readiness):
+        if not isinstance(readiness, ValidatedReadiness):
+            raise TypeError("validated readiness token is required")
+        evidence_by_component = {item.binding.component_id: item for item in readiness.evidence}
+        if len(evidence_by_component) != len(readiness.evidence):
             raise ValueError("duplicate readiness evidence")
         ordered_ids = [item.local_id for item in tasks]
         ids = set(ordered_ids)

@@ -155,7 +155,7 @@ def test_two_workers_aggregate_by_component_not_identical_binding() -> None:
             now=now,
             required_components={"component-codex", "component-luna"},
         )
-        == "operational"
+        == "inference-ready"
     )
 
 

@@ -12,7 +12,7 @@ import stat
 import sys
 from collections.abc import Callable, Mapping
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
@@ -26,6 +26,7 @@ from .runtime_binding import (
     CredentialGrantKind,
     CredentialState,
     RuntimeBindingPlan,
+    RuntimeBindingReceipt,
     binding_fingerprint,
 )
 from .runtime_probe import ProbeObservation, ProbeResult, run_runtime_probe
@@ -425,7 +426,8 @@ def _safe_summary(plan: ActivationPlan, output: TextIO) -> None:
             file=output,
         )
     print(
-        "Activation writes two non-secret keys per target; model canary is a later phase.",
+        "Activation writes two non-secret keys per target; Profile auth and the separately "
+        "confirmed live canary follow as independent stages.",
         file=output,
     )
 
@@ -587,9 +589,31 @@ def _publish_receipt(
         os.close(descriptor)
         descriptor = None
         if expected is None:
-            os.replace(
-                temporary, "runtime-binding.json", src_dir_fd=directory_fd, dst_dir_fd=directory_fd
-            )
+            try:
+                fixed_fd = os.open(
+                    "runtime-binding.json",
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                    mode,
+                    dir_fd=directory_fd,
+                )
+            except FileExistsError as error:
+                raise _ReceiptDrift("receipt appeared before first publication") from error
+            try:
+                os.fchown(fixed_fd, uid, gid)
+                os.fchmod(fixed_fd, mode)
+                with open(
+                    temporary,
+                    "rb",
+                    opener=lambda _name, _flags: os.open(
+                        temporary, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd
+                    ),
+                ) as source:
+                    while chunk := source.read(65536):
+                        os.write(fixed_fd, chunk)
+                os.fsync(fixed_fd)
+            finally:
+                os.close(fixed_fd)
+            os.unlink(temporary, dir_fd=directory_fd)
         else:
             expected_identity = (expected.device, expected.inode, _digest(expected.content))
             if (
@@ -625,17 +649,84 @@ def _write_receipt(target: ActivationTargetPlan, readback: ConfigSnapshot) -> _R
     }
     data = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
     existing = _receipt_snapshot(target)
+    if existing.exists:
+        _validate_activation_receipt(existing.content)
+        if existing.content == data:
+            return existing
     return _publish_receipt(
         target,
         data,
         uid=existing.uid if existing.exists else os.geteuid(),
         gid=existing.gid if existing.exists else os.getegid(),
         mode=0o600,
+        expected=existing if existing.exists else None,
     )
 
 
 class _ReceiptDrift(ValueError):
     pass
+
+
+_BINDING_RECEIPT_FIELDS: frozenset[str] = frozenset(
+    {
+        "schema_version",
+        "component_id",
+        "profile_name",
+        "model",
+        "provider",
+        "endpoint_digest",
+        "credential_grant_kind",
+        "credential_state",
+        "credential_status",
+        "credential_verification",
+        "hermes_version",
+        "config_digest",
+    }
+)
+_INITIAL_RECEIPT_FIELDS: frozenset[str] = _BINDING_RECEIPT_FIELDS | {
+    "config_readback_passed",
+    "canary_status",
+}
+_CANARY_RECEIPT_FIELDS: frozenset[str] = _INITIAL_RECEIPT_FIELDS | {
+    "canary_reason_code",
+    "canary_evidence_digest",
+    "probe_started_at",
+    "probe_finished_at",
+    "fresh_until",
+    "binding_fingerprint",
+    "actual_model",
+    "actual_provider",
+    "api_calls",
+    "tool_calls_observed",
+    "fallback_used",
+    "response_contract_passed",
+    "nonce_contract_passed",
+    "nonce_digest",
+}
+
+
+def _validate_activation_receipt(content: bytes) -> dict[str, object]:
+    try:
+        loaded: object = json.loads(content)
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError("binding receipt is invalid") from error
+    if not isinstance(loaded, dict):
+        raise ValueError("binding receipt is invalid")
+    untyped = cast(dict[object, object], loaded)
+    if not all(isinstance(key, str) for key in untyped):
+        raise ValueError("binding receipt is invalid")
+    result = cast(dict[str, object], untyped)
+    expected = (
+        _INITIAL_RECEIPT_FIELDS
+        if result.get("canary_status") == "required"
+        else _CANARY_RECEIPT_FIELDS
+    )
+    if frozenset(result) != expected:
+        raise ValueError("binding receipt schema is invalid")
+    RuntimeBindingReceipt.from_dict({key: result[key] for key in sorted(_BINDING_RECEIPT_FIELDS)})
+    if result["config_readback_passed"] is not True:
+        raise ValueError("binding receipt readback is invalid")
+    return result
 
 
 def _write_canary_receipt(
@@ -645,10 +736,10 @@ def _write_canary_receipt(
         raise _ReceiptDrift("receipt changed before canary publication")
     if not existing.exists:
         raise ValueError("binding receipt is missing")
-    loaded_object: object = json.loads(existing.content)
-    if not isinstance(loaded_object, dict):
-        raise ValueError("binding receipt is invalid")
-    loaded = cast(dict[str, object], loaded_object)
+    loaded = _validate_activation_receipt(existing.content)
+    authoritative_binding = replace(
+        target.binding, config_digest=cast(str, loaded["config_digest"])
+    )
     safe_summary = {
         "status": result.status,
         "api_calls": result.api_calls,
@@ -659,6 +750,9 @@ def _write_canary_receipt(
         "nonce_digest": result.nonce_digest,
     }
     loaded["canary_status"] = "passed" if result.live_call_passed else "failed"
+    if result.live_call_passed:
+        loaded["credential_status"] = "logged-in"
+        loaded["credential_verification"] = "verified"
     loaded["canary_reason_code"] = result.status
     loaded["canary_evidence_digest"] = _digest(
         json.dumps(safe_summary, sort_keys=True, separators=(",", ":")).encode()
@@ -673,8 +767,8 @@ def _write_canary_receipt(
             else None,
             "fresh_until": result.fresh_until.isoformat() if result.fresh_until else None,
             "hermes_version": target.binding.hermes_version,
-            "config_digest": target.binding.config_digest,
-            "binding_fingerprint": binding_fingerprint(target.binding),
+            "config_digest": authoritative_binding.config_digest,
+            "binding_fingerprint": binding_fingerprint(authoritative_binding),
             "actual_model": result.actual_model if result.live_call_passed else None,
             "actual_provider": result.actual_provider if result.live_call_passed else None,
             "api_calls": result.api_calls if result.live_call_passed else 0,
@@ -825,6 +919,9 @@ def apply_activation(
                 if input_fn(f"Type {phrase} to let Hermes own Profile auth: ") != phrase:
                     return ActivationResult(ActivationStatus.CREDENTIAL_REQUIRED, items)
                 auth_add_runner(target.binding)
+                status = auth_status_runner(target.binding)
+                if status != "logged-in":
+                    return ActivationResult(ActivationStatus.CREDENTIAL_REQUIRED, items)
     if probe_runner is None:
         return ActivationResult(ActivationStatus.CANARY_REQUIRED, items)
     if not probe_supported:

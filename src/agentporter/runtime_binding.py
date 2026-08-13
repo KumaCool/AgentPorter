@@ -5,12 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, field
-from typing import Literal
+from dataclasses import asdict, dataclass, field, fields
+from typing import Literal, cast
 from urllib.parse import urlsplit
 
 CredentialGrantKind = Literal["external-secret", "profile-auth", "profile-env"]
 CredentialState = Literal["unresolved", "operator-authorized"]
+CredentialStatus = Literal["unknown", "logged-out", "logged-in"]
+CredentialVerification = Literal["unverified", "verified"]
 BindingGateStatus = Literal[
     "configuration-required",
     "credential-required",
@@ -51,8 +53,60 @@ class RuntimeBindingReceipt:
     credential_state: CredentialState
     hermes_version: str
     config_digest: str
+    credential_status: CredentialStatus = "unknown"
+    credential_verification: CredentialVerification = "unverified"
+    schema_version: int = 1
 
-    def as_dict(self) -> dict[str, str]:
+    def __post_init__(self) -> None:
+        if self.schema_version != 1:
+            raise ValueError("unsupported receipt schema version")
+        for name in (
+            "component_id",
+            "profile_name",
+            "model",
+            "provider",
+            "endpoint_digest",
+            "hermes_version",
+            "config_digest",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"receipt {name} must be a non-empty string")
+        if self.credential_grant_kind not in {
+            "external-secret",
+            "profile-auth",
+            "profile-env",
+        }:
+            raise ValueError("invalid receipt credential grant kind")
+        if self.credential_state not in {"unresolved", "operator-authorized"}:
+            raise ValueError("invalid receipt credential state")
+        if self.credential_status not in {"unknown", "logged-out", "logged-in"}:
+            raise ValueError("invalid receipt credential status")
+        if self.credential_verification not in {"unverified", "verified"}:
+            raise ValueError("invalid receipt credential verification")
+        if self.credential_verification == "verified" and self.credential_status != "logged-in":
+            raise ValueError("verified credentials must be logged in")
+
+    @classmethod
+    def from_dict(cls, payload: object) -> RuntimeBindingReceipt:
+        """Parse the exact versioned non-secret receipt schema, rejecting extensions."""
+        if not isinstance(payload, dict):
+            raise ValueError("receipt schema must be a mapping")
+        values = cast(dict[object, object], payload)
+        if not all(isinstance(key, str) for key in values):
+            raise ValueError("receipt schema fields do not match")
+        typed = cast(dict[str, object], values)
+        expected = {item.name for item in fields(cls)}
+        if set(typed) != expected:
+            raise ValueError("receipt schema fields do not match")
+        if typed.get("schema_version") != 1:
+            raise ValueError("unsupported receipt schema version")
+        try:
+            return cls(**typed)  # type: ignore[arg-type]
+        except TypeError as error:
+            raise ValueError("receipt schema values are invalid") from error
+
+    def as_dict(self) -> dict[str, str | int]:
         """Return a JSON-ready receipt containing only non-secret values."""
         return asdict(self)
 

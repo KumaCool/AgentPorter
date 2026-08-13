@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import multiprocessing
+import os
 import secrets
+import signal
 import tempfile
 from collections.abc import Callable
 from contextlib import suppress
@@ -60,6 +62,7 @@ class ProbeObservation:
     fallback_used: bool | None = False
     http_status: int | None = None
     timed_out: bool = False
+    failure_reason: ProbeFailureReason | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,14 +116,33 @@ class ProbeResult:
 @dataclass(frozen=True, slots=True)
 class ProbeCapability:
     supported: bool
-    status: Literal["supported", "probe-unsupported"]
+    status: Literal["supported", "route-proof-incomplete", "probe-unsupported"]
+    oneshot_supported: bool = False
+    usage_file_supported: bool = False
+    usage_model_provider_supported: bool = False
+    usage_api_calls_supported: bool = False
+    tool_call_telemetry_supported: bool = False
+    fallback_telemetry_supported: bool = False
+    profile_scoped_auth_supported: bool = False
 
 
 def negotiate_hermes_probe(
     *, version: str, help_text: str, command_runner: Callable[[tuple[str, ...]], object]
 ) -> ProbeCapability:
-    del version, help_text, command_runner
-    return ProbeCapability(False, "probe-unsupported")
+    del version, command_runner
+    oneshot = "--oneshot" in help_text or "-z" in help_text
+    usage = "--usage-file" in help_text
+    auth = "auth" in help_text and "status" in help_text and "add" in help_text
+    supported = oneshot and usage and auth
+    return ProbeCapability(
+        supported,
+        "route-proof-incomplete" if supported else "probe-unsupported",
+        oneshot_supported=oneshot,
+        usage_file_supported=usage,
+        usage_model_provider_supported=usage,
+        usage_api_calls_supported=usage,
+        profile_scoped_auth_supported=auth,
+    )
 
 
 def classify_probe_failure(failure: ProbeFailure) -> ProbeFailureReason:
@@ -145,7 +167,14 @@ def _isolated_observation(
 
     def invoke() -> None:
         try:
+            os.setsid()
             sending.send(runner(nonce, directory))
+        except Exception as error:
+            reason = getattr(error, "reason", None)
+            with suppress(BaseException):
+                sending.send(
+                    reason if isinstance(reason, str) else ProbeObservation(http_status=500)
+                )
         except BaseException:
             with suppress(BaseException):
                 sending.send(ProbeObservation(http_status=500))
@@ -157,7 +186,10 @@ def _isolated_observation(
     sending.close()
     process.join(timeout)
     if process.is_alive():
-        process.kill()
+        process_id = process.pid
+        if process_id is not None:
+            with suppress(ProcessLookupError):
+                os.killpg(process_id, signal.SIGKILL)
         process.join()
         receiving.close()
         return None
@@ -166,6 +198,15 @@ def _isolated_observation(
     except (EOFError, OSError):
         value = None
     receiving.close()
+    if isinstance(value, str) and value in {
+        "authentication-failed",
+        "model-unsupported",
+        "endpoint-unavailable",
+        "rate-limited",
+        "probe-timeout",
+        "response-contract-failed",
+    }:
+        return ProbeObservation(failure_reason=value)  # type: ignore[arg-type]
     return value if isinstance(value, ProbeObservation) else None
 
 
@@ -201,6 +242,8 @@ def run_runtime_probe(
     }
     if observation is None:
         return ProbeResult("probe-timeout", **provenance)  # type: ignore[arg-type]
+    if observation.failure_reason is not None:
+        return ProbeResult(observation.failure_reason, **provenance)  # type: ignore[arg-type]
     if observation.timed_out or observation.http_status is not None:
         return ProbeResult(
             classify_probe_failure(ProbeFailure(observation.http_status, observation.timed_out)),

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from agentporter.hermes_runtime import RuntimeCommandError
 from agentporter.runtime_binding import RuntimeBindingPlan, binding_fingerprint
 from agentporter.runtime_probe import (
     ProbeFailure,
@@ -16,6 +17,19 @@ from agentporter.runtime_probe import (
     probe_readiness_evidence,
     run_runtime_probe,
 )
+
+
+def test_capability_negotiation_records_observed_public_contract() -> None:
+    capability = negotiate_hermes_probe(
+        version="0.20.0",
+        help_text="-z --oneshot --usage-file -p --profile auth status auth add",
+        command_runner=lambda _argv: object(),
+    )
+    assert capability.oneshot_supported
+    assert capability.usage_file_supported
+    assert capability.profile_scoped_auth_supported
+    assert not capability.tool_call_telemetry_supported
+    assert capability.status == "route-proof-incomplete"
 
 
 @pytest.mark.parametrize("status", [401, 403])
@@ -39,6 +53,16 @@ def test_endpoint_failure_classification(status: int) -> None:
 
 def test_timeout_classification() -> None:
     assert classify_probe_failure(ProbeFailure(timed_out=True)) == "probe-timeout"
+
+
+def test_runtime_adapter_reason_survives_probe_process_boundary() -> None:
+    def runner(_nonce: str, _directory: Path) -> ProbeObservation:
+        raise RuntimeCommandError("rate-limited")
+
+    assert (
+        run_runtime_probe(expected_model="m", expected_provider="p", runner=runner).status
+        == "rate-limited"
+    )
 
 
 def observation(nonce: str, **changes: object) -> ProbeObservation:

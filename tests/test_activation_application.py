@@ -542,6 +542,61 @@ def test_safe_receipt_is_private_atomic_and_inside_user_owned_local(tmp_path: Pa
         assert not (binding.profile_path / "auth.json").exists()
 
 
+def test_first_receipt_publication_refuses_preexisting_external_file(tmp_path: Path) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+    receipt = plan.bindings[0].profile_path / "local/agentporter/runtime-binding.json"
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text('{"external":"KEEP"}\n', encoding="utf-8")
+
+    result = apply_activation(plan, input_fn=lambda _: plan.confirmation_phrase)
+
+    assert result.status is ActivationStatus.FAILED
+    assert json.loads(receipt.read_text()) == {"external": "KEEP"}
+
+
+def test_identical_receipt_replay_preserves_identity(tmp_path: Path) -> None:
+    found, discovery = _installation(tmp_path)
+    first = build_activation_plan(discovery, found, _inputs())
+    assert (
+        apply_activation(first, input_fn=lambda _: first.confirmation_phrase).status
+        is ActivationStatus.CANARY_REQUIRED
+    )
+    receipts = [
+        item.profile_path / "local/agentporter/runtime-binding.json" for item in first.bindings
+    ]
+    identities = [(path.stat().st_dev, path.stat().st_ino, path.read_bytes()) for path in receipts]
+
+    replay = build_activation_plan(discover_installation(found.profiles_root), found, _inputs())
+    assert (
+        apply_activation(replay, input_fn=lambda _: replay.confirmation_phrase).status
+        is ActivationStatus.CANARY_REQUIRED
+    )
+    assert [
+        (path.stat().st_dev, path.stat().st_ino, path.read_bytes()) for path in receipts
+    ] == identities
+
+
+def test_receipt_update_rejects_unknown_external_schema(tmp_path: Path) -> None:
+    found, discovery = _installation(tmp_path)
+    first = build_activation_plan(discovery, found, _inputs())
+    assert (
+        apply_activation(first, input_fn=lambda _: first.confirmation_phrase).status
+        is ActivationStatus.CANARY_REQUIRED
+    )
+    receipt = first.bindings[0].profile_path / "local/agentporter/runtime-binding.json"
+    receipt.write_text('{"schema_version":1,"foreign":true}\n', encoding="utf-8")
+    changed = {
+        key: replace(value, provider_id="replacement-provider") for key, value in _inputs().items()
+    }
+    update = build_activation_plan(discover_installation(found.profiles_root), found, changed)
+
+    result = apply_activation(update, input_fn=lambda _: update.confirmation_phrase)
+
+    assert result.status is ActivationStatus.FAILED
+    assert json.loads(receipt.read_text()) == {"schema_version": 1, "foreign": True}
+
+
 def test_symlink_config_is_rejected_without_read_or_write(tmp_path: Path) -> None:
     found, discovery = _installation(tmp_path)
     target = discovery.targets[0]

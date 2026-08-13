@@ -25,7 +25,7 @@ ReasonCode = ReadinessStatus
 ProviderSourceKind = Literal["profile-config", "task-override", "unresolved"]
 LifecycleEvent = Literal["fresh-install", "reinstall", "update", "profile-rename", "uninstall"]
 AggregateStatus = Literal[
-    "operational", "restricted", "canary-required", "blocked", "configuration-required"
+    "inference-ready", "restricted", "canary-required", "blocked", "configuration-required"
 ]
 
 _BLOCKING = frozenset(
@@ -211,4 +211,4 @@ def aggregate_readiness(
         return "canary-required"
     if any(item.status == "route-proof-incomplete" for item in evidence):
         return "restricted"
-    return "operational"
+    return "inference-ready"

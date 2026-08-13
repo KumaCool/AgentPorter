@@ -26,6 +26,7 @@ def test_runtime_phases_have_independent_confirmation_and_disclose_side_effects(
     prompts: list[str] = []
     output: list[str] = []
     auth_calls: list[str] = []
+    auth_statuses = iter(("logged-out", "logged-in", "logged-out", "logged-in"))
 
     answers = iter(
         (plan.confirmation_phrase, "AUTH renamed-luna", "AUTH renamed-codex", "RUN 2 WORKER CALLS")
@@ -44,7 +45,7 @@ def test_runtime_phases_have_independent_confirmation_and_disclose_side_effects(
         plan,
         input_fn=answer,
         output=Writer(),  # type: ignore[arg-type]
-        auth_status_runner=lambda binding: "logged-out",
+        auth_status_runner=lambda binding: next(auth_statuses),
         auth_add_runner=lambda binding: auth_calls.append(binding.component_id),
         probe_runner=lambda binding, nonce, _directory: ProbeObservation(
             output=f"AGENTPORTER_READY:{nonce}",
@@ -69,6 +70,12 @@ def test_runtime_phases_have_independent_confirmation_and_disclose_side_effects(
     assert "possible fees" in rendered
     assert "session" in rendered and "usage" in rendered and "memory" in rendered
     assert "state.db" in rendered and "will not" in rendered
+    for item in plan.bindings:
+        receipt = json.loads(
+            (item.profile_path / "local/agentporter/runtime-binding.json").read_text()
+        )
+        assert receipt["credential_status"] == "logged-in"
+        assert receipt["credential_verification"] == "verified"
 
 
 def test_rejecting_live_confirmation_makes_zero_probe_calls_but_keeps_binding_and_auth(
@@ -77,11 +84,12 @@ def test_rejecting_live_confirmation_makes_zero_probe_calls_but_keeps_binding_an
     found, discovery = installation_fixture(tmp_path)
     plan = build_activation_plan(discovery, found, inputs_fixture())
     probes: list[str] = []
+    auth_statuses = iter(("logged-out", "logged-in", "logged-out", "logged-in"))
     answers = iter((plan.confirmation_phrase, "AUTH renamed-luna", "AUTH renamed-codex", "NO"))
     result = apply_activation(
         plan,
         input_fn=lambda _prompt: next(answers),
-        auth_status_runner=lambda _binding: "logged-out",
+        auth_status_runner=lambda _binding: next(auth_statuses),
         auth_add_runner=lambda _binding: None,
         probe_runner=lambda binding, _nonce, _directory: (
             probes.append(binding.component_id) or ProbeObservation()
@@ -119,3 +127,23 @@ def test_unsupported_grant_returns_before_auth_or_probe(tmp_path: Path) -> None:
     )
     assert result.status is ActivationStatus.CREDENTIAL_SOURCE_UNSUPPORTED
     assert calls == []
+
+
+def test_auth_add_is_followed_by_authoritative_status_readback(tmp_path: Path) -> None:
+    found, discovery = installation_fixture(tmp_path)
+    plan = build_activation_plan(discovery, found, inputs_fixture())
+    calls: list[str] = []
+    statuses = iter(("logged-out", "logged-in", "logged-out", "logged-in"))
+    answers = iter((plan.confirmation_phrase, "AUTH renamed-luna", "AUTH renamed-codex", "NO"))
+    result = apply_activation(
+        plan,
+        input_fn=lambda _prompt: next(answers),
+        auth_status_runner=lambda binding: (
+            calls.append("status:" + binding.component_id) or next(statuses)
+        ),
+        auth_add_runner=lambda binding: calls.append("add:" + binding.component_id),
+        probe_runner=lambda _binding, _nonce, _directory: ProbeObservation(),
+        require_runtime_confirmations=True,
+    )
+    assert result.status is ActivationStatus.CANARY_REQUIRED
+    assert [item.split(":")[0] for item in calls] == ["status", "add", "status"] * 2

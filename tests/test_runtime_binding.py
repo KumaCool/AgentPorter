@@ -5,6 +5,7 @@ import pytest
 
 from agentporter.runtime_binding import (
     RuntimeBindingPlan,
+    RuntimeBindingReceipt,
     binding_fingerprint,
     evaluate_binding_gate,
 )
@@ -12,6 +13,17 @@ from agentporter.runtime_binding import (
 PRIVATE_ENDPOINT = "https://user:pass@10.23.4.5/private/v1"
 PRIVATE_KEY = "sk-private-sentinel"
 PRIVATE_PATH = "/home/private-user/.hermes/auth.json"
+
+
+def test_binding_receipt_parser_is_versioned_and_closed() -> None:
+    payload = plan().safe_receipt().as_dict()
+    assert payload["credential_status"] == "unknown"
+    assert payload["credential_verification"] == "unverified"
+    assert RuntimeBindingReceipt.from_dict(payload).as_dict() == payload
+    with pytest.raises(ValueError, match="schema"):
+        RuntimeBindingReceipt.from_dict({**payload, "unknown": "rejected"})
+    with pytest.raises(ValueError, match="version"):
+        RuntimeBindingReceipt.from_dict({**payload, "schema_version": 999})
 
 
 def plan(**changes: object) -> RuntimeBindingPlan:
