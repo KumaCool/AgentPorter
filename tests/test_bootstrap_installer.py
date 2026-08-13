@@ -5,6 +5,7 @@ import json
 import os
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -48,6 +49,7 @@ case "$url" in
 esac
 """,
     )
+    real_python = Path(sys.executable)
     _write_executable(
         tools / "python3",
         """#!/bin/sh
@@ -57,7 +59,7 @@ if [ "${1-}" = '-c' ]; then
   case "$2" in
     *hashlib*) printf '%s\n' "$FAKE_ACTUAL_CHECKSUM" ;;
     *"import agentporter"*) printf '{VERSION}\n' ;;
-    *) exec /usr/bin/python3 "$@" ;;
+    *) exec {REAL_PYTHON} "$@" ;;
   esac
   exit 0
 fi
@@ -108,7 +110,7 @@ EOF
   exit 0
 fi
 exit 1
-""".replace("{VERSION}", VERSION),
+""".replace("{VERSION}", VERSION).replace("{REAL_PYTHON}", str(real_python)),
     )
     return tools, log
 
