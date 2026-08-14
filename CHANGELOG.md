@@ -4,6 +4,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+AgentPorter 0.2.1 is prepared as a local release candidate only. It has not been pushed, tagged, published, or selected by the public `latest` alias; v0.2.0 remains the latest published release.
+
 ### Fixed
 
 - Corrected the current topology to exactly two Worker Profiles: `bounded_worker` and `mechanical_worker`. The main Hermes agent is the orchestrator; fresh install, activation, and canary no longer create, bind, or call an independent orchestrator Profile.

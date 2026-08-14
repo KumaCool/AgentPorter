@@ -1,6 +1,6 @@
 # Installation, troubleshooting, and safe release
 
-> **Unreleased topology correction (current authority):** Current fresh install, activation, and canary target exactly two Worker Profiles, `bounded_worker` and `mechanical_worker`; the main Hermes agent is the orchestrator. v0.2.0 truly shipped the erroneous third `agentporter-orchestrator`, now supported only for discovery/uninstall and separately confirmed migration removal.
+> **v0.2.1 local release candidate (current authority; not pushed, tagged, or published):** Current fresh install, activation, and canary target exactly two Worker Profiles, `bounded_worker` and `mechanical_worker`; the main Hermes agent is the orchestrator. v0.2.0 truly shipped the erroneous third `agentporter-orchestrator`, now supported only for discovery/uninstall and separately confirmed migration removal.
 
 
 English | [简体中文](04-installation-and-troubleshooting.zh-CN.md)
@@ -31,13 +31,13 @@ Linux has the strongest real-Hermes acceptance evidence. macOS and Windows are c
 
 ## Install from a release artifact
 
-To install the downloaded v0.2.0 wheel, verify its checksum and create a disposable environment:
+To test the locally generated v0.2.1 candidate wheel, verify its checksum and create a disposable environment:
 
 ```bash
 python -m venv .venv
 # POSIX: source .venv/bin/activate
 # Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install agentporter-0.2.0-py3-none-any.whl
+python -m pip install agentporter-0.2.1-py3-none-any.whl
 agentporter
 ```
 
@@ -45,7 +45,7 @@ agentporter
 
 ## Published bootstrap boundary
 
-The source-tree `install.sh` is pinned to immutable `https://github.com/KumaCool/AgentPorter/releases/download/v0.2.0` assets. The non-prerelease GitHub Release is published, and the public `latest` alias selects v0.2.0. All seven hosted assets were downloaded and passed byte/checksum comparison and the release verifier; fresh HTTPS clone, isolated wheel import, and public `latest/download/install.sh` byte comparison also passed.
+The source-tree candidate `install.sh` is pinned to the future immutable `https://github.com/KumaCool/AgentPorter/releases/download/v0.2.1` assets; those assets do not yet exist because this candidate is local only. The published v0.2.0 release and its immutable URL remain unchanged, and the public `latest` alias still selects v0.2.0. All seven hosted assets were downloaded and passed byte/checksum comparison and the release verifier; fresh HTTPS clone, isolated wheel import, and public `latest/download/install.sh` byte comparison also passed.
 
 ## Run from source
 
@@ -122,7 +122,7 @@ Never post raw config files, marker paths, credentials, sessions, memories, or p
 
    ```bash
    python scripts/verify_release.py \
-     --version 0.2.0 \
+     --version 0.2.1 \
      --dependency 'pydantic<3,>=2' \
      --dependency 'PyYAML<7,>=6' \
      --entry-point 'agentporter=agentporter:main' \
@@ -131,9 +131,15 @@ Never post raw config files, marker paths, credentials, sessions, memories, or p
      --resource 'resources/workers.yaml' \
      --required-module activation_application.py \
      --required-module activation_entry.py \
+     --required-module bootstrap_txn.py \
      --required-module dispatch_application.py \
      --required-module dispatch_planning.py \
+     --required-module hermes_runtime.py \
+     --required-module legacy_migration.py \
      --required-module kanban_runtime.py \
+     --required-module readiness.py \
+     --required-module runtime_authority.py \
+     --required-module runtime_binding.py \
      --required-module runtime_observation.py \
      --required-module runtime_probe.py \
      --required-module plan06_role_bindings.py \
@@ -141,7 +147,7 @@ Never post raw config files, marker paths, credentials, sessions, memories, or p
      --required-module role_name_migration.py \
      --required-module role_name_migration_application.py \
      --bootstrap-checksum <wheel>.sha256 \
-     --bootstrap-source-sha256 5e319aabadaa4237220d10cd3a5a98a5d3d6821908491ec24d1aef03c25226b5 \
+     --bootstrap-source-sha256 4b0ae3ca6204181201df1654a1c310e7f764db02183cb527345ae3d82f3928fa \
      <wheel> <sdist>
    ```
 

@@ -4,7 +4,7 @@
 
 AgentPorter 是一个开源的 [Hermes Agent](https://hermes-agent.nousresearch.com/) 多代理工作组部署方案：一次安装多个职责明确的 Worker Profile，并逐步接通 Hermes 原生 Kanban 的任务分解与合理路由。[职责型身份与自定义推理绑定设计](docs/06-role-identities-and-configurable-model-binding-design.md)已在 v0.2.0 正式发布。
 
-> **当前状态：** v0.2.0 是最新正式非预发布版。tag `v0.2.0` 精确指向 `be31eb2af67660780593c716d488ca88e508f710`；GitHub Release 与 7 个托管 assets 已通过 checksum/verifier、fresh HTTPS clone、隔离 wheel import 和公开 `latest/download/install.sh` 字节回读。修正后的 fresh install 只创建 `bounded_worker` 与 `mechanical_worker` 两个 Worker Profile，并为两者显式封闭 model/provider/endpoint。主 Hermes agent 是 orchestrator；当前没有独立 orchestrator Profile。未执行真实模型 canary、Gateway 变更、Kanban mutation 或 live routing，因此不能称为 `operational`。
+> **当前状态：** v0.2.1 是当前仅本地 release candidate，尚未 push、tag 或发布；v0.2.0 仍是最新正式非预发布版。tag `v0.2.0` 精确指向 `be31eb2af67660780593c716d488ca88e508f710`；GitHub Release 与 7 个托管 assets 已通过 checksum/verifier、fresh HTTPS clone、隔离 wheel import 和公开 `latest/download/install.sh` 字节回读。修正后的 fresh install 只创建 `bounded_worker` 与 `mechanical_worker` 两个 Worker Profile，并为两者显式封闭 model/provider/endpoint。主 Hermes agent 是 orchestrator；当前没有独立 orchestrator Profile。未执行真实模型 canary、Gateway 变更、Kanban mutation 或 live routing，因此不能称为 `operational`。
 
 ## curl 一键安装（POSIX）
 

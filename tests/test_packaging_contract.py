@@ -24,7 +24,7 @@ def _project() -> dict[str, object]:
 def test_version_has_one_package_source() -> None:
     config = _project()
 
-    assert agentporter.__version__ == "0.2.0"
+    assert agentporter.__version__ == "0.2.1"
     assert config["project"]["dynamic"] == ["version"]  # type: ignore[index]
     assert "version" not in config["project"]  # type: ignore[operator]
     assert config["tool"]["setuptools"]["dynamic"]["version"] == {  # type: ignore[index]
@@ -102,7 +102,7 @@ def test_built_wheel_contains_phase_f_runtime_modules_and_console_entries(tmp_pa
         assert "agentporter/runtime_probe.py" in names
         assert "agentporter/uninstall_entry.py" in names
         assert "agentporter/bootstrap_txn.py" in names
-        entry_points = archive.read("agentporter-0.2.0.dist-info/entry_points.txt").decode()
+        entry_points = archive.read("agentporter-0.2.1.dist-info/entry_points.txt").decode()
 
     assert "agentporter = agentporter:main" in entry_points
     assert "agentporter-activate = agentporter.activation_entry:main" in entry_points
@@ -123,7 +123,7 @@ def test_built_sdist_contains_package_but_not_tests_or_caches(tmp_path: Path) ->
     with tarfile.open(archives[0]) as archive:
         names = set(archive.getnames())
 
-    prefix = "agentporter-0.2.0/"
+    prefix = "agentporter-0.2.1/"
     assert prefix + "src/agentporter/resources/workers.yaml" in names
     assert prefix + "src/agentporter/activation_entry.py" in names
     assert prefix + "src/agentporter/dispatch_application.py" in names

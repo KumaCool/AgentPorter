@@ -1,6 +1,6 @@
 # 安装、故障排查与安全发布
 
-> **Unreleased 拓扑修正（当前权威）：** 当前产品恰好只有 `bounded_worker` 与 `mechanical_worker` 两个 Worker Profile；主 Hermes agent 是 orchestrator，不再有独立 orchestrator Profile。v0.2.0 确实发布了错误的第三个 `agentporter-orchestrator`；下文三 Profile 叙述仅是历史发布/阶段证据。legacy 组件现在仅支持发现/卸载，以及单独确认的迁移删除。fresh install、activation、canary 均闭合为两个 binding/call。
+> **v0.2.1 本地 release candidate（当前权威；尚未 push、tag 或发布）：** 当前产品恰好只有 `bounded_worker` 与 `mechanical_worker` 两个 Worker Profile；主 Hermes agent 是 orchestrator，不再有独立 orchestrator Profile。v0.2.0 确实发布了错误的第三个 `agentporter-orchestrator`；下文三 Profile 叙述仅是历史发布/阶段证据。legacy 组件现在仅支持发现/卸载，以及单独确认的迁移删除。fresh install、activation、canary 均闭合为两个 binding/call。
 
 
 [English](04-installation-and-troubleshooting.md) | 简体中文
@@ -31,13 +31,13 @@ Linux 的真实 Hermes 验收证据最强。macOS 和 Windows 纳入离线 CI �
 
 ## 从发布制品安装
 
-如需手动安装 v0.2.0 wheel，请先验证校验和并建立隔离环境：
+如需测试本地生成的 v0.2.1 candidate wheel，请先验证校验和并建立隔离环境：
 
 ```bash
 python -m venv .venv
 # POSIX: source .venv/bin/activate
 # Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install agentporter-0.2.0-py3-none-any.whl
+python -m pip install agentporter-0.2.1-py3-none-any.whl
 agentporter
 ```
 
@@ -45,7 +45,7 @@ agentporter
 
 ## 已发布引导脚本边界
 
-源码树中的 `install.sh` 固定到不可变的 `https://github.com/KumaCool/AgentPorter/releases/download/v0.2.0` assets。非预发布 GitHub Release 已正式发布，公开 `latest` alias 已选择 v0.2.0。7 个托管 assets 全部下载并通过字节/校验和比较与 release verifier；fresh HTTPS clone、隔离 wheel import 和公开 `latest/download/install.sh` 字节比较也已通过。
+源码树中的 candidate `install.sh` 固定到未来不可变的 `https://github.com/KumaCool/AgentPorter/releases/download/v0.2.1` assets；由于该 candidate 仅存在于本地，这些 assets 尚不存在。已发布 v0.2.0 及其不可变 URL 保持不变，公开 `latest` alias 仍选择 v0.2.0。7 个托管 assets 全部下载并通过字节/校验和比较与 release verifier；fresh HTTPS clone、隔离 wheel import 和公开 `latest/download/install.sh` 字节比较也已通过。
 
 ## 从源码运行
 
@@ -122,7 +122,7 @@ Plan 06 代码/离线、tag、release 与托管制品读回门禁均已闭合，
 
    ```bash
    python scripts/verify_release.py \
-     --version 0.2.0 \
+     --version 0.2.1 \
      --dependency 'pydantic<3,>=2' \
      --dependency 'PyYAML<7,>=6' \
      --entry-point 'agentporter=agentporter:main' \
@@ -131,9 +131,15 @@ Plan 06 代码/离线、tag、release 与托管制品读回门禁均已闭合，
      --resource 'resources/workers.yaml' \
      --required-module activation_application.py \
      --required-module activation_entry.py \
+     --required-module bootstrap_txn.py \
      --required-module dispatch_application.py \
      --required-module dispatch_planning.py \
+     --required-module hermes_runtime.py \
+     --required-module legacy_migration.py \
      --required-module kanban_runtime.py \
+     --required-module readiness.py \
+     --required-module runtime_authority.py \
+     --required-module runtime_binding.py \
      --required-module runtime_observation.py \
      --required-module runtime_probe.py \
      --required-module plan06_role_bindings.py \
@@ -141,7 +147,7 @@ Plan 06 代码/离线、tag、release 与托管制品读回门禁均已闭合，
      --required-module role_name_migration.py \
      --required-module role_name_migration_application.py \
      --bootstrap-checksum <wheel>.sha256 \
-     --bootstrap-source-sha256 5e319aabadaa4237220d10cd3a5a98a5d3d6821908491ec24d1aef03c25226b5 \
+     --bootstrap-source-sha256 4b0ae3ca6204181201df1654a1c310e7f764db02183cb527345ae3d82f3928fa \
      <wheel> <sdist>
    ```
 

@@ -6,6 +6,8 @@ Security fixes are provided for the latest published release when reasonably pos
 
 | Version | Supported |
 | --- | --- |
+| 0.2.0 | Yes |
+| 0.2.1 local candidate | No formal support |
 | 0.1.x | Yes |
 | Unreleased source snapshots | No formal support |
 
