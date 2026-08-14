@@ -329,6 +329,7 @@ def probe_readiness_evidence(
         "profile-config",
         binding_fingerprint(binding),
         binding.config_digest,
+        binding.endpoint_digest,
     )
     return ReadinessEvidence(
         status=result.status,

@@ -54,6 +54,7 @@ class RuntimeBinding:
     provider_source_kind: ProviderSourceKind
     binding_fingerprint: str
     config_digest: str
+    endpoint_digest: str | None = None
     fallback_policy: Literal["forbidden"] = "forbidden"
 
     def __post_init__(self) -> None:
@@ -69,6 +70,8 @@ class RuntimeBinding:
                 raise ValueError(f"{name} must be non-empty")
         if self.expected_provider is not None and not self.expected_provider.strip():
             raise ValueError("expected_provider must be non-empty when supplied")
+        if self.endpoint_digest is not None and not self.endpoint_digest.strip():
+            raise ValueError("endpoint_digest must be non-empty when supplied")
         if self.provider_source_kind not in {"profile-config", "task-override", "unresolved"}:
             raise ValueError("invalid provider_source_kind")
         if self.fallback_policy != "forbidden":
@@ -169,6 +172,8 @@ class ReadinessEvidence:
         *,
         force_config: bool = False,
         expected_model: str | None = None,
+        expected_provider: str | None = None,
+        endpoint_digest: str | None = None,
         hermes_version: str | None = None,
         config_digest: str | None = None,
         binding_fingerprint: str | None = None,
@@ -178,6 +183,8 @@ class ReadinessEvidence:
             event == "update"
             and not force_config
             and (expected_model is None or expected_model == self.binding.expected_model)
+            and (expected_provider is None or expected_provider == self.binding.expected_provider)
+            and (endpoint_digest is None or endpoint_digest == self.binding.endpoint_digest)
             and (hermes_version is None or hermes_version == self.hermes_version)
             and (config_digest is None or config_digest == self.binding.config_digest)
             and (
