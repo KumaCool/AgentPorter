@@ -45,6 +45,9 @@ class ActivationStatus(StrEnum):
     PROBE_UNSUPPORTED = "probe-unsupported"
     CREDENTIAL_SOURCE_UNSUPPORTED = "credential-source-unsupported"
     RESTRICTED = "restricted"
+    LEGACY_NAME_MIGRATION_REQUIRED = "legacy-name-migration-required"
+    MIGRATION_STATE_AMBIGUOUS = "migration-state-ambiguous"
+    NAME_CONFLICT = "name-conflict"
 
 
 @dataclass(frozen=True, slots=True)

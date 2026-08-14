@@ -18,10 +18,64 @@ from .activation_application import (
 from .hermes import HermesDetection, detect_hermes
 from .hermes_runtime import HermesRuntime
 from .identity import COMPONENT_IDS
+from .role_name_migration_application import (
+    RoleMigrationApplicationStatus,
+    run_role_name_migration_gate,
+)
 from .runtime_binding import RuntimeBindingPlan
 from .runtime_probe import ProbeObservation
 from .uninstall_application import minimal_process_environment
 from .uninstall_discovery import discover_installation
+
+
+def _default_migration_journal(found: HermesDetection) -> Path:
+    """Keep authority outside Hermes Profiles under AgentPorter's private local root."""
+    return found.hermes_home.parent / "agentporter" / "role-name-migration.json"
+
+
+def run_activation_with_role_migration(
+    env: Mapping[str, str],
+    *,
+    detector: Callable[..., HermesDetection] = detect_hermes,
+    input_fn: Callable[[str], str] = input,
+    endpoint_reader: Callable[[str], str] | None = None,
+    output: TextIO | None = None,
+    runtime_factory: Callable[[Path], HermesRuntime] = HermesRuntime,
+) -> ActivationResult:
+    """Public activate composition: independent rename gate before binding/canary gates."""
+    found = detector(env=env)
+    activation: ActivationResult | None = None
+
+    def binding_gate() -> None:
+        nonlocal activation
+        activation = _run_binding_activation(
+            env,
+            detector=detector,
+            input_fn=input_fn,
+            endpoint_reader=endpoint_reader or _read_endpoint,
+            output=output,
+            runtime_factory=runtime_factory,
+        )
+
+    migration = run_role_name_migration_gate(
+        env,
+        detector=detector,
+        journal_path=_default_migration_journal(found),
+        input_fn=input_fn,
+        binding_continuation=binding_gate,
+    )
+    if activation is not None:
+        return activation
+    status = {
+        RoleMigrationApplicationStatus.LEGACY_NAME_MIGRATION_REQUIRED: (
+            ActivationStatus.LEGACY_NAME_MIGRATION_REQUIRED
+        ),
+        RoleMigrationApplicationStatus.MIGRATION_AMBIGUOUS: (
+            ActivationStatus.MIGRATION_STATE_AMBIGUOUS
+        ),
+        RoleMigrationApplicationStatus.NAME_CONFLICT: ActivationStatus.NAME_CONFLICT,
+    }.get(migration.status, ActivationStatus.FAILED)
+    return ActivationResult(status)
 
 
 def _read_endpoint(prompt: str, *, reader: Callable[[str], str] = getpass.getpass) -> str:
@@ -29,7 +83,7 @@ def _read_endpoint(prompt: str, *, reader: Callable[[str], str] = getpass.getpas
     return reader(prompt)
 
 
-def run_activator(
+def _run_binding_activation(
     env: Mapping[str, str],
     *,
     detector: Callable[..., HermesDetection] = detect_hermes,
@@ -86,6 +140,26 @@ def run_activator(
     if output is not None:
         kwargs["output"] = output
     return apply_activation(plan, **kwargs)  # type: ignore[arg-type]
+
+
+def run_activator(
+    env: Mapping[str, str],
+    *,
+    detector: Callable[..., HermesDetection] = detect_hermes,
+    input_fn: Callable[[str], str] = input,
+    endpoint_reader: Callable[[str], str] = _read_endpoint,
+    output: TextIO | None = None,
+    runtime_factory: Callable[[Path], HermesRuntime] = HermesRuntime,
+) -> ActivationResult:
+    """Public activator with the independently authorized role-name migration gate."""
+    return run_activation_with_role_migration(
+        env,
+        detector=detector,
+        input_fn=input_fn,
+        endpoint_reader=endpoint_reader,
+        output=output,
+        runtime_factory=runtime_factory,
+    )
 
 
 def main() -> None:

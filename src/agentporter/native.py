@@ -295,6 +295,26 @@ class NativeHermesAdapter:
                 if descriptor is not None:
                     os.close(descriptor)
 
+    def rename(
+        self,
+        current: str,
+        target: str,
+        *,
+        env: Mapping[str, str] | None = None,
+    ) -> CommandOutcome:
+        safe_current = self._profile_name(current)
+        safe_target = self._profile_name(target)
+        if safe_current == safe_target:
+            _raise("rename", "source and target profile names must differ")
+        argv = (
+            str(self._detection.executable),
+            "profile",
+            "rename",
+            safe_current,
+            safe_target,
+        )
+        return self._run("rename", argv, env)
+
     def delete(self, name: str, *, env: Mapping[str, str] | None = None) -> CommandOutcome:
         safe_name = self._profile_name(name)
         argv = (
