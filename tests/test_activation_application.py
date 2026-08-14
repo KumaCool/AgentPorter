@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 from typing import TextIO
@@ -139,22 +140,133 @@ def test_build_plan_uses_only_complete_discovered_installation_and_typed_snapsho
     assert "PRIVATE-CUSTOM-PROVIDER-KEY" not in repr(plan)
 
 
-def test_inherited_key_env_without_profile_owned_resolution_fails_closed(tmp_path: Path) -> None:
+def test_explicit_inheritance_copies_only_selected_source_key_into_worker_envs(
+    tmp_path: Path,
+) -> None:
     found, discovery = _installation(tmp_path)
     source = yaml.safe_load((found.hermes_home / "config.yaml").read_text(encoding="utf-8"))
     definition = source["custom_providers"][0]
     definition.pop("api_key")
     definition["key_env"] = "HERMES_CUSTOM_10_88_0_3_API_KEY"
     (found.hermes_home / "config.yaml").write_text(yaml.safe_dump(source), encoding="utf-8")
+    source_secret = "source-secret-never-rendered"
+    (found.hermes_home / ".env").write_text(
+        f"UNRELATED_SOURCE=leave-behind\nHERMES_CUSTOM_10_88_0_3_API_KEY={source_secret}\n",
+        encoding="utf-8",
+    )
+    (found.hermes_home / ".env").chmod(0o600)
 
     plan = build_activation_plan(discovery, found, _inputs())
-    assert all(target.binding.credential_state == "unresolved" for target in plan.bindings)
-    assert (
-        apply_activation(
-            plan, input_fn=lambda _prompt: pytest.fail("must fail before prompt")
-        ).status
-        is ActivationStatus.CREDENTIAL_REQUIRED
+    assert source_secret not in repr(plan)
+    rendered: list[str] = []
+    result = apply_activation(
+        plan,
+        input_fn=lambda _prompt: plan.confirmation_phrase,
+        output=_Writer(rendered),
     )
+
+    assert result.status is ActivationStatus.CANARY_REQUIRED
+    assert source_secret not in "".join(rendered)
+    for target in plan.bindings:
+        assert (target.profile_path / ".env").read_text(encoding="utf-8") == (
+            f"HERMES_CUSTOM_10_88_0_3_API_KEY={source_secret}\n"
+        )
+        assert stat.S_IMODE((target.profile_path / ".env").stat().st_mode) == 0o600
+        config = yaml.safe_load((target.profile_path / "config.yaml").read_text(encoding="utf-8"))
+        assert config["custom_providers"][0] == definition
+
+
+def test_explicit_inheritance_missing_source_key_fails_before_prompt_or_write(
+    tmp_path: Path,
+) -> None:
+    found, discovery = _installation(tmp_path)
+    source = yaml.safe_load((found.hermes_home / "config.yaml").read_text(encoding="utf-8"))
+    definition = source["custom_providers"][0]
+    definition.pop("api_key")
+    definition["key_env"] = "MISSING_SELECTED_KEY"
+    (found.hermes_home / "config.yaml").write_text(yaml.safe_dump(source), encoding="utf-8")
+
+    plan = build_activation_plan(discovery, found, _inputs())
+    result = apply_activation(plan, input_fn=lambda _prompt: pytest.fail("must fail before prompt"))
+
+    assert result.status is ActivationStatus.CREDENTIAL_REQUIRED
+    assert all(not (target.path / ".env").exists() for target in discovery.targets)
+    assert all(
+        "custom_providers" not in yaml.safe_load((target.path / "config.yaml").read_text())
+        for target in discovery.targets
+    )
+
+
+@pytest.mark.skipif(
+    not Path("/usr/local/bin/hermes").is_file(), reason="system Hermes CLI is not installed"
+)
+def test_activated_key_env_provider_is_recognized_by_real_hermes_without_model_call(
+    tmp_path: Path,
+) -> None:
+    found, discovery = _installation(tmp_path)
+    source = yaml.safe_load((found.hermes_home / "config.yaml").read_text(encoding="utf-8"))
+    definition = source["custom_providers"][0]
+    definition.pop("api_key")
+    definition["key_env"] = "ISOLATED_ACTIVATION_TEST_KEY"
+    (found.hermes_home / "config.yaml").write_text(yaml.safe_dump(source), encoding="utf-8")
+    (found.hermes_home / ".env").write_text(
+        "ISOLATED_ACTIVATION_TEST_KEY=dummy-no-network-value\n", encoding="utf-8"
+    )
+    (found.hermes_home / ".env").chmod(0o600)
+
+    plan = build_activation_plan(discovery, found, _inputs())
+    assert apply_activation(
+        plan, input_fn=lambda _prompt: plan.confirmation_phrase
+    ).status is ActivationStatus.CANARY_REQUIRED
+
+    env = {
+        "HOME": str(found.hermes_home.parent.parent),
+        "HERMES_HOME": str(found.hermes_home),
+        "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+        "LANG": "C.UTF-8",
+    }
+    for target in plan.bindings:
+        completed = subprocess.run(
+            ("/usr/local/bin/hermes", "--profile", target.profile_name, "config"),
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        assert completed.returncode == 0
+        assert "unknown provider" not in (completed.stdout + completed.stderr).lower()
+    assert not (found.hermes_home / "state.db").exists()
+
+
+def test_key_env_and_provider_definition_roll_back_together_on_write_failure(
+    tmp_path: Path,
+) -> None:
+    found, discovery = _installation(tmp_path)
+    source = yaml.safe_load((found.hermes_home / "config.yaml").read_text(encoding="utf-8"))
+    definition = source["custom_providers"][0]
+    definition.pop("api_key")
+    definition["key_env"] = "ROLLBACK_TEST_KEY"
+    (found.hermes_home / "config.yaml").write_text(yaml.safe_dump(source), encoding="utf-8")
+    (found.hermes_home / ".env").write_text(
+        "ROLLBACK_TEST_KEY=rollback-test-value\n", encoding="utf-8"
+    )
+    originals = {
+        target.current_name: (target.path / "config.yaml").read_bytes()
+        for target in discovery.targets
+    }
+
+    plan = build_activation_plan(discovery, found, _inputs())
+    result = apply_activation(
+        plan,
+        input_fn=lambda _prompt: plan.confirmation_phrase,
+        after_write=lambda _target, _index: (_ for _ in ()).throw(OSError("injected")),
+    )
+
+    assert result.status is ActivationStatus.FAILED
+    for target in discovery.targets:
+        assert (target.path / "config.yaml").read_bytes() == originals[target.current_name]
+        assert not (target.path / ".env").exists()
 
 
 def test_inherited_key_env_is_usable_only_from_target_profile_owned_env(tmp_path: Path) -> None:

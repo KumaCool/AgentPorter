@@ -84,6 +84,8 @@ class ActivationTargetPlan:
     marker_inode: int = field(repr=False)
     provider_definition: dict[str, object] = field(repr=False)
     provider_container: str
+    credential_assignment: bytes | None = field(default=None, repr=False)
+    original_env: bytes | None = field(default=None, repr=False)
 
     @property
     def component_id(self) -> str:
@@ -106,6 +108,8 @@ class ActivationPlan:
     confirmation_phrase: str
     source_config_path: Path = field(repr=False)
     source_config: ConfigSnapshot | None = field(repr=False)
+    source_env_identity: tuple[int, int, str] | None = field(default=None, repr=False)
+
 
 
 @dataclass(frozen=True, slots=True)
@@ -442,6 +446,124 @@ def _profile_env_has_key(profile: Path, key: object) -> bool:
         return False
 
 
+def _dotenv_assignment(payload: bytes, key: str) -> bytes | None:
+    """Return one exact dotenv assignment without decoding or exposing its value."""
+    prefix = key.encode("utf-8") + b"="
+    export_prefix = b"export " + prefix
+    matches: list[bytes] = []
+    for raw_line in payload.splitlines():
+        line = raw_line.strip()
+        if line.startswith(export_prefix):
+            line = line.removeprefix(b"export ")
+        if line.startswith(prefix):
+            matches.append(line)
+    return matches[0] if len(matches) == 1 else None
+
+
+def _read_selected_env_assignment(path: Path, key: str) -> bytes | None:
+    """Read only the selected assignment from a safe Profile-local dotenv file."""
+    try:
+        info = path.lstat()
+        if (
+            stat.S_ISLNK(info.st_mode)
+            or not stat.S_ISREG(info.st_mode)
+            or info.st_size > 1024 * 1024
+        ):
+            return None
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            opened = os.fstat(descriptor)
+            if (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
+                return None
+            payload = os.read(descriptor, 1024 * 1024 + 1)
+            rebound = path.stat(follow_symlinks=False)
+            if (rebound.st_dev, rebound.st_ino) != (opened.st_dev, opened.st_ino):
+                return None
+        finally:
+            os.close(descriptor)
+        if len(payload) > 1024 * 1024:
+            return None
+        return _dotenv_assignment(payload, key)
+    except (OSError, UnicodeError):
+        return None
+
+
+def _read_env_payload(path: Path) -> bytes | None:
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return None
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or info.st_size > 1024 * 1024:
+        raise ValueError("Profile dotenv is unsafe")
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        opened = os.fstat(descriptor)
+        payload = os.read(descriptor, 1024 * 1024 + 1)
+        rebound = path.stat(follow_symlinks=False)
+        if (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino) or (
+            rebound.st_dev,
+            rebound.st_ino,
+        ) != (opened.st_dev, opened.st_ino):
+            raise ValueError("Profile dotenv changed during read")
+        if len(payload) > 1024 * 1024:
+            raise ValueError("Profile dotenv exceeds size limit")
+        return payload
+    finally:
+        os.close(descriptor)
+
+
+def _env_identity(path: Path) -> tuple[int, int, str] | None:
+    payload = _read_env_payload(path)
+    if payload is None:
+        return None
+    info = path.stat(follow_symlinks=False)
+    return info.st_dev, info.st_ino, _digest(payload)
+
+
+def _merge_env_assignment(payload: bytes | None, assignment: bytes) -> bytes:
+    """Preserve unrelated target dotenv entries while replacing only the selected key."""
+    key = assignment.split(b"=", 1)[0]
+    payload = payload or b""
+    retained: list[bytes] = []
+    for raw_line in payload.splitlines():
+        candidate = raw_line.strip().removeprefix(b"export ")
+        if not candidate.startswith(key + b"="):
+            retained.append(raw_line)
+    retained.append(assignment)
+    return b"\n".join(retained) + b"\n"
+
+
+def _write_private_env(path: Path, payload: bytes) -> None:
+    """Publish a Profile-local dotenv with no secret in argv or output."""
+    profile_fd = _safe_profile_fd(path.parent)
+    temporary = f".agentporter-env.{secrets.token_hex(16)}.tmp"
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=profile_fd,
+        )
+        os.fchmod(descriptor, 0o600)
+        view = memoryview(payload)
+        while view:
+            written = os.write(descriptor, view)
+            view = view[written:]
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = None
+        os.replace(temporary, ".env", src_dir_fd=profile_fd, dst_dir_fd=profile_fd)
+        os.chmod(".env", 0o600, dir_fd=profile_fd, follow_symlinks=False)
+        os.fsync(profile_fd)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        with suppress(FileNotFoundError):
+            os.unlink(temporary, dir_fd=profile_fd)
+        os.close(profile_fd)
+
+
 def _target_for_component(discovery: DiscoveryResult) -> Mapping[str, Target]:
     return MappingProxyType({target.component_id: target for target in discovery.targets})
 
@@ -505,6 +627,7 @@ def build_activation_plan(
         for supplied in inputs.values()
     )
     source_snapshot = _read_config(detection.hermes_home) if needs_source else None
+    source_env_identity: tuple[int, int, str] | None = None
     for component_id in INSTALL_COMPONENT_IDS.values():
         target = targets[component_id]
         snapshot = _read_config(target.path)
@@ -531,6 +654,31 @@ def build_activation_plan(
             provider_container, provider_definition = "none", {}
         else:
             raise ValueError("unsupported credential grant")
+        key_env = provider_definition.get("key_env")
+        credential_assignment: bytes | None = None
+        original_env: bytes | None = None
+        credential_state = supplied.credential_state
+        if isinstance(key_env, str) and key_env.strip():
+            if _profile_env_has_key(target.path, key_env):
+                pass
+            elif supplied.credential_grant_kind in {
+                "explicit-source-inheritance",
+                "custom-provider-config",
+            }:
+                credential_assignment = _read_selected_env_assignment(
+                    detection.hermes_home / ".env", key_env
+                )
+                if credential_assignment is None:
+                    credential_state = "unresolved"
+                else:
+                    original_env = _read_env_payload(target.path / ".env")
+                    identity = _env_identity(detection.hermes_home / ".env")
+                    if source_env_identity is None:
+                        source_env_identity = identity
+                    elif identity != source_env_identity:
+                        raise ValueError("source Profile dotenv changed during planning")
+            else:
+                credential_state = "unresolved"
         binding = RuntimeBindingPlan.from_values(
             portable_id=portable_by_component[component_id],
             component_id=component_id,
@@ -539,12 +687,7 @@ def build_activation_plan(
             provider_id=supplied.provider_id,
             endpoint_value=supplied.endpoint_value,
             credential_grant_kind=supplied.credential_grant_kind,
-            credential_state=(
-                "unresolved"
-                if provider_definition.get("key_env") is not None
-                and not _profile_env_has_key(target.path, provider_definition.get("key_env"))
-                else supplied.credential_state
-            ),
+            credential_state=credential_state,
             hermes_version=detection.version,
             config_digest=snapshot.digest,
         )
@@ -560,6 +703,8 @@ def build_activation_plan(
                 marker_inode,
                 provider_definition,
                 provider_container,
+                credential_assignment,
+                original_env,
             )
         )
     installation_id = installation_ids.pop()
@@ -570,12 +715,17 @@ def build_activation_plan(
         f"ACTIVATE AGENTPORTER {installation_id[:8]}",
         source_path,
         source_snapshot,
+        source_env_identity,
     )
 
 
 def _source_is_bound(plan: ActivationPlan) -> bool:
-    return plan.source_config is None or _same_config(
+    config_bound = plan.source_config is None or _same_config(
         _read_config(plan.source_config_path.parent), plan.source_config
+    )
+    return config_bound and (
+        plan.source_env_identity is None
+        or _env_identity(plan.source_config_path.parent / ".env") == plan.source_env_identity
     )
 
 
@@ -623,6 +773,20 @@ def _restore(attempted: list[ActivationTargetPlan]) -> int:
                 continue
             _atomic_write_target(target, target.original_config.content, current)
         except (OSError, ValueError, yaml.YAMLError):
+            residue += 1
+    return residue
+
+
+def _restore_envs(attempted: list[ActivationTargetPlan]) -> int:
+    residue = 0
+    for target in reversed(attempted):
+        try:
+            path = target.profile_path / ".env"
+            if target.original_env is None:
+                path.unlink(missing_ok=True)
+            else:
+                _write_private_env(path, target.original_env)
+        except (OSError, ValueError):
             residue += 1
     return residue
 
@@ -1043,6 +1207,7 @@ def apply_activation(
         return ActivationResult(ActivationStatus.STALE)
 
     attempted: list[ActivationTargetPlan] = []
+    attempted_envs: list[ActivationTargetPlan] = []
     readbacks: list[ConfigSnapshot] = []
     receipt_snapshots: list[
         tuple[ActivationTargetPlan, _ReceiptSnapshot, _ReceiptSnapshot | None]
@@ -1055,6 +1220,16 @@ def apply_activation(
             current = _read_config(target.profile_path)
             if not _target_is_bound(target) or not _same_config(current, target.original_config):
                 raise ValueError("activation target changed before write")
+            if target.credential_assignment is not None:
+                env_path = target.profile_path / ".env"
+                current_env = _read_env_payload(env_path)
+                if current_env != target.original_env:
+                    raise ValueError("activation target dotenv changed before write")
+                # Register before publication so a post-replace failure is compensable.
+                attempted_envs.append(target)
+                _write_private_env(
+                    env_path, _merge_env_assignment(current_env, target.credential_assignment)
+                )
             # Register before publication so a post-replace identity failure is compensable.
             attempted.append(target)
             readback = _atomic_write_target(target, _updated_payload(target), current)
@@ -1099,12 +1274,20 @@ def apply_activation(
             ):
                 raise ValueError("activation target changed during receipt publication")
     except Exception:
-        residue = _restore(attempted) + _restore_receipts(receipt_snapshots)
+        residue = (
+            _restore(attempted)
+            + _restore_envs(attempted_envs)
+            + _restore_receipts(receipt_snapshots)
+        )
         status = ActivationStatus.COMPENSATION_INCOMPLETE if residue else ActivationStatus.FAILED
         return ActivationResult(status, residue_count=residue)
     except BaseException as original:
         try:
-            residue = _restore(attempted) + _restore_receipts(receipt_snapshots)
+            residue = (
+                _restore(attempted)
+                + _restore_envs(attempted_envs)
+                + _restore_receipts(receipt_snapshots)
+            )
         except BaseException:
             residue = max(1, len(attempted))
         original.add_note(
