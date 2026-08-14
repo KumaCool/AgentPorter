@@ -66,7 +66,7 @@ class RuntimeBindingSelection:
         endpoint = self.endpoint.strip()
         if not model or not provider or not endpoint:
             raise ValueError("binding selection values must be non-empty")
-        grant = self.credential_grant_kind.strip()
+        grant = str(self.credential_grant_kind).strip()
         if not grant:
             raise ValueError("credential grant must be non-empty")
         return RuntimeBindingSelection(model, provider, endpoint, grant)

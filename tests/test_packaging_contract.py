@@ -53,11 +53,25 @@ def test_installer_uses_packaged_manifest(monkeypatch: pytest.MonkeyPatch) -> No
         workflow = Workflow()
         transaction = None
 
-    def fake_installer(manifest: Path, staging: Path, env: dict[str, str]) -> Result:
+    authority = object()
+
+    def collect_authority(env: dict[str, str]) -> object:
+        assert env
+        return authority
+
+    def fake_installer(
+        manifest: Path,
+        staging: Path,
+        env: dict[str, str],
+        *,
+        runtime_authority: object,
+    ) -> Result:
+        assert runtime_authority is authority
         assert manifest.is_file()
         captured.append(manifest)
         return Result()
 
+    monkeypatch.setattr(agentporter, "collect_runtime_authority", collect_authority)
     monkeypatch.setattr(agentporter, "run_installer", fake_installer)
     with pytest.raises(SystemExit, match="cancelled"):
         agentporter.run_product_installer()
