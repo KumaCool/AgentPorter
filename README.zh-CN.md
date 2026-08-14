@@ -2,9 +2,9 @@
 
 [English](README.md) | 简体中文
 
-AgentPorter 是一个开源的 [Hermes Agent](https://hermes-agent.nousresearch.com/) 多代理工作组部署方案：一次安装多个职责明确的 Worker Profile，并逐步接通 Hermes 原生 Kanban 的任务分解与合理路由。[职责型身份与自定义推理绑定设计](docs/06-role-identities-and-configurable-model-binding-design.md)现已在尚未发布的 Plan 06 离线代码候选中实现。
+AgentPorter 是一个开源的 [Hermes Agent](https://hermes-agent.nousresearch.com/) 多代理工作组部署方案：一次安装多个职责明确的 Worker Profile，并逐步接通 Hermes 原生 Kanban 的任务分解与合理路由。[职责型身份与自定义推理绑定设计](docs/06-role-identities-and-configurable-model-binding-design.md)现已形成 v0.2.0 发布候选。
 
-> **当前状态：** 0.1.8 仍是当前正式发布版。尚未发布的 Plan 06 代码候选在 fresh install 中使用 bounded/mechanical/orchestrator 职责名，并在 staging 前要求三个 Profile 分别显式封闭 model/provider/endpoint。精确旧默认名只能经 `agentporter-activate` 独立确认的 Hermes-native 持久 journal rename 迁移；用户改名保留。该候选未执行真实模型 canary、Gateway 变更、Kanban mutation、live routing、push 或发布，因此不能称为 `operational`。
+> **当前状态：** v0.2.0 已准备为发布候选；在正式发布与托管读回完成前，v0.1.8 仍是当前正式发布版。该候选在 fresh install 中使用 bounded/mechanical/orchestrator 职责名，并在 staging 前要求三个 Profile 分别显式封闭 model/provider/endpoint。精确旧默认名只能经 `agentporter-activate` 独立确认的 Hermes-native 持久 journal rename 迁移；用户改名保留。该候选未执行真实模型 canary、Gateway 变更、Kanban mutation、live routing、发布或托管制品读回，因此不能称为 `operational`。
 
 ## curl 一键安装（POSIX）
 
@@ -31,7 +31,7 @@ agentporter-uninstall
 
 卸载会删除 AgentPorter 安装的 Worker Profile 及其中的本地数据和后续自定义；确认前请先备份。Profile 删除成功（或已不存在）后，通过发布版引导脚本安装的卸载器还会删除自身的精确公开入口和对应版本私有 Python 环境。从可信源码检出运行的 `python uninstall.py` 只删除 Profile，绝不删除源码仓库或其虚拟环境。检查后执行方式、PATH、信任边界与完整卸载说明见[安装指南](docs/04-installation-and-troubleshooting.zh-CN.md)。
 
-## 尚未发布的 Plan 06 候选安装内容
+## v0.2.0 发布候选安装内容
 
 一次运行会安装当前三 Profile 基础：
 
@@ -59,7 +59,7 @@ fresh 候选使用 `bounded_worker`、`mechanical_worker`、`agentporter_orchest
 
 | 维度 | 当前状态 |
 |---|---|
-| installation | 0.1.8 已正式发布；三个 Profile 与三个公共生命周期入口纳入发布合同。 |
+| installation | v0.2.0 是本地完整验证的发布候选；tag/release 与托管读回完成前 v0.1.8 仍是正式发布版。 |
 | public entries | bootstrap 会发布 `agentporter`、`agentporter-activate` 和 `agentporter-uninstall`。 |
 | binding/credential | custom Provider binding 可将封印的定义写入两个执行 Worker；凭据可用性仍由 Profile/操作者持有，必须由真实调用证明。 |
 | canary/live call | 0.1.8 发布不声称已执行带凭据的真实 canary；`config check=0`仍只证明静态有效。 |
@@ -150,7 +150,7 @@ agentporter-uninstall
 - [职责型 Worker 身份与自定义推理绑定计划](docs/plan/06-role-identities-and-configurable-model-binding.md)
 - [变更日志](CHANGELOG.md)
 
-这些详细设计和计划记录的是工程契约及验收历史，并不构成对所有环境的通用生产就绪声明。0.1.8 不包含 Codex CLI 平台适配器；当前模型语义名称也不代表已经支持 Codex CLI。职责型名称实现仍是未发布离线候选；旧模型语义名称只保留在兼容与明确历史上下文。
+这些详细设计和计划记录的是工程契约及验收历史，并不构成对所有环境的通用生产就绪声明。0.1.8 不包含 Codex CLI 平台适配器；当前模型语义名称也不代表已经支持 Codex CLI。职责型名称实现是 v0.2.0 离线发布候选；旧模型语义名称只保留在兼容与明确历史上下文。
 
 ## 开发、安全与许可证
 

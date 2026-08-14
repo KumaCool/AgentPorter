@@ -1,6 +1,6 @@
 # AgentPorter 职责型 Worker 身份与自定义推理绑定实施计划
 
-> **状态：** Plan 06 离线代码候选已实现；唯一集中复审已完成，四项确定性 BLOCK 已关闭，复审后完整门禁通过。0.1.8 仍是正式发布版；未 push、未发布、未托管读回。
+> **状态：** Plan 06 离线代码候选已实现；唯一集中复审已完成，四项确定性 BLOCK 已关闭，复审后完整门禁通过。v0.2.0 发布候选准备中；正式发布与托管读回完成前 0.1.8 仍是正式发布版。未 tag、未发布、未托管读回。
 
 **Goal:** 在保持三个 Worker 职责、component UUID 和 Hermes 原生边界不变的前提下，把模型语义名称迁移为职责型身份，并让三个 Profile 的 model/provider/endpoint 由用户显式配置和真实验证。
 
@@ -382,7 +382,7 @@ git diff --check
 - 唯一独立复审：已完成，结论为 BLOCK；已关闭 rename effect/journal、逐 Profile credential-grant、三 Profile canary 授权计数和 readiness authority 重建四项问题。按用户要求不进行第二次或递归复审；
 - 复审关闭后完整门禁：`894 passed, 1 skipped`；Ruff format/check、Pyright 与 `git diff --check` 通过。唯一 skip 是 Hermes v0.20 无可证明禁用 tools/fallback 的 live-probe seam，不构成 live acceptance；
 - 本机正式 Profile、真实 model canary、Gateway、Kanban mutation/live routing：未执行，分别需授权；
-- 0.1.8 仍是正式发布版；push、release、托管制品读回：未授权、未执行；候选不能称为 `operational`。
+- v0.2.0 是发布候选；正式发布前 0.1.8 仍是正式发布版；tag、release、托管制品读回：未执行；候选不能称为 `operational`。
 
 ## 11. ROLE-01…ROLE-22 离线关闭证据摘要
 

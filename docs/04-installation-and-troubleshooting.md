@@ -2,7 +2,7 @@
 
 English | [简体中文](04-installation-and-troubleshooting.zh-CN.md)
 
-AgentPorter v0.1.8 remains the current published release. The unreleased Plan 06 offline candidate uses `agentporter-bounded-worker`, `agentporter-mechanical-worker`, and `agentporter-orchestrator` for fresh installs and requires explicit sealed model/provider/endpoint selections for all three Profiles before staging. Exact legacy defaults migrate only through separately confirmed, Hermes-native journaled rename in `agentporter-activate`; user-renamed Profiles are preserved. Hermes v0.20.0 is an **observed version**, not a promised minimum or universal compatibility range.
+AgentPorter v0.2.0 is the prepared release candidate; v0.1.8 remains the current published release until publication. The candidate uses `agentporter-bounded-worker`, `agentporter-mechanical-worker`, and `agentporter-orchestrator` for fresh installs and requires explicit sealed model/provider/endpoint selections for all three Profiles before staging. Exact legacy defaults migrate only through separately confirmed, Hermes-native journaled rename in `agentporter-activate`; user-renamed Profiles are preserved. Hermes v0.20.0 is an **observed version**, not a promised minimum or universal compatibility range.
 
 ## One-line POSIX install
 
@@ -28,13 +28,13 @@ Linux has the strongest real-Hermes acceptance evidence. macOS and Windows are c
 
 ## Install from a release artifact
 
-To install a downloaded v0.1.8 wheel manually, verify its published checksum and create a disposable environment:
+To install the downloaded v0.2.0 candidate wheel after immutable assets are published, verify its checksum and create a disposable environment:
 
 ```bash
 python -m venv .venv
 # POSIX: source .venv/bin/activate
 # Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install agentporter-0.1.8-py3-none-any.whl
+python -m pip install agentporter-0.2.0-py3-none-any.whl
 agentporter
 ```
 
@@ -42,7 +42,7 @@ agentporter
 
 ## Release-candidate bootstrap boundary
 
-Before the hosted v0.1.8 wheel, checksum, and `install.sh` assets exist, the source-tree `install.sh` is intentionally **not executable as a user installation path**: it is pinned to the immutable `https://github.com/KumaCool/AgentPorter/releases/download/v0.1.8` assets prepared for publication. Current users must continue to use `https://github.com/KumaCool/AgentPorter/releases/latest/download/install.sh`. Publication must upload immutable assets first, then externally read back both the v0.1.8 URLs and the `latest` alias, compare bytes/checksums, and rerun the verifier.
+Before the hosted v0.2.0 wheel, checksum, and `install.sh` assets exist, the source-tree `install.sh` is intentionally **not executable as a user installation path**: it is pinned to the immutable `https://github.com/KumaCool/AgentPorter/releases/download/v0.2.0` assets prepared for publication. The `latest` alias still resolves to published v0.1.8 and remains the current user path until v0.2.0 publication. Publication must upload immutable assets first, then externally read back both the v0.2.0 URLs and the `latest` alias, compare bytes/checksums, and rerun the verifier.
 
 ## Run from source
 
@@ -83,8 +83,8 @@ If discovery is absent, incomplete, duplicated, conflicting, malformed, changed,
 
 | Dimension | Current state |
 |---|---|
-| installation | 0.1.8 is released; the Plan 06 offline candidate uses three role names and remains unpublished. |
-| public entries | 0.1.8 publishes all three entries; candidate legacy-name migration is reached only through independently confirmed `agentporter-activate`. |
+| installation | v0.2.0 is the locally verified release candidate; v0.1.8 remains published until tag/release and hosted readback. |
+| public entries | v0.2.0 packages all three entries; candidate legacy-name migration is reached only through independently confirmed `agentporter-activate`. |
 | binding/credential | Candidate fresh installs require explicit model/provider/endpoint for all three Profiles before staging; credentials remain Profile/operator-owned. |
 | canary/live call | Real calls failed with `No inference provider configured`; `config check` remains static-only and is not canary evidence. |
 | route proof | Hermes v0.20 usage exposes model/provider/api_calls but not tool/fallback fields; a 0.1.5 success initially has incomplete proof. |
@@ -119,7 +119,7 @@ Never post raw config files, marker paths, credentials, sessions, memories, or p
 
    ```bash
    python scripts/verify_release.py \
-     --version 0.1.8 \
+     --version 0.2.0 \
      --dependency 'pydantic<3,>=2' \
      --dependency 'PyYAML<7,>=6' \
      --entry-point 'agentporter=agentporter:main' \
@@ -133,15 +133,19 @@ Never post raw config files, marker paths, credentials, sessions, memories, or p
      --required-module kanban_runtime.py \
      --required-module runtime_observation.py \
      --required-module runtime_probe.py \
+     --required-module plan06_role_bindings.py \
+     --required-module role_identity_compat.py \
+     --required-module role_name_migration.py \
+     --required-module role_name_migration_application.py \
      --bootstrap-checksum <wheel>.sha256 \
-     --bootstrap-source-sha256 566e07f77f3f7867b27fdb98e21c2d17f78929c203bd9500431fe82707fa84b6 \
+     --bootstrap-source-sha256 5e319aabadaa4237220d10cd3a5a98a5d3d6821908491ec24d1aef03c25226b5 \
      <wheel> <sdist>
    ```
 
 6. Inspect checksums, commit identity, tag, changelog, license, README, and verifier output before upload. Publish only the exact verified bytes.
 7. Download hosted artifacts, recompute checksums, and rerun verification. A tag or successful upload alone is not acceptance.
 
-The example resource path is the v0.1.8 release contract. Hosted release acceptance additionally downloads every published asset, recomputes checksums, reruns this verifier, and checks the public `latest/download/install.sh` endpoint.
+The example resource path is the v0.2.0 release-candidate contract. Hosted release acceptance additionally downloads every published asset, recomputes checksums, reruns this verifier, and checks the public `latest/download/install.sh` endpoint.
 
 ## Historical 0.1.7 activation amendment
 

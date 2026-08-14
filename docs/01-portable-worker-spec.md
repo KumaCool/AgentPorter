@@ -12,7 +12,7 @@
 | route | v0.20 为 `mutation-unsupported`，在 Kanban adapter 调用前关闭，零 Kanban mutation 调用。 |
 | continuity | DispatchReceipt、任务级订阅、运行观察、结构性恢复合同仅离线通过；未验收真实投递/接续。 |
 
-`hermes config check` 仅证明静态配置可解析。0.1.8 仍是当前发布版；Plan 06 已形成未发布离线代码候选，但真实 model canary、Gateway、Kanban mutation/live routing 均未执行。本文不得被理解为 Worker 已 operational。
+`hermes config check` 仅证明静态配置可解析。v0.2.0 已形成发布候选；正式发布前 0.1.8 仍是当前发布版，但真实 model canary、Gateway、Kanban mutation/live routing 均未执行。本文不得被理解为 Worker 已 operational。
 
 > **当前候选：** 新写入定义 `bounded_worker`、`mechanical_worker`、`agentporter_orchestrator`，固定 component UUID 与职责不变；fresh install 在 staging 前要求三个 Profile 分别显式封闭 model/provider/endpoint。
 

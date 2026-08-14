@@ -1,6 +1,6 @@
 # Contributing to AgentPorter
 
-AgentPorter 0.1.4 is the current published baseline for the fail-closed three-Profile lifecycle and offline activation/dispatch contracts. The approved [0.1.5 design](docs/05-runtime-activation-and-live-call-design.md) and [Plan 05](docs/plan/05-runtime-activation-and-live-call-closure.md) close the public activation, Profile-scoped auth, and real one-shot continuation inside AgentPorter only. Contributions must not modify Hermes source or weaken credential, lifecycle, or evidence boundaries.
+AgentPorter v0.2.0 is the prepared release candidate for role-based Profile identities and explicit model/provider/endpoint bindings; v0.1.8 remains the published baseline until publication and hosted readback. [Plan 06](docs/plan/06-role-identities-and-configurable-model-binding.md) and its [design](docs/06-role-identities-and-configurable-model-binding-design.md) are the current authority. Contributions must not modify Hermes source or weaken credential, lifecycle, or evidence boundaries.
 
 ## Before you start
 
@@ -52,6 +52,6 @@ Update user, security, design, and changelog documentation when behavior or rele
 
 Report vulnerabilities privately according to [SECURITY.md](SECURITY.md). Contributions are licensed under the [MIT License](LICENSE).
 
-0.1.7 runtime-activation release candidate
+v0.2.0 release candidate
 
-The current candidate chains activation after install and supports Hermes v0.20 custom providers by transactionally inheriting one exact main/default Profile provider definition. Tests must prove no `auth add/status` calls, source-config CAS/revalidation, preservation of unrelated Worker providers, no provider-definition disclosure in output/receipts/argv, and retained retryability after activation failure. No real model call belongs in the portable gate.
+The candidate chains activation after install and supports Hermes v0.20 custom providers by transactionally inheriting one exact main/default Profile provider definition. Tests must prove no `auth add/status` calls, source-config CAS/revalidation, preservation of unrelated Worker providers, no provider-definition disclosure in output/receipts/argv, and retained retryability after activation failure. No real model call belongs in the portable gate.

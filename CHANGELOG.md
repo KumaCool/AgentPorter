@@ -4,9 +4,11 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-14
+
 ### Added
 
-- Implemented the unreleased Plan 06 offline candidate for role-based Worker identities and configurable inference bindings. Fresh installs use bounded/mechanical/orchestrator role names and require explicit sealed model/provider/endpoint selections for all three Profiles before staging.
+- Implemented the Plan 06 offline release candidate for role-based Worker identities and configurable inference bindings. Fresh installs use bounded/mechanical/orchestrator role names and require explicit sealed model/provider/endpoint selections for all three Profiles before staging.
 - Added an independently confirmed `agentporter-activate` migration for exact legacy default names using Hermes-native, persistent-journaled rename operations. Permanent component UUIDs and user-renamed Profile names are preserved.
 
 ### Changed
@@ -15,7 +17,7 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Security
 
-- The candidate's install, static readback, rename, update, and uninstall paths remain offline and fail closed. No real model canary, Gateway change, Kanban mutation, live routing, push, release, or hosted-artifact readback has been performed; 0.1.8 remains the current published release and the candidate is not `operational`.
+- The candidate's install, static readback, rename, update, and uninstall paths remain offline and fail closed. No real model canary, Gateway change, Kanban mutation, live routing, release, or hosted-artifact readback has been performed; 0.1.8 remains the current published release until v0.2.0 is published, and this release candidate is not `operational`.
 
 ## [0.1.8] - 2026-08-14
 
@@ -110,7 +112,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 First supported public release.
 
-[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/KumaCool/AgentPorter/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/KumaCool/AgentPorter/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/KumaCool/AgentPorter/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/KumaCool/AgentPorter/compare/v0.1.5...v0.1.6

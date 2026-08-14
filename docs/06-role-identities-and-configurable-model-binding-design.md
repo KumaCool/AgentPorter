@@ -1,7 +1,7 @@
 # AgentPorter 职责型 Worker 身份与自定义推理绑定设计
 
-- **状态：** Plan 06 离线代码候选已实现；0.1.8 仍是正式发布版，候选尚未发布
-- **目标版本：** 下一功能版本（版本号由发布阶段决定）
+- **状态：** Plan 06 已形成 v0.2.0 发布候选；正式发布与托管读回完成前 0.1.8 仍是正式发布版
+- **目标版本：** v0.2.0 发布候选
 - **依赖：** 已发布的 AgentPorter 0.1.8、Hermes 名称无关 Profile marker、现有运行绑定与真实 canary 合同
 - **实施计划：** [Plan 06](plan/06-role-identities-and-configurable-model-binding.md)
 
@@ -317,4 +317,4 @@ operational（仍要求 dispatcher/route/continuity）
 
 软件回滚事务必须先验证目标版本的 activation/discovery/uninstall 能力，再切换公共入口；失败时 compare-before-restore 当前新版本入口，不能留下“旧 activation + 无受支持 uninstaller”的混合集合。推理绑定和 provider definition 不随软件回滚迁移或覆盖，旧硬编码模型不得恢复。实施阶段必须以真实 0.1.8 fixture 验证旧默认名 → 新名 → 激活/卸载、中断恢复和入口回滚矩阵。
 
-本文是 Plan 06 的权威设计。HEAD 30f9d60 的离线代码候选已经实现职责名、显式三 Profile 绑定、旧默认名 journaled Hermes-native rename、用户改名保留和 readiness 失效；0.1.8 仍是正式发布制品。真实 model canary、Gateway、Kanban mutation/live routing、push、release 与托管读回均未执行且分别需授权，不能声称 operational。
+本文是 Plan 06 的权威设计。当前 v0.2.0 离线发布候选已经实现职责名、显式三 Profile 绑定、旧默认名 journaled Hermes-native rename、用户改名保留和 readiness 失效；正式发布与托管读回完成前 0.1.8 仍是正式发布制品。真实 model canary、Gateway、Kanban mutation/live routing、tag、release 与托管读回均未执行且分别需授权，不能声称 operational。

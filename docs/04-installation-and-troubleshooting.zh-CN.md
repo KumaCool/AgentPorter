@@ -2,7 +2,7 @@
 
 [English](04-installation-and-troubleshooting.md) | 简体中文
 
-AgentPorter v0.1.8 仍是当前正式发布版。尚未发布的 Plan 06 离线候选在 fresh install 中使用 `agentporter-bounded-worker`、`agentporter-mechanical-worker`、`agentporter-orchestrator`，并在 staging 前要求三个 Profile 分别显式封闭 model/provider/endpoint。精确旧默认名只能经 `agentporter-activate` 独立确认的 Hermes-native journaled rename 迁移；用户改名保留。Hermes v0.20.0 是**已观察版本**，不是承诺的最低版本或通用兼容范围。
+AgentPorter v0.2.0 已准备为发布候选；正式发布前 v0.1.8 仍是当前正式发布版。该候选在 fresh install 中使用 `agentporter-bounded-worker`、`agentporter-mechanical-worker`、`agentporter-orchestrator`，并在 staging 前要求三个 Profile 分别显式封闭 model/provider/endpoint。精确旧默认名只能经 `agentporter-activate` 独立确认的 Hermes-native journaled rename 迁移；用户改名保留。Hermes v0.20.0 是**已观察版本**，不是承诺的最低版本或通用兼容范围。
 
 ## curl 一键安装（POSIX）
 
@@ -28,13 +28,13 @@ Linux 的真实 Hermes 验收证据最强。macOS 和 Windows 纳入离线 CI �
 
 ## 从发布制品安装
 
-如需手动安装已下载的 v0.1.8 wheel，请先验证发布校验和并建立隔离环境：
+v0.2.0 不可变制品发布后，如需手动安装候选 wheel，请先验证校验和并建立隔离环境：
 
 ```bash
 python -m venv .venv
 # POSIX: source .venv/bin/activate
 # Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install agentporter-0.1.8-py3-none-any.whl
+python -m pip install agentporter-0.2.0-py3-none-any.whl
 agentporter
 ```
 
@@ -42,7 +42,7 @@ agentporter
 
 ## 发布候选引导脚本边界
 
-在托管的 v0.1.8 wheel、校验和与 `install.sh` assets 发布前，源码树中的 `install.sh` **不能作为用户安装入口执行**：它为正式发布预先固定到不可变的 `https://github.com/KumaCool/AgentPorter/releases/download/v0.1.8` assets。当前用户必须继续使用 `https://github.com/KumaCool/AgentPorter/releases/latest/download/install.sh`。发布时必须先上传不可变 assets，再从外部回读 v0.1.8 URL 和 `latest` alias，比较字节与校验和并重跑 verifier。
+在托管的 v0.2.0 wheel、校验和与 `install.sh` assets 发布前，源码树中的 `install.sh` **不能作为用户安装入口执行**：它为正式发布预先固定到不可变的 `https://github.com/KumaCool/AgentPorter/releases/download/v0.2.0` assets。`latest` alias 在发布前仍解析到正式版 v0.1.8，并继续作为当前用户入口。发布时必须先上传不可变 assets，再从外部回读 v0.2.0 URL 和 `latest` alias，比较字节与校验和并重跑 verifier。
 
 ## 从源码运行
 
@@ -83,8 +83,8 @@ agentporter-uninstall
 
 | 维度 | 当前状态 |
 |---|---|
-| installation | 0.1.8 已正式发布；Plan 06 离线候选使用三个职责名且尚未发布。 |
-| public entries | 0.1.8 已发布三个入口；候选的旧名迁移只能经独立确认的 `agentporter-activate` 到达。 |
+| installation | v0.2.0 是本地完整验证的发布候选；tag/release 与托管读回完成前 v0.1.8 仍是正式发布版。 |
+| public entries | v0.2.0 打包三个入口；候选的旧名迁移只能经独立确认的 `agentporter-activate` 到达。 |
 | binding/credential | 候选 fresh install 在 staging 前要求三个 Profile 显式 model/provider/endpoint；凭据仍由 Profile/操作者持有。 |
 | canary/live call | 真实调用以 `No inference provider configured`失败；`config check`仍只证明静态有效，不是canary证据。 |
 | route proof | Hermes v0.20 usage可提供 model/provider/api_calls，但缺 tool/fallback字段；0.1.5成功调用先标为 incomplete proof。 |
@@ -119,7 +119,7 @@ Plan 06 代码/离线门禁已闭合，但未执行真实模型 canary、Gateway
 
    ```bash
    python scripts/verify_release.py \
-     --version 0.1.8 \
+     --version 0.2.0 \
      --dependency 'pydantic<3,>=2' \
      --dependency 'PyYAML<7,>=6' \
      --entry-point 'agentporter=agentporter:main' \
@@ -133,15 +133,19 @@ Plan 06 代码/离线门禁已闭合，但未执行真实模型 canary、Gateway
      --required-module kanban_runtime.py \
      --required-module runtime_observation.py \
      --required-module runtime_probe.py \
+     --required-module plan06_role_bindings.py \
+     --required-module role_identity_compat.py \
+     --required-module role_name_migration.py \
+     --required-module role_name_migration_application.py \
      --bootstrap-checksum <wheel>.sha256 \
-     --bootstrap-source-sha256 566e07f77f3f7867b27fdb98e21c2d17f78929c203bd9500431fe82707fa84b6 \
+     --bootstrap-source-sha256 5e319aabadaa4237220d10cd3a5a98a5d3d6821908491ec24d1aef03c25226b5 \
      <wheel> <sdist>
    ```
 
 6. 上传前检查校验和、提交身份、标签、变更日志、许可证、README 与验证器输出；只发布已经验证的同一字节序列。
 7. 下载托管制品，重新计算校验和并重跑验证。仅有标签或上传成功不构成验收。
 
-示例资源路径是 v0.1.8 发布契约。托管发布验收还会下载全部公开制品、重新计算校验和、重跑验证器，并检查公开的 `latest/download/install.sh` 端点。
+示例资源路径是 v0.2.0 发布候选契约。托管发布验收还会下载全部公开制品、重新计算校验和、重跑验证器，并检查公开的 `latest/download/install.sh` 端点。
 
 ## 历史 0.1.7 串联激活修订
 

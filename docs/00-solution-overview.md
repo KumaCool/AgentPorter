@@ -12,7 +12,7 @@
 | route proof | Hermes v0.20 `--usage-file`可报告 model/provider/api_calls，但不报告 tool_calls/fallback；未来成功调用应分层为 `live-call-passed + route-proof-incomplete`。 |
 | dispatcher | 专用 orchestrator静态配置已读回；未启动 Gateway，未验收 live dispatcher/Kanban。 |
 
-0.1.5–0.1.8 已交付运行激活基础。下一功能版本的已批准主线是[职责型 Worker 身份与自定义推理绑定设计](06-role-identities-and-configurable-model-binding-design.md)及[Plan 06](plan/06-role-identities-and-configurable-model-binding.md)：保持永久 component UUID 与 Worker 职责不变，将模型语义名称迁移为职责型名称，并让三个 Profile 的 model/provider/endpoint 由用户显式配置。Plan 06 离线代码候选已实现并通过代码/离线门禁；0.1.8 仍是正式发布版。候选尚未 push、发布或托管读回，不得修改或 import Hermes 源码，也不得据此声称 operational。
+0.1.5–0.1.8 已交付运行激活基础。v0.2.0 发布候选的已批准主线是[职责型 Worker 身份与自定义推理绑定设计](06-role-identities-and-configurable-model-binding-design.md)及[Plan 06](plan/06-role-identities-and-configurable-model-binding.md)：保持永久 component UUID 与 Worker 职责不变，将模型语义名称迁移为职责型名称，并让三个 Profile 的 model/provider/endpoint 由用户显式配置。Plan 06 已形成 v0.2.0 发布候选并通过代码/离线门禁；发布与托管读回完成前 0.1.8 仍是正式发布版。候选尚未 tag、发布或托管读回，不得修改或 import Hermes 源码，也不得据此声称 operational。
 
 ## 1. 产品定位
 
@@ -33,7 +33,7 @@ AgentPorter 的核心产品是 **Hermes 多代理工作组的一键部署与任�
 - `bounded_worker` / `agentporter-bounded-worker`：在目标、范围、约束和验收均已冻结时执行有界实现或分析；
 - `mechanical_worker` / `agentporter-mechanical-worker`：只执行严格更简单、更机械的工作。
 
-以上是未发布 Plan 06 候选的当前代码事实；0.1.8 发布制品仍使用旧默认名。旧默认名由 `agentporter-activate` 独立确认后以 Hermes-native journaled rename 迁移；用户改名保持不变。名称迁移不改变 component UUID/职责，也不重建或删除 Profile。
+以上是 v0.2.0 发布候选的当前代码事实；0.1.8 历史发布制品使用旧默认名。旧默认名由 `agentporter-activate` 独立确认后以 Hermes-native journaled rename 迁移；用户改名保持不变。名称迁移不改变 component UUID/职责，也不重建或删除 Profile。
 
 Plan 02 已冻结下列兼容设计，Phase A 先以 RED 和当前代码取证证明其可实现性：新增 orchestrator 取得独立永久 component ID，并继续使用当前可解析的 `MarkerV1`；既有两个 Worker 的 marker schema 与 v0.1.0 distribution version 不回写；完整无歧义的 v0.1.0 双组件集合可按同一 installation ID 附加第三组件；空环境直接安装三组件；legacy 双组件和当前三组件都可由卸载器识别。升级失败采用 drift-safe compare-before-restore：无漂移时恢复并补偿本事务新增 orchestrator，发生漂移则保留用户新值与承载它的 orchestrator Profile 并报告 residue；旧 Worker 始终不删除。卸载三组件默认保留共享 Kanban boards/tasks，并在专用 gateway/dispatcher、任何非终态任务或 owner 不明时 fail closed。具体 RED 与状态矩阵见 [Plan 02 Phase A](plan/02-multi-agent-orchestration.md#phase-a兼容路由与事务合同先-red)。
 
