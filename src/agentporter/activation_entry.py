@@ -21,6 +21,7 @@ from .hermes import HermesDetection, detect_hermes
 from .hermes_runtime import HermesRuntime
 from .identity import INSTALL_COMPONENT_IDS
 from .plan06_role_bindings import CredentialGrantSelection, classify_credential_grant
+from .planning import RuntimeBindingSelection
 from .role_name_migration_application import (
     RoleMigrationApplicationStatus,
     run_role_name_migration_gate,
@@ -49,6 +50,7 @@ def run_activation_with_role_migration(
     output: TextIO | None = None,
     runtime_factory: Callable[[Path], HermesRuntime] = HermesRuntime,
     canary_timeout_seconds: float = 30.0,
+    binding_selection: Mapping[str, RuntimeBindingSelection] | None = None,
 ) -> ActivationResult:
     """Public activate composition: independent rename gate before binding/canary gates."""
     found = detector(env=env)
@@ -76,6 +78,7 @@ def run_activation_with_role_migration(
             output=output,
             runtime_factory=runtime_factory,
             canary_timeout_seconds=canary_timeout_seconds,
+            binding_selection=binding_selection,
         )
 
     migration = run_role_name_migration_gate(
@@ -113,6 +116,7 @@ def _run_binding_activation(
     output: TextIO | None = None,
     runtime_factory: Callable[[Path], HermesRuntime] = HermesRuntime,
     canary_timeout_seconds: float = 30.0,
+    binding_selection: Mapping[str, RuntimeBindingSelection] | None = None,
 ) -> ActivationResult:
     """Discover the sole installation, collect bindings, and execute one transaction."""
     found = detector(env=env)
@@ -123,9 +127,18 @@ def _run_binding_activation(
         raise SystemExit("AgentPorter activation requires both Workers")
     for component_id in INSTALL_COMPONENT_IDS.values():
         target = targets[component_id]
-        model = input_fn(f"Model ID for {target.current_name}: ").strip()
-        provider = input_fn(f"Provider ID for {target.current_name}: ").strip()
-        endpoint = endpoint_reader(f"Endpoint for {target.current_name} (hidden): ")
+        portable_id = next(
+            portable
+            for portable, expected_component in INSTALL_COMPONENT_IDS.items()
+            if expected_component == component_id
+        )
+        if binding_selection is None:
+            model = input_fn(f"Model ID for {target.current_name}: ").strip()
+            provider = input_fn(f"Provider ID for {target.current_name}: ").strip()
+            endpoint = endpoint_reader(f"Endpoint for {target.current_name} (hidden): ")
+        else:
+            selected = binding_selection[portable_id].normalized
+            model, provider, endpoint = selected.model, selected.provider, selected.endpoint
         raw_grant = input_fn(
             f"Credential grant for {target.current_name} "
             "(existing-profile-definition/explicit-source-inheritance/profile-auth, "
@@ -133,11 +146,7 @@ def _run_binding_activation(
         ).strip()
         requested = CredentialGrantSelection(raw_grant) if raw_grant else None
         classification = classify_credential_grant(
-            portable_id=next(
-                portable
-                for portable, expected_component in INSTALL_COMPONENT_IDS.items()
-                if expected_component == component_id
-            ),
+            portable_id=portable_id,
             existing_profile_definition=True,
             requested=requested,
             source_profile_kind="main-default"
@@ -228,7 +237,6 @@ def main() -> None:
     if result.status not in (
         ActivationStatus.ACTIVATED,
         ActivationStatus.RESTRICTED,
-        ActivationStatus.CREDENTIAL_REQUIRED,
     ):
         raise SystemExit(f"AgentPorter activation {result.status}")
 

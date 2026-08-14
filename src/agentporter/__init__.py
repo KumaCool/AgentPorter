@@ -8,6 +8,8 @@ from collections.abc import Mapping
 from importlib.resources import as_file, files
 from pathlib import Path
 
+from .activation_application import ActivationStatus
+from .activation_entry import run_activation_with_role_migration
 from .application import run_installer
 from .transaction import InstallTransactionStatus
 from .workflow import WorkflowStatus
@@ -46,10 +48,11 @@ def run_product_installer() -> None:
         as_file(resource) as manifest,
         tempfile.TemporaryDirectory(prefix="agentporter-run-") as temporary,
     ):
+        environment = _minimal_install_environment(os.environ)
         result = run_installer(
             manifest,
             Path(temporary),
-            _minimal_install_environment(os.environ),
+            environment,
         )
     if result.workflow.status is WorkflowStatus.CANCELLED:
         raise SystemExit("AgentPorter installation cancelled")
@@ -57,6 +60,12 @@ def run_product_installer() -> None:
         raise SystemExit(f"AgentPorter installation failed: {result.workflow.status}")
     if result.transaction.status is not InstallTransactionStatus.INSTALLED:
         raise SystemExit(f"AgentPorter installation failed: {result.transaction.status}")
+    activation = run_activation_with_role_migration(
+        environment,
+        binding_selection=result.binding_selection,
+    )
+    if activation.status not in (ActivationStatus.ACTIVATED, ActivationStatus.RESTRICTED):
+        raise SystemExit(f"AgentPorter activation {activation.status}")
 
 
 def main() -> None:

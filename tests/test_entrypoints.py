@@ -81,6 +81,40 @@ def test_product_entry_forwards_only_minimal_noncredential_environment(
     assert os.environ["AUDIT_PROVIDER_API_KEY"] == sentinel
 
 
+def test_product_entry_passes_install_choices_directly_to_activation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import agentporter
+    from agentporter.activation_application import ActivationStatus
+    from agentporter.planning import RuntimeBindingSelection
+
+    selected = {
+        "bounded_worker": RuntimeBindingSelection("chosen-bounded", "chosen-provider", "secret-a"),
+        "mechanical_worker": RuntimeBindingSelection(
+            "chosen-mechanical", "chosen-provider", "secret-b"
+        ),
+    }
+    install_result = SimpleNamespace(
+        workflow=SimpleNamespace(status=agentporter.WorkflowStatus.CONFIRMED),
+        transaction=SimpleNamespace(status=agentporter.InstallTransactionStatus.INSTALLED),
+        binding_selection=selected,
+    )
+    captured: list[object] = []
+    monkeypatch.setattr(agentporter, "run_installer", lambda *args, **kwargs: install_result)
+    monkeypatch.setattr(
+        agentporter,
+        "run_activation_with_role_migration",
+        lambda env, *, binding_selection: (
+            captured.append((env, binding_selection))
+            or SimpleNamespace(status=ActivationStatus.ACTIVATED)
+        ),
+    )
+
+    agentporter.run_product_installer()
+
+    assert captured and captured[0][1] is selected
+
+
 def test_uninstall_entry_forwards_only_minimal_noncredential_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -216,7 +250,9 @@ def test_activation_entry_forwards_only_minimal_noncredential_environment(
     ("status", "successful"),
     [
         ("activated", True),
-        ("credential-required", True),
+        ("restricted", True),
+        ("credential-required", False),
+        ("canary-required", False),
         ("cancelled", False),
         ("stale", False),
         ("failed", False),

@@ -299,16 +299,9 @@ done
 printf '\nPackage installed and checksum verified. Starting the interactive AgentPorter plan.\n'
 printf 'No Hermes Profile will be written until you review and confirm that plan.\n\n'
 if "$FINAL_VENV/bin/python" "$FINAL_VENV/bin/agentporter" < "$INPUT_DEVICE"; then
-    printf '\nStarting AgentPorter activation.\n\n'
-    if "$FINAL_VENV/bin/python" "$FINAL_VENV/bin/agentporter-activate" < "$INPUT_DEVICE"; then
-        printf '\nAgentPorter completed. Uninstall later with:\n  %s\n' "$UNINSTALL_LINK"
-    else
-        status=$?; printf '\nAgentPorter activation did not complete successfully.\n' >&2
-        printf 'The installed Profiles and activation command were kept for retry:\n  %s\n' "$BIN_HOME/agentporter-activate" >&2
-        exit "$status"
-    fi
+    printf '\nAgentPorter completed. Uninstall later with:\n  %s\n' "$UNINSTALL_LINK"
 else
     status=$?; printf '\nAgentPorter did not complete successfully.\n' >&2
-    printf 'The verified package and uninstaller were kept for diagnosis or cleanup:\n  %s\n' "$UNINSTALL_LINK" >&2
+    printf 'The installed Profiles and activation command were kept for retry:\n  %s\n' "$BIN_HOME/agentporter-activate" >&2
     exit "$status"
 fi

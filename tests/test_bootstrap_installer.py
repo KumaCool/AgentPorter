@@ -241,13 +241,13 @@ def test_bootstrap_downloads_verifies_installs_and_runs(tmp_path: Path) -> None:
     assert all("--retry-delay 2" in line for line in curl_argv)
     assert all("--retry-all-errors" not in line for line in curl_argv)
     assert "agentporter \n" in calls
-    assert "agentporter-activate \n" in calls
+    assert "agentporter-activate \n" not in calls
     for entry in ("agentporter", "agentporter-activate", "agentporter-uninstall"):
         shebang = (
             (install_root / "venv" / "bin" / entry).read_text(encoding="utf-8").splitlines()[0]
         )
         assert shebang == f"#!{install_root}/venv/bin/python"
-    assert "Starting AgentPorter activation" in result.stdout
+    assert "AgentPorter completed" in result.stdout
 
 
 def test_bootstrap_preflights_all_public_entries_before_writing_any(tmp_path: Path) -> None:
@@ -266,17 +266,18 @@ def test_bootstrap_preflights_all_public_entries_before_writing_any(tmp_path: Pa
     assert "curl " not in (tmp_path / "calls.log").read_text(encoding="utf-8")
 
 
-def test_bootstrap_activation_failure_keeps_installed_retry_entry(tmp_path: Path) -> None:
+def test_bootstrap_noncompletion_keeps_installed_retry_entry(tmp_path: Path) -> None:
     checksum = hashlib.sha256(b"wheel-bytes").hexdigest()
 
     result = _run(
         tmp_path,
         checksum=checksum,
-        extra_env={"AGENTPORTER_ACTIVATE_EXIT_CODE": "7"},
+        extra_env={"AGENTPORTER_EXIT_CODE": "7"},
     )
 
     assert result.returncode == 7
-    assert "activation did not complete" in result.stderr
+    assert "did not complete" in result.stderr
+    assert "AgentPorter completed" not in result.stdout
     activate = tmp_path / "bin" / "agentporter-activate"
     assert activate.is_symlink()
     assert activate.resolve().is_file()
@@ -390,4 +391,4 @@ def test_bootstrap_preserves_uninstaller_when_product_install_fails(tmp_path: Pa
 
     assert result.returncode != 0
     assert (tmp_path / "bin" / "agentporter-uninstall").is_symlink()
-    assert "kept for diagnosis" in result.stderr
+    assert "kept for retry" in result.stderr

@@ -23,6 +23,7 @@ from agentporter.activation_application import (
 )
 from agentporter.hermes import HermesCapabilities, HermesDetection
 from agentporter.identity import INSTALL_COMPONENT_IDS, PRODUCT_ID
+from agentporter.planning import RuntimeBindingSelection
 from agentporter.runtime_binding import RuntimeBindingPlan
 from agentporter.runtime_probe import ProbeObservation, ProbeResult
 from agentporter.uninstall_discovery import DiscoveryResult, DiscoveryStatus, discover_installation
@@ -506,6 +507,51 @@ def test_formal_activation_entry_prompts_for_all_profiles_in_component_order(
         "Model ID for renamed-mechanical: ",
     ]
     assert len([prompt for prompt in prompts if prompt.startswith("Credential grant")]) == 2
+
+
+def test_formal_activation_entry_reuses_install_binding_authority_without_reprompting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import agentporter.activation_entry as entry
+
+    found, _ = _installation(tmp_path)
+    prompts: list[str] = []
+    captured: dict[str, ActivationBindingInput] = {}
+    selected = {
+        portable_id: RuntimeBindingSelection(
+            f"{portable_id}-selected-model",
+            "custom-provider",
+            SECRET_ENDPOINT,
+        )
+        for portable_id in INSTALL_COMPONENT_IDS
+    }
+    grants = iter(("explicit-source-inheritance", "explicit-source-inheritance"))
+
+    def capture_plan(
+        discovery: DiscoveryResult,
+        detection: HermesDetection,
+        inputs: dict[str, ActivationBindingInput],
+    ) -> object:
+        captured.update(inputs)
+        return object()
+
+    monkeypatch.setattr(entry, "build_activation_plan", capture_plan)
+    monkeypatch.setattr(entry, "apply_activation", lambda plan, **kwargs: object())
+
+    entry._run_binding_activation(  # pyright: ignore[reportPrivateUsage]
+        {},
+        detector=lambda **kwargs: found,
+        input_fn=lambda prompt: prompts.append(prompt) or next(grants),
+        endpoint_reader=lambda _prompt: pytest.fail("endpoint must not be prompted twice"),
+        runtime_factory=lambda _path: object(),  # type: ignore[arg-type,return-value]
+        binding_selection=selected,
+    )
+
+    assert not any(prompt.startswith(("Model ID", "Provider ID")) for prompt in prompts)
+    assert [value.model for value in captured.values()] == [
+        selected[portable_id].model for portable_id in INSTALL_COMPONENT_IDS
+    ]
+    assert all(value.endpoint_value == SECRET_ENDPOINT for value in captured.values())
 
 
 def test_apply_activation_confirms_once_then_writes_and_reads_back_without_cli(

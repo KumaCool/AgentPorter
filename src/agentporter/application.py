@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import getpass
 import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -28,6 +29,7 @@ from .workflow import WorkflowOutcome, WorkflowStatus, preflight_and_confirm
 class InstallerResult:
     workflow: WorkflowOutcome
     transaction: InstallTransactionResult | None
+    binding_selection: Mapping[str, RuntimeBindingSelection]
 
 
 def run_legacy_orchestrator_migration(
@@ -83,6 +85,7 @@ def run_installer(
     env: Mapping[str, str],
     *,
     input_fn: Callable[[str], str] = input,
+    endpoint_reader: Callable[[str], str] = getpass.getpass,
     output: TextIO = sys.stdout,
     executor_factory: Callable[[], CommandExecutor] = CommandExecutor,
     detector: Callable[..., HermesDetection] = detect_hermes,
@@ -97,7 +100,7 @@ def run_installer(
             profile_name = INITIAL_PROFILE_NAMES[portable_id]
             model = input_fn(f"Model ID for {profile_name}: ")
             provider = input_fn(f"Provider ID for {profile_name}: ")
-            endpoint = input_fn(f"Endpoint for {profile_name}: ")
+            endpoint = endpoint_reader(f"Endpoint for {profile_name} (hidden): ")
             bindings[portable_id] = RuntimeBindingSelection(model, provider, endpoint)
         preflight_kwargs["binding_selection"] = bindings
     transaction: InstallTransactionResult | None = None
@@ -141,4 +144,7 @@ def run_installer(
             )
     else:
         transaction = None
-    return InstallerResult(workflow, transaction)
+    binding_selection = preflight_kwargs["binding_selection"]
+    if not isinstance(binding_selection, Mapping):
+        raise TypeError("binding selection authority must be a mapping")
+    return InstallerResult(workflow, transaction, binding_selection)  # type: ignore[arg-type]

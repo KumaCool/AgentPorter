@@ -180,6 +180,55 @@ def test_confirmed_application_composes_fresh_native_transaction(
     assert len(detections) == 5
 
 
+def test_interactive_binding_choices_are_returned_as_installer_authority(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import agentporter.application as application
+
+    selected = runtime_bindings()
+    answers = iter(
+        value
+        for portable_id in INSTALL_COMPONENT_IDS
+        for value in (
+            selected[portable_id].model,
+            selected[portable_id].provider,
+        )
+    )
+    endpoints = iter(selected[portable_id].endpoint for portable_id in INSTALL_COMPONENT_IDS)
+    transaction = SimpleNamespace(status=InstallTransactionStatus.INSTALLED)
+    monkeypatch.setattr(
+        application,
+        "preflight_and_confirm",
+        lambda *args, **kwargs: (
+            kwargs["continuation"](SimpleNamespace())
+            or WorkflowOutcome(WorkflowStatus.CONFIRMED, "confirmed", True)
+        ),
+    )
+    monkeypatch.setattr(application, "revalidate_install_plan", lambda plan, detection: True)
+    monkeypatch.setattr(
+        application, "execute_install_transaction", lambda *args, **kwargs: transaction
+    )
+    adapter = SimpleNamespace(
+        enumerate_profiles=object(),
+        set_description=object(),
+        read_distribution_info=object(),
+        read_description=object(),
+    )
+
+    result = application.run_installer(
+        _manifest(tmp_path),
+        tmp_path / "staging",
+        {},
+        input_fn=lambda _prompt: next(answers),
+        endpoint_reader=lambda _prompt: next(endpoints),
+        detector=lambda **kwargs: _detection(tmp_path),
+        executor_factory=lambda: object(),  # type: ignore[arg-type]
+        adapter_factory=lambda *args: adapter,  # type: ignore[arg-type]
+    )
+
+    assert result.binding_selection == selected
+
+
 def test_formal_installer_requires_separate_authorization_for_v020_profile_removal(
     tmp_path: Path,
 ) -> None:
