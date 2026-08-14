@@ -1,5 +1,8 @@
 # AgentPorter 计划索引
 
+> **Unreleased 拓扑修正（当前权威）：** 当前产品恰好只有 `bounded_worker` 与 `mechanical_worker` 两个 Worker Profile；主 Hermes agent 是 orchestrator，不再有独立 orchestrator Profile。v0.2.0 确实发布了错误的第三个 `agentporter-orchestrator`；下文三 Profile 叙述仅是历史发布/阶段证据。legacy 组件现在仅支持发现/卸载，以及单独确认的迁移删除。fresh install、activation、canary 均闭合为两个 binding/call。canary 默认 timeout 为 30 秒并支持显式 90 秒；未解析 inherited `key_env` 在目标 Profile 无可解析 `.env` 时为 `credential-required`；canonical `custom` 只映射封印的具体定义；exit-zero failed usage 保持封闭失败原因。
+
+
 本目录按产品依赖顺序维护 AgentPorter 的实施与验收计划。状态必须区分历史交付、当前产品主线和后置质量验证。
 
 | 顺序 | 计划 | 状态 | 权威范围 |

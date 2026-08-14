@@ -4,6 +4,12 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+### Fixed
+
+- Corrected the current topology to exactly two Worker Profiles: `bounded_worker` and `mechanical_worker`. The main Hermes agent is the orchestrator; fresh install, activation, and canary no longer create, bind, or call an independent orchestrator Profile.
+- Preserved the truthful v0.2.0 record: it was released with the erroneous third `agentporter-orchestrator`. That legacy topology is now supported only for discovery/uninstall and a separately confirmed migration removal.
+- Made canary evidence fail closed: unresolved inherited `key_env` is `credential-required` unless the target Profile owns a resolvable `.env`; concrete custom-provider invocation uses canonical `custom` and maps usage only under the sealed definition; exit-zero failed usage retains its closed failure classification; timeout supports 90 seconds with a 30-second default.
+
 ## [0.2.0] - 2026-08-14
 
 ### Added

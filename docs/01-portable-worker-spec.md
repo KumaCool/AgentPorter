@@ -1,5 +1,8 @@
 # 可移植 Worker 规范
 
+> **Unreleased 拓扑修正（当前权威）：** 当前产品恰好只有 `bounded_worker` 与 `mechanical_worker` 两个 Worker Profile；主 Hermes agent 是 orchestrator，不再有独立 orchestrator Profile。v0.2.0 确实发布了错误的第三个 `agentporter-orchestrator`；下文三 Profile 叙述仅是历史发布/阶段证据。legacy 组件现在仅支持发现/卸载，以及单独确认的迁移删除。fresh install、activation、canary 均闭合为两个 binding/call。
+
+
 ## 0. Plan 06 v0.2.0 正式发布状态（Phase F）
 
 | 维度 | 当前证据状态 |
@@ -160,3 +163,12 @@ output: [返回格式]
 本规范只要求打包内 `workers.yaml`、distribution、config、SOUL 和 marker 的 schema/映射可验证。安装状态、补偿、模型调用边界和独立卸载均由 [安装、卸载与验收设计](03-installation-and-uninstall-design.md) 定义。
 
 任务分解、assignee 选择与 dispatcher 主链由 [Plan 02](plan/02-multi-agent-orchestration.md) 验证；真实 tier、正确拒绝、任务质量和性能由后置 [Worker 验证与基准计划](plan/03-agent-validation-and-benchmark.md) 评测。两者均不能反向把静态安装状态改写为运行成功。
+
+## 当前两 Worker 与 canary 修正合同
+
+- `bounded_worker`：仅完成目标、约束、范围、文件和验收均由主 Hermes agent 固定的边界明确工作；信息不足或越界时停止，不猜测、不扩张。
+- `mechanical_worker`：只处理更简单的机械委派——极简单操作脚本、大输出读取/过滤/摘要、按精确规则批量编辑；需要更广判断时返回歧义。
+- 主 Hermes agent 负责 orchestrate、分解、路由与集成，不是 AgentPorter 安装的第三个 Profile。
+- 每 Worker canary 默认 30 秒，可显式配置为 90 秒；授权短语与调用上限均为两个 Worker。
+- inherited `key_env` 未解析时返回 `credential-required`，除非目标 Profile 自有 `.env` 可解析。canonical `custom` 只映射封印的具体定义；exit-zero 且 usage `failed=true` 仍按封闭原因失败。
+- 失败原因保持封闭：`authentication-failed`、`model-unsupported`、`endpoint-unavailable`、`rate-limited`、`probe-timeout`、`response-contract-failed`、`usage-evidence-invalid`、`unexpected-runtime-route`。

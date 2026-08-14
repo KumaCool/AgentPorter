@@ -1,8 +1,11 @@
 # 安装、故障排查与安全发布
 
+> **Unreleased 拓扑修正（当前权威）：** 当前产品恰好只有 `bounded_worker` 与 `mechanical_worker` 两个 Worker Profile；主 Hermes agent 是 orchestrator，不再有独立 orchestrator Profile。v0.2.0 确实发布了错误的第三个 `agentporter-orchestrator`；下文三 Profile 叙述仅是历史发布/阶段证据。legacy 组件现在仅支持发现/卸载，以及单独确认的迁移删除。fresh install、activation、canary 均闭合为两个 binding/call。
+
+
 [English](04-installation-and-troubleshooting.md) | 简体中文
 
-AgentPorter v0.2.0 是最新正式非预发布版；tag、7 个托管 assets、verifier、fresh HTTPS clone、隔离 wheel import 与公开 `latest` bootstrap 回读均通过。该发布版在 fresh install 中使用 `agentporter-bounded-worker`、`agentporter-mechanical-worker`、`agentporter-orchestrator`，并在 staging 前要求三个 Profile 分别显式封闭 model/provider/endpoint。精确旧默认名只能经 `agentporter-activate` 独立确认的 Hermes-native journaled rename 迁移；用户改名保留。Hermes v0.20.0 是**已观察版本**，不是承诺的最低版本或通用兼容范围。
+AgentPorter v0.2.0 是最新正式非预发布版；tag、7 个托管 assets、verifier、fresh HTTPS clone、隔离 wheel import 与公开 `latest` bootstrap 回读均通过。该发布版历史上确实使用三个 Profile（含 `agentporter-orchestrator`），但这是错误拓扑。修正后的 fresh install 只使用 `agentporter-bounded-worker` 与 `agentporter-mechanical-worker`，并为两者显式封闭 model/provider/endpoint。精确旧默认名只能经 `agentporter-activate` 独立确认的 Hermes-native journaled rename 迁移；用户改名保留。Hermes v0.20.0 是**已观察版本**，不是承诺的最低版本或通用兼容范围。
 
 ## curl 一键安装（POSIX）
 
@@ -152,3 +155,7 @@ Plan 06 代码/离线、tag、release 与托管制品读回门禁均已闭合，
 当 `/dev/tty` 不能被实际打开并验证为终端时，bootstrap 现在会在下载或创建安装路径之前失败；仅“路径可读”不再视为交互终端授权。
 
 交互安装计划成功后，bootstrap 会通过同一个真实终端直接启动 `agentporter-activate`，不再增加是否进入激活的选择。激活仍保留绑定确认，并对真实模型调用单独披露和确认。Hermes v0.20 的 custom Provider 跳过不支持的裸 Provider 认证命令，在既有 descriptor-bound 配置事务中把主/default Profile 的完整所选 Provider 定义复制到各 Worker。当前 keyed `providers.<id>` 与兼容的 list-shaped `custom_providers` 两种 schema 均受支持，且不会相互转换或重复物化。激活失败时保留已安装 Profiles 和公开重试命令，并返回非零状态。
+
+## 修正后的双 Worker activation 与 canary
+
+当前 activation 恰好处理两个 Worker binding，live 授权最多覆盖两次 Worker 调用。canary timeout 默认 30 秒，可配置为 90 秒。继承定义的 `key_env` 未解析时返回 `credential-required`，除非目标 Profile 自己的 `.env` 可解析。封印的具体 custom Provider 通过 canonical `custom` 调用；exit-zero 但 usage 标记 `failed` 仍按封闭安全原因失败。

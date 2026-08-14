@@ -184,7 +184,7 @@ def test_activation_forwards_explicit_ninety_second_canary_policy(
         return ProbeResult("response-contract-failed")
 
     monkeypatch.setattr(activation, "run_runtime_probe", fake_probe)
-    answers = iter((plan.confirmation_phrase, "RUN 3 WORKER CALLS"))
+    answers = iter((plan.confirmation_phrase, "RUN 2 WORKER CALLS"))
     apply_activation(
         plan,
         input_fn=lambda _prompt: next(answers),
@@ -192,7 +192,7 @@ def test_activation_forwards_explicit_ninety_second_canary_policy(
         require_runtime_confirmations=True,
         canary_timeout_seconds=90,
     )
-    assert observed == [90, 90, 90]
+    assert observed == [90, 90]
 
 
 def test_runtime_entry_wires_timeout_and_canonical_custom_usage_provider(

@@ -1,5 +1,8 @@
 # AgentPorter 职责型 Worker 身份与自定义推理绑定实施计划
 
+> **Unreleased 拓扑修正（当前权威）：** 当前产品恰好只有 `bounded_worker` 与 `mechanical_worker` 两个 Worker Profile；主 Hermes agent 是 orchestrator，不再有独立 orchestrator Profile。v0.2.0 确实发布了错误的第三个 `agentporter-orchestrator`；下文三 Profile 叙述仅是历史发布/阶段证据。legacy 组件现在仅支持发现/卸载，以及单独确认的迁移删除。fresh install、activation、canary 均闭合为两个 binding/call。
+
+
 > **状态：** Plan 06 已随 v0.2.0 正式发布。代码/离线门禁、tag `v0.2.0`、非预发布 GitHub Release、7 个托管 assets 与外部读回均闭合；真实 model canary、Gateway、Kanban mutation/live routing 未执行，仍不 operational。
 
 **Goal:** 在保持三个 Worker 职责、component UUID 和 Hermes 原生边界不变的前提下，把模型语义名称迁移为职责型身份，并让三个 Profile 的 model/provider/endpoint 由用户显式配置和真实验证。
@@ -392,3 +395,20 @@ git diff --check
 - **ROLE-12…16：** fresh 三职责名、0.1.8 legacy UUID 兼容、用户改名保留、冲突/partial/duplicate/mixed-ID/unknown fail-closed，以及持久 journal continue/rollback/漂移 residue 已由隔离 Hermes/事务测试覆盖。
 - **ROLE-17…19：** old/new/user-renamed 激活与生命周期兼容、三个 Profile 独立相同/不同绑定、普通软件更新保留名称与绑定合同闭合。
 - **ROLE-20…22：** RED provenance、正式入口 reachability、focused/full offline gates、制品/链接/隐私边界与 offline/live 授权 ledger 已闭合；发布/托管读回已验收，真实模型、Gateway、Kanban 仍明确未验收。
+
+## 当前两 Worker 与 canary 修正合同
+
+- `bounded_worker`：仅完成目标、约束、范围、文件和验收均由主 Hermes agent 固定的边界明确工作；信息不足或越界时停止，不猜测、不扩张。
+- `mechanical_worker`：只处理更简单的机械委派——极简单操作脚本、大输出读取/过滤/摘要、按精确规则批量编辑；需要更广判断时返回歧义。
+- 主 Hermes agent 负责 orchestrate、分解、路由与集成，不是 AgentPorter 安装的第三个 Profile。
+- 每 Worker canary 默认 30 秒，可显式配置为 90 秒；授权短语与调用上限均为两个 Worker。
+- inherited `key_env` 未解析时返回 `credential-required`，除非目标 Profile 自有 `.env` 可解析。canonical `custom` 只映射封印的具体定义；exit-zero 且 usage `failed=true` 仍按封闭原因失败。
+- 失败原因保持封闭：`authentication-failed`、`model-unsupported`、`endpoint-unavailable`、`rate-limited`、`probe-timeout`、`response-contract-failed`、`usage-evidence-invalid`、`unexpected-runtime-route`。
+
+## Unreleased 修正 ledger（替代当前三 Profile 目标）
+
+1. 当前交付集合固定为 `bounded_worker`、`mechanical_worker` 两组件；主 Hermes agent 是编排 owner。
+2. 本计划中新增/配置/绑定/探测独立 orchestrator Profile 的任务作为 v0.2.0 及阶段历史保留，不再是当前目标。
+3. `agentporter-orchestrator` 只允许进入 legacy discovery/uninstall 与单独确认的 removal migration；不得进入 fresh manifest、staging、activation binding 或 canary 集合。
+4. fresh install、activation、readiness 聚合、确认计数及 canary 上限均为两个 Worker。
+5. canary 默认 30 秒并支持 90 秒；未解析 inherited `key_env` 在目标 Profile 无可解析 `.env` 时为 `credential-required`；canonical `custom` 只映射封印定义；exit-zero failed usage 保持封闭失败原因。

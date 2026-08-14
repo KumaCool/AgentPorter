@@ -1,8 +1,11 @@
 # Installation, troubleshooting, and safe release
 
+> **Unreleased topology correction (current authority):** Current fresh install, activation, and canary target exactly two Worker Profiles, `bounded_worker` and `mechanical_worker`; the main Hermes agent is the orchestrator. v0.2.0 truly shipped the erroneous third `agentporter-orchestrator`, now supported only for discovery/uninstall and separately confirmed migration removal.
+
+
 English | [简体中文](04-installation-and-troubleshooting.zh-CN.md)
 
-AgentPorter v0.2.0 is the latest published non-prerelease release. Its tag, seven hosted assets, verifier, fresh HTTPS clone, isolated wheel import, and public `latest` bootstrap readback passed. The release uses `agentporter-bounded-worker`, `agentporter-mechanical-worker`, and `agentporter-orchestrator` for fresh installs and requires explicit sealed model/provider/endpoint selections for all three Profiles before staging. Exact legacy defaults migrate only through separately confirmed, Hermes-native journaled rename in `agentporter-activate`; user-renamed Profiles are preserved. Hermes v0.20.0 is an **observed version**, not a promised minimum or universal compatibility range.
+AgentPorter v0.2.0 is the latest published non-prerelease release. Its tag, seven hosted assets, verifier, fresh HTTPS clone, isolated wheel import, and public `latest` bootstrap readback passed. The published release historically used three Profiles, including `agentporter-orchestrator`; that is true release evidence but an erroneous topology. Corrected fresh installs use only `agentporter-bounded-worker` and `agentporter-mechanical-worker`, with explicit sealed model/provider/endpoint selections for both. Exact legacy defaults migrate only through separately confirmed, Hermes-native journaled rename in `agentporter-activate`; user-renamed Profiles are preserved. Hermes v0.20.0 is an **observed version**, not a promised minimum or universal compatibility range.
 
 ## One-line POSIX install
 
@@ -152,3 +155,7 @@ The example resource path is the v0.2.0 release contract. Hosted release accepta
 The bootstrap now fails before downloading or creating installation paths when `/dev/tty` cannot actually be opened as a terminal; file readability alone is not treated as interactive-terminal authority.
 
 After the interactive install plan succeeds, the bootstrap now starts `agentporter-activate` directly through the same real terminal, without another opt-in prompt. Activation still retains its binding confirmation and separately discloses/confirms live model calls. On Hermes v0.20, custom providers bypass unsupported bare-provider auth commands and inherit the exact selected provider definition from the main/default Profile into each Worker under the existing descriptor-bound config transaction. Both the current keyed `providers.<id>` schema and the compatible list-shaped `custom_providers` schema are supported without converting one into the other. Activation failure leaves the installed Profiles and public retry command in place and returns a non-zero status.
+
+## Corrected two-Worker activation and canary
+
+Current activation targets exactly two Worker bindings and authorizes at most two Worker calls. Canary timeout defaults to 30 seconds and may be configured to 90. An inherited unresolved `key_env` stops at `credential-required` unless the target Profile owns a resolvable `.env`. A sealed concrete custom provider uses canonical `custom`; exit-zero usage marked `failed` remains a closed classified failure.

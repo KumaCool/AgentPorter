@@ -1,5 +1,8 @@
 # AgentPorter 职责型 Worker 身份与自定义推理绑定设计
 
+> **Unreleased 拓扑修正（当前权威）：** 当前产品恰好只有 `bounded_worker` 与 `mechanical_worker` 两个 Worker Profile；主 Hermes agent 是 orchestrator，不再有独立 orchestrator Profile。v0.2.0 确实发布了错误的第三个 `agentporter-orchestrator`；下文三 Profile 叙述仅是历史发布/阶段证据。legacy 组件现在仅支持发现/卸载，以及单独确认的迁移删除。fresh install、activation、canary 均闭合为两个 binding/call。
+
+
 - **状态：** v0.2.0 已正式发布；tag、7 个托管 assets 与外部读回已闭合，live 验收未执行
 - **目标版本：** v0.2.0 正式发布版
 - **依赖：** 已发布的 AgentPorter 0.1.8、Hermes 名称无关 Profile marker、现有运行绑定与真实 canary 合同
@@ -318,3 +321,12 @@ operational（仍要求 dispatcher/route/continuity）
 软件回滚事务必须先验证目标版本的 activation/discovery/uninstall 能力，再切换公共入口；失败时 compare-before-restore 当前新版本入口，不能留下“旧 activation + 无受支持 uninstaller”的混合集合。推理绑定和 provider definition 不随软件回滚迁移或覆盖，旧硬编码模型不得恢复。实施阶段必须以真实 0.1.8 fixture 验证旧默认名 → 新名 → 激活/卸载、中断恢复和入口回滚矩阵。
 
 本文是 Plan 06 的权威设计。v0.2.0 已正式发布并实现职责名、显式三 Profile 绑定、旧默认名 journaled Hermes-native rename、用户改名保留和 readiness 失效。tag `v0.2.0` 精确指向 `be31eb2af67660780593c716d488ca88e508f710`；非预发布 GitHub Release、7 个托管 assets、checksum/verifier、fresh HTTPS clone、隔离 wheel import 与公开 `latest` bootstrap 字节回读均通过。真实 model canary、Gateway、Kanban mutation/live routing 均未执行且分别需授权，不能声称 operational。
+
+## 当前两 Worker 与 canary 修正合同
+
+- `bounded_worker`：仅完成目标、约束、范围、文件和验收均由主 Hermes agent 固定的边界明确工作；信息不足或越界时停止，不猜测、不扩张。
+- `mechanical_worker`：只处理更简单的机械委派——极简单操作脚本、大输出读取/过滤/摘要、按精确规则批量编辑；需要更广判断时返回歧义。
+- 主 Hermes agent 负责 orchestrate、分解、路由与集成，不是 AgentPorter 安装的第三个 Profile。
+- 每 Worker canary 默认 30 秒，可显式配置为 90 秒；授权短语与调用上限均为两个 Worker。
+- inherited `key_env` 未解析时返回 `credential-required`，除非目标 Profile 自有 `.env` 可解析。canonical `custom` 只映射封印的具体定义；exit-zero 且 usage `failed=true` 仍按封闭原因失败。
+- 失败原因保持封闭：`authentication-failed`、`model-unsupported`、`endpoint-unavailable`、`rate-limited`、`probe-timeout`、`response-contract-failed`、`usage-evidence-invalid`、`unexpected-runtime-route`。

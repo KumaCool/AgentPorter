@@ -86,16 +86,16 @@ def test_v020_publication_and_historical_baseline_are_distinguished() -> None:
     assert "离线实现" in corpus or "offline" in corpus.lower()
 
 
-def test_install_guides_describe_three_entries_three_profiles_and_release_boundary() -> None:
+def test_install_guides_describe_two_current_workers_and_truthful_legacy_boundary() -> None:
     for path in (
         "docs/04-installation-and-troubleshooting.md",
         "docs/04-installation-and-troubleshooting.zh-CN.md",
     ):
         text = _text(path)
-        assert "three generated entry" in text or "三个生成入口" in text
-        assert "two dedicated Worker Profiles and one dedicated orchestrator" in text or (
-            "两个专用 Worker Profile 和一个专用 orchestrator" in text
-        )
+        assert "exactly two Worker" in text or "恰好只有" in text or "恰好处理两个" in text
+        assert "main Hermes agent" in text or "主 Hermes agent" in text
+        assert "erroneous" in text or "错误" in text
+        assert "discovery/uninstall" in text or "发现/卸载" in text
         assert "releases/latest/download/install.sh" in text
         assert "0.2.0" in text
         assert "agentporter-bounded-worker" in text
@@ -103,6 +103,36 @@ def test_install_guides_describe_three_entries_three_profiles_and_release_bounda
         assert "auto decomposition" in text or "自动分解" in text
         assert "Gateway" in text
         assert "live routing" in text
+
+
+def test_current_authorities_freeze_two_worker_and_canary_truth() -> None:
+    paths = (
+        "README.md",
+        "README.zh-CN.md",
+        "docs/00-solution-overview.md",
+        "docs/01-portable-worker-spec.md",
+        "docs/03-installation-and-uninstall-design.md",
+        "docs/04-installation-and-troubleshooting.md",
+        "docs/04-installation-and-troubleshooting.zh-CN.md",
+        "docs/05-runtime-activation-and-live-call-design.md",
+        "docs/06-role-identities-and-configurable-model-binding-design.md",
+        "docs/plan/00-index.md",
+        "docs/plan/02-multi-agent-orchestration.md",
+        "docs/plan/02a-worker-readiness-orchestration-closure.md",
+        "docs/plan/04-runtime-readiness-closure-implementation.md",
+        "docs/plan/06-role-identities-and-configurable-model-binding.md",
+    )
+    for path in paths:
+        text = _text(path)
+        assert "bounded_worker" in text and "mechanical_worker" in text
+        assert "main Hermes agent" in text or "主 Hermes agent" in text
+        assert "agentporter-orchestrator" in text
+        assert "legacy" in text.lower()
+        assert "30" in text and "90" in text
+        assert "key_env" in text
+        assert "credential-required" in text
+        assert "custom" in text.lower()
+        assert "exit-zero" in text.lower() or "退出码" in text
 
 
 def test_plan_authority_marks_offline_completion_and_historical_baselines() -> None:
