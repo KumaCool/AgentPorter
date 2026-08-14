@@ -239,8 +239,13 @@ def _install_formally(
     output = StringIO()
 
     def entry_run_installer(
-        manifest_path: Path, staging_parent: Path, minimal_env: Mapping[str, str]
+        manifest_path: Path,
+        staging_parent: Path,
+        minimal_env: Mapping[str, str],
+        *,
+        runtime_authority: object,
     ) -> Any:
+        assert runtime_authority is authority
         assert manifest_path == MANIFEST
         assert minimal_env == env
         runner.watch_staging(staging_parent)
@@ -263,13 +268,20 @@ def _install_formally(
             binding_selection=runtime_bindings(),
         )
 
+    authority = object()
+
     def completed_activation(
-        minimal_env: Mapping[str, str], *, binding_selection: Mapping[str, object]
+        minimal_env: Mapping[str, str], *, runtime_authority: object
     ) -> ActivationResult:
         assert minimal_env == env
-        assert binding_selection == runtime_bindings()
+        assert runtime_authority is authority
         return ActivationResult(ActivationStatus.ACTIVATED)
 
+    def sealed_authority(minimal_env: Mapping[str, str]) -> object:
+        assert minimal_env == env
+        return authority
+
+    monkeypatch.setattr(agentporter, "collect_runtime_authority", sealed_authority)
     monkeypatch.setattr(agentporter, "run_installer", entry_run_installer)
     monkeypatch.setattr(agentporter, "run_activation_with_role_migration", completed_activation)
     started = time.perf_counter()
