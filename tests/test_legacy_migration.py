@@ -165,7 +165,9 @@ def test_drift_after_confirmation_has_zero_delete_effect(tmp_path: Path) -> None
     assert not plan.journal_path.exists()
 
 
-def test_interrupt_after_native_attempt_records_truthful_observation(tmp_path: Path) -> None:
+def test_interrupt_after_completed_native_attempt_closes_journal_and_reraises(
+    tmp_path: Path,
+) -> None:
     detection, paths = _installation(tmp_path)
     plan = build_legacy_migration_plan(
         discover_installation(detection.profiles_root),
@@ -195,8 +197,40 @@ def test_interrupt_after_native_attempt_records_truthful_observation(tmp_path: P
         )
 
     assert raised.value is interrupt
-    receipt = json.loads(plan.journal_path.read_text(encoding="utf-8"))
-    assert receipt["state"] == "effect-attempted"
-    assert receipt["target_absent"] is True
-    assert receipt["current_component_set_observed"] is True
+    assert raised.value.__notes__ == ["legacy migration post-attempt observation recorded"]
+    assert not plan.journal_path.exists()
     assert all(path.exists() for path in paths[:2])
+
+
+def test_interrupt_with_unresolved_effect_keeps_private_truthful_journal(tmp_path: Path) -> None:
+    detection, paths = _installation(tmp_path)
+    plan = build_legacy_migration_plan(
+        discover_installation(detection.profiles_root),
+        executable=detection.executable,
+        journal_path=tmp_path / "state" / "migration.json",
+    )
+    interrupt = KeyboardInterrupt("stop")
+
+    class Executor:
+        def run(self, argv: tuple[str, ...], *, env: dict[str, str]) -> CommandOutcome:
+            raise interrupt
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        execute_legacy_migration(
+            plan,
+            executor=Executor(),
+            env={"AGENTPORTER_SECRET": "must-not-be-journaled"},
+            per_target_revalidate=revalidate_uninstall_target,
+            enumerate_profiles=lambda: detection.profile_entries,
+        )
+
+    assert raised.value is interrupt
+    receipt_text = plan.journal_path.read_text(encoding="utf-8")
+    receipt = json.loads(receipt_text)
+    assert receipt["state"] == "effect-attempted"
+    assert receipt["target_absent"] is False
+    assert receipt["current_component_set_observed"] is False
+    assert plan.journal_path.stat().st_mode & 0o777 == 0o600
+    assert "must-not-be-journaled" not in receipt_text
+    assert len(receipt_text) < 4096
+    assert all(path.exists() for path in paths)

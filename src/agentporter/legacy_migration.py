@@ -234,6 +234,8 @@ def execute_legacy_migration(
     )
     if pending is not None:
         pending.add_note("legacy migration post-attempt observation recorded")
+        if current:
+            plan.journal_path.unlink()
         raise pending
     assert command is not None
     # A nonzero/timeout may still have completed deletion; authoritative observation wins.
