@@ -150,7 +150,7 @@ def test_explicit_inheritance_copies_only_selected_source_key_into_worker_envs(
     definition.pop("api_key")
     definition["key_env"] = "HERMES_CUSTOM_10_88_0_3_API_KEY"
     (found.hermes_home / "config.yaml").write_text(yaml.safe_dump(source), encoding="utf-8")
-    source_secret = "source-secret-never-rendered"
+    source_secret = "fixture-value-never-rendered"
     (found.hermes_home / ".env").write_text(
         f"UNRELATED_SOURCE=leave-behind\nHERMES_CUSTOM_10_88_0_3_API_KEY={source_secret}\n",
         encoding="utf-8",
