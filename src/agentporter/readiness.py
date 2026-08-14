@@ -19,6 +19,7 @@ ReadinessStatus = Literal[
     "rate-limited",
     "probe-timeout",
     "response-contract-failed",
+    "usage-evidence-invalid",
     "unexpected-runtime-route",
 ]
 ReasonCode = ReadinessStatus
@@ -39,6 +40,7 @@ _BLOCKING = frozenset(
         "rate-limited",
         "probe-timeout",
         "response-contract-failed",
+        "usage-evidence-invalid",
         "unexpected-runtime-route",
     }
 )

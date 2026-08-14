@@ -410,6 +410,38 @@ def _profile_provider(
     return _custom_provider(snapshot, provider_id, endpoint)
 
 
+def _profile_env_has_key(profile: Path, key: object) -> bool:
+    """Check only Hermes Profile-owned dotenv state; never read or return its value."""
+    if not isinstance(key, str) or not key.strip() or "=" in key or "\n" in key:
+        return False
+    path = profile / ".env"
+    try:
+        info = path.lstat()
+        if (
+            stat.S_ISLNK(info.st_mode)
+            or not stat.S_ISREG(info.st_mode)
+            or info.st_size > 1024 * 1024
+        ):
+            return False
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            opened = os.fstat(descriptor)
+            if (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
+                return False
+            payload = os.read(descriptor, 1024 * 1024 + 1)
+        finally:
+            os.close(descriptor)
+        if len(payload) > 1024 * 1024:
+            return False
+        return any(
+            line.strip().removeprefix("export ").startswith(f"{key}=")
+            for line in payload.decode("utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+    except (OSError, UnicodeError):
+        return False
+
+
 def _target_for_component(discovery: DiscoveryResult) -> Mapping[str, Target]:
     return MappingProxyType({target.component_id: target for target in discovery.targets})
 
@@ -507,7 +539,12 @@ def build_activation_plan(
             provider_id=supplied.provider_id,
             endpoint_value=supplied.endpoint_value,
             credential_grant_kind=supplied.credential_grant_kind,
-            credential_state=supplied.credential_state,
+            credential_state=(
+                "unresolved"
+                if provider_definition.get("key_env") is not None
+                and not _profile_env_has_key(target.path, provider_definition.get("key_env"))
+                else supplied.credential_state
+            ),
             hermes_version=detection.version,
             config_digest=snapshot.digest,
         )
@@ -970,6 +1007,7 @@ def apply_activation(
     auth_status_runner: Callable[[RuntimeBindingPlan], str] | None = None,
     auth_add_runner: Callable[[RuntimeBindingPlan], None] | None = None,
     require_runtime_confirmations: bool = False,
+    canary_timeout_seconds: float = 30.0,
 ) -> ActivationResult:
     """Confirm once, compare/write/read back, and safely compensate on failure."""
     del command_observer  # The secure direct-file seam intentionally executes no command.
@@ -1130,6 +1168,7 @@ def apply_activation(
                     runner=lambda nonce, directory, target=target: probe_runner(
                         target.binding, nonce, directory
                     ),
+                    timeout_seconds=canary_timeout_seconds,
                 )
             )
         except Exception:

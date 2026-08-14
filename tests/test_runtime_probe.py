@@ -65,6 +65,16 @@ def test_runtime_adapter_reason_survives_probe_process_boundary() -> None:
     )
 
 
+@pytest.mark.parametrize("reason", ["usage-evidence-invalid", "unexpected-runtime-route"])
+def test_closed_evidence_reason_survives_probe_process_boundary(reason: str) -> None:
+    def runner(_nonce: str, _directory: Path) -> ProbeObservation:
+        raise RuntimeCommandError(reason)  # type: ignore[arg-type]
+
+    assert (
+        run_runtime_probe(expected_model="m", expected_provider="p", runner=runner).status == reason
+    )
+
+
 def observation(nonce: str, **changes: object) -> ProbeObservation:
     values: dict[str, object] = {
         "output": f"AGENTPORTER_READY:{nonce}",
@@ -226,6 +236,26 @@ def test_default_timeout_is_finite_and_supported_probe_is_always_isolated(
     )
     assert result.status == "runtime-ready"
     assert observed == [30.0]
+
+
+def test_higher_timeout_policy_is_forwarded_without_becoming_a_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[float] = []
+
+    def isolated(_runner: object, nonce: str, _directory: Path, timeout: float) -> ProbeObservation:
+        observed.append(timeout)
+        return observation(nonce)
+
+    monkeypatch.setattr("agentporter.runtime_probe._isolated_observation", isolated)
+    result = run_runtime_probe(
+        expected_model="gpt-5.6-luna",
+        expected_provider="custom",
+        runner=lambda nonce, _directory: observation(nonce),
+        timeout_seconds=90,
+    )
+    assert result.status == "runtime-ready"
+    assert observed == [90]
 
 
 def test_child_base_exception_is_safe_eof_tolerant_and_leaves_no_process(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import multiprocessing
 import os
 import secrets
@@ -28,6 +29,7 @@ ProbeStatus = Literal[
     "rate-limited",
     "probe-timeout",
     "response-contract-failed",
+    "usage-evidence-invalid",
     "unexpected-runtime-route",
 ]
 ProbeFailureReason = Literal[
@@ -37,6 +39,8 @@ ProbeFailureReason = Literal[
     "rate-limited",
     "probe-timeout",
     "response-contract-failed",
+    "usage-evidence-invalid",
+    "unexpected-runtime-route",
 ]
 
 
@@ -205,6 +209,8 @@ def _isolated_observation(
         "rate-limited",
         "probe-timeout",
         "response-contract-failed",
+        "usage-evidence-invalid",
+        "unexpected-runtime-route",
     }:
         return ProbeObservation(failure_reason=value)  # type: ignore[arg-type]
     return value if isinstance(value, ProbeObservation) else None
@@ -222,8 +228,8 @@ def run_runtime_probe(
 ) -> ProbeResult:
     if not supported:
         return ProbeResult("probe-unsupported")
-    if timeout_seconds <= 0:
-        raise ValueError("timeout_seconds must be positive")
+    if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be finite and positive")
     if freshness <= timedelta(0):
         raise ValueError("freshness must be positive")
     started = now()

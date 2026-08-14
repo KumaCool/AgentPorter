@@ -352,6 +352,66 @@ def test_missing_or_malformed_usage_is_invalid_and_cleanup_is_unconditional(
     assert not parents[0].exists()
 
 
+def test_named_custom_provider_accepts_only_canonical_custom_usage_route(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executable = tmp_path / "hermes"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o700)
+
+    def runner(argv: tuple[str, ...], **_kwargs: object) -> CompletedProcess[str]:
+        usage = Path(argv[argv.index("--usage-file") + 1])
+        usage.write_text(
+            json.dumps(
+                {
+                    "model": "m",
+                    "provider": "custom",
+                    "api_calls": 1,
+                    "completed": True,
+                    "failed": False,
+                }
+            ),
+            encoding="utf-8",
+        )
+        return CompletedProcess(argv, 0, "AGENTPORTER_READY:n\n", "")
+
+    result = oneshot_runtime(executable, runner, monkeypatch).oneshot(
+        "worker", "m", "MySub2API GPT", nonce="n", expected_usage_provider="custom"
+    )
+    assert result.actual_provider == "MySub2API GPT"
+
+
+def test_exit_zero_with_failed_usage_is_classified_from_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executable = tmp_path / "hermes"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o700)
+
+    def runner(argv: tuple[str, ...], **_kwargs: object) -> CompletedProcess[str]:
+        usage = Path(argv[argv.index("--usage-file") + 1])
+        usage.write_text(
+            json.dumps(
+                {
+                    "model": "m",
+                    "provider": "custom",
+                    "api_calls": 1,
+                    "completed": True,
+                    "failed": True,
+                    "error": "401 unauthorized",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return CompletedProcess(argv, 0, "", "")
+
+    with pytest.raises(RuntimeCommandError) as caught:
+        oneshot_runtime(executable, runner, monkeypatch).oneshot(
+            "worker", "m", "named", expected_usage_provider="custom"
+        )
+    assert caught.value.reason == "authentication-failed"
+
+
 def test_usage_file_must_be_exclusively_created_by_runtime(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

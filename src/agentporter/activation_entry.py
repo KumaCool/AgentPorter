@@ -48,6 +48,7 @@ def run_activation_with_role_migration(
     endpoint_reader: Callable[[str], str] | None = None,
     output: TextIO | None = None,
     runtime_factory: Callable[[Path], HermesRuntime] = HermesRuntime,
+    canary_timeout_seconds: float = 30.0,
 ) -> ActivationResult:
     """Public activate composition: independent rename gate before binding/canary gates."""
     found = detector(env=env)
@@ -74,6 +75,7 @@ def run_activation_with_role_migration(
             endpoint_reader=endpoint_reader or _read_endpoint,
             output=output,
             runtime_factory=runtime_factory,
+            canary_timeout_seconds=canary_timeout_seconds,
         )
 
     migration = run_role_name_migration_gate(
@@ -110,6 +112,7 @@ def _run_binding_activation(
     endpoint_reader: Callable[[str], str] = _read_endpoint,
     output: TextIO | None = None,
     runtime_factory: Callable[[Path], HermesRuntime] = HermesRuntime,
+    canary_timeout_seconds: float = 30.0,
 ) -> ActivationResult:
     """Discover the sole installation, collect bindings, and execute one transaction."""
     found = detector(env=env)
@@ -164,12 +167,23 @@ def _run_binding_activation(
         runtime.auth_add(binding.current_profile_name, binding.provider_id, source_env=env)
 
     def probe(binding: RuntimeBindingPlan, _nonce: str, _directory: Path) -> ProbeObservation:
+        usage_provider = (
+            "custom"
+            if binding.credential_grant_kind
+            in {
+                "custom-provider-config",
+                "existing-profile-definition",
+                "explicit-source-inheritance",
+            }
+            else binding.provider_id
+        )
         return runtime.oneshot(
             binding.current_profile_name,
             binding.expected_model,
             binding.provider_id,
             source_env=env,
             nonce=_nonce,
+            expected_usage_provider=usage_provider,
         )
 
     kwargs: dict[str, object] = {
@@ -179,6 +193,7 @@ def _run_binding_activation(
         "probe_runner": probe,
         "probe_supported": True,
         "require_runtime_confirmations": True,
+        "canary_timeout_seconds": canary_timeout_seconds,
     }
     if output is not None:
         kwargs["output"] = output
@@ -193,6 +208,7 @@ def run_activator(
     endpoint_reader: Callable[[str], str] = _read_endpoint,
     output: TextIO | None = None,
     runtime_factory: Callable[[Path], HermesRuntime] = HermesRuntime,
+    canary_timeout_seconds: float = 30.0,
 ) -> ActivationResult:
     """Public activator with the independently authorized role-name migration gate."""
     return run_activation_with_role_migration(
@@ -202,6 +218,7 @@ def run_activator(
         endpoint_reader=endpoint_reader,
         output=output,
         runtime_factory=runtime_factory,
+        canary_timeout_seconds=canary_timeout_seconds,
     )
 
 

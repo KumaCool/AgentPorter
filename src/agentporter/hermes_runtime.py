@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import signal
@@ -66,8 +67,8 @@ class HermesRuntime:
         info = resolved.stat()
         if not stat.S_ISREG(info.st_mode) or not os.access(resolved, os.X_OK):
             raise ValueError("Hermes executable must be a regular executable")
-        if self.timeout_seconds <= 0:
-            raise ValueError("timeout_seconds must be positive")
+        if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be finite and positive")
         object.__setattr__(self, "executable", resolved)
         object.__setattr__(self, "_identity", self._read_identity(resolved))
 
@@ -183,6 +184,7 @@ class HermesRuntime:
         *,
         source_env: Mapping[str, str] | None = None,
         nonce: str | None = None,
+        expected_usage_provider: str | None = None,
     ) -> ProbeObservation:
         nonce = os.urandom(16).hex() if nonce is None else nonce
         if not nonce or len(nonce) > 128 or not nonce.isascii():
@@ -216,6 +218,13 @@ class HermesRuntime:
             evidence = _read_usage(
                 usage, expected_identity=(usage_identity.st_dev, usage_identity.st_ino)
             )
+            if evidence.get("failed") is True:
+                failure_text = " ".join(
+                    value[:8192]
+                    for key in ("error", "error_message", "message")
+                    if isinstance((value := evidence.get(key)), str)
+                )
+                raise RuntimeCommandError(_classify_text(failure_text))
             actual_model = evidence.get("model")
             actual_provider = evidence.get("provider")
             api_calls = evidence.get("api_calls")
@@ -230,7 +239,10 @@ class HermesRuntime:
             output = completed.stdout.strip()
             if output != f"AGENTPORTER_READY:{nonce}":
                 raise RuntimeCommandError("response-contract-failed")
-            if actual_model != model or actual_provider != provider:
+            canonical_provider = (
+                provider if expected_usage_provider is None else expected_usage_provider
+            )
+            if actual_model != model or actual_provider != canonical_provider:
                 raise RuntimeCommandError("unexpected-runtime-route")
             tool_calls = evidence.get("tool_calls")
             fallback = evidence.get("fallback_used")
@@ -241,7 +253,7 @@ class HermesRuntime:
             return ProbeObservation(
                 output=output,
                 actual_model=actual_model,
-                actual_provider=actual_provider,
+                actual_provider=provider,
                 api_calls=api_calls,
                 tool_calls=tool_calls,
                 fallback_used=fallback,

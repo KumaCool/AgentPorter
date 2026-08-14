@@ -13,6 +13,7 @@ import yaml
 import agentporter.activation_application as activation
 from agentporter.activation_application import (
     ActivationBindingInput,
+    ActivationResult,
     ActivationStatus,
     ActivationTargetPlan,
     ConfigSnapshot,
@@ -136,6 +137,109 @@ def test_build_plan_uses_only_complete_discovered_installation_and_typed_snapsho
     )
     assert SECRET_ENDPOINT not in repr(plan)
     assert "PRIVATE-CUSTOM-PROVIDER-KEY" not in repr(plan)
+
+
+def test_inherited_key_env_without_profile_owned_resolution_fails_closed(tmp_path: Path) -> None:
+    found, discovery = _installation(tmp_path)
+    source = yaml.safe_load((found.hermes_home / "config.yaml").read_text(encoding="utf-8"))
+    definition = source["custom_providers"][0]
+    definition.pop("api_key")
+    definition["key_env"] = "HERMES_CUSTOM_10_88_0_3_API_KEY"
+    (found.hermes_home / "config.yaml").write_text(yaml.safe_dump(source), encoding="utf-8")
+
+    plan = build_activation_plan(discovery, found, _inputs())
+    assert all(target.binding.credential_state == "unresolved" for target in plan.bindings)
+    assert (
+        apply_activation(
+            plan, input_fn=lambda _prompt: pytest.fail("must fail before prompt")
+        ).status
+        is ActivationStatus.CREDENTIAL_REQUIRED
+    )
+
+
+def test_inherited_key_env_is_usable_only_from_target_profile_owned_env(tmp_path: Path) -> None:
+    found, discovery = _installation(tmp_path)
+    source = yaml.safe_load((found.hermes_home / "config.yaml").read_text(encoding="utf-8"))
+    definition = source["custom_providers"][0]
+    definition.pop("api_key")
+    definition["key_env"] = "PROFILE_OWNED_KEY"
+    (found.hermes_home / "config.yaml").write_text(yaml.safe_dump(source), encoding="utf-8")
+    for target in discovery.targets:
+        (target.path / ".env").write_text("PROFILE_OWNED_KEY=not-exposed\n", encoding="utf-8")
+        (target.path / ".env").chmod(0o600)
+
+    plan = build_activation_plan(discovery, found, _inputs())
+    assert all(target.binding.credential_state == "operator-authorized" for target in plan.bindings)
+
+
+def test_activation_forwards_explicit_ninety_second_canary_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    found, discovery = _installation(tmp_path)
+    plan = build_activation_plan(discovery, found, _inputs())
+    observed: list[float] = []
+
+    def fake_probe(**kwargs: object) -> ProbeResult:
+        observed.append(kwargs["timeout_seconds"])  # type: ignore[arg-type]
+        return ProbeResult("response-contract-failed")
+
+    monkeypatch.setattr(activation, "run_runtime_probe", fake_probe)
+    answers = iter((plan.confirmation_phrase, "RUN 3 WORKER CALLS"))
+    apply_activation(
+        plan,
+        input_fn=lambda _prompt: next(answers),
+        probe_runner=lambda _binding, _nonce, _directory: ProbeObservation(),
+        require_runtime_confirmations=True,
+        canary_timeout_seconds=90,
+    )
+    assert observed == [90, 90, 90]
+
+
+def test_runtime_entry_wires_timeout_and_canonical_custom_usage_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import agentporter.activation_entry as entry  # pyright: ignore[reportPrivateUsage]
+
+    found, _ = _installation(tmp_path)
+    captured: dict[str, object] = {}
+    answers = iter(
+        (
+            "m1",
+            "custom-provider",
+            "explicit-source-inheritance",
+            "m2",
+            "custom-provider",
+            "explicit-source-inheritance",
+            "m3",
+            "custom-provider",
+            "explicit-source-inheritance",
+        )
+    )
+
+    class Runtime:
+        def oneshot(self, *args: object, **kwargs: object) -> ProbeObservation:
+            captured.update(kwargs)
+            return ProbeObservation()
+
+    def apply(plan: object, **kwargs: object) -> ActivationResult:
+        captured.update(kwargs)
+        probe = kwargs["probe_runner"]
+        binding = plan.bindings[0]  # type: ignore[attr-defined]
+        probe(binding.binding, "nonce", tmp_path)  # type: ignore[operator]
+        return ActivationResult(ActivationStatus.CANARY_REQUIRED)
+
+    monkeypatch.setattr(entry, "apply_activation", apply)
+    result = entry._run_binding_activation(  # pyright: ignore[reportPrivateUsage]
+        {},
+        detector=lambda **_kwargs: found,
+        input_fn=lambda _prompt: next(answers),
+        endpoint_reader=lambda _prompt: SECRET_ENDPOINT,
+        runtime_factory=lambda _path: Runtime(),
+        canary_timeout_seconds=90,  # type: ignore[arg-type,return-value]
+    )
+    assert result.status is ActivationStatus.CANARY_REQUIRED
+    assert captured["canary_timeout_seconds"] == 90
+    assert captured["expected_usage_provider"] == "custom"
 
 
 def test_build_plan_and_apply_support_current_keyed_provider_schema(tmp_path: Path) -> None:
