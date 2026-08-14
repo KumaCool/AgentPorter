@@ -177,6 +177,7 @@ def test_invalid_or_cancelled_runtime_authority_never_reaches_profile_transactio
         raise failure
 
     monkeypatch.setattr(agentporter, "collect_runtime_authority", reject)
+
     def forbidden(*_args: object, **_kwargs: object) -> object:
         pytest.fail("Profile transaction must remain untouched")
 
