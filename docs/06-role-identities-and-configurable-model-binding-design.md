@@ -1,7 +1,7 @@
 # AgentPorter 职责型 Worker 身份与自定义推理绑定设计
 
-- **状态：** Plan 06 已形成 v0.2.0 发布候选；正式发布与托管读回完成前 0.1.8 仍是正式发布版
-- **目标版本：** v0.2.0 发布候选
+- **状态：** v0.2.0 已正式发布；tag、7 个托管 assets 与外部读回已闭合，live 验收未执行
+- **目标版本：** v0.2.0 正式发布版
 - **依赖：** 已发布的 AgentPorter 0.1.8、Hermes 名称无关 Profile marker、现有运行绑定与真实 canary 合同
 - **实施计划：** [Plan 06](plan/06-role-identities-and-configurable-model-binding.md)
 
@@ -28,9 +28,9 @@ Plan 06 离线代码候选已完成两项不可分割的产品语义修正：
 
 名称、职责、模型和凭据不得互相推导。
 
-## 2. 当前候选事实与发布/现场缺口
+## 2. 当前发布事实与现场缺口
 
-0.1.8 发布制品的三个历史默认 Profile 如下；当前候选的新写入不再使用这些名称：
+0.1.8 发布制品的三个历史默认 Profile 如下；v0.2.0 的新写入不再使用这些名称：
 
 | 当前 Portable ID | 当前初始 Profile 名 | 当前模型请求 | 职责 |
 |---|---|---|---|
@@ -38,7 +38,7 @@ Plan 06 离线代码候选已完成两项不可分割的产品语义修正：
 | `codex_5_3_small_worker` | `codex-5-3-small-worker` | `gpt-5.3-codex-spark` | 更窄的机械任务 |
 | `agentporter_orchestrator` | `agentporter-orchestrator` | `gpt-5.6-luna` | Kanban 编排控制面 |
 
-Plan 06 候选已将角色清单与运行绑定拆分：fresh install 使用职责名，三个 Profile 在 staging 前必须提供闭合的 model/provider/endpoint sealed selection；激活期可对三个 Profile 原子配置绑定。model/provider/endpoint 任一变化都会使 readiness、fingerprint 与依赖其派发证据失效。
+Plan 06 发布版已将角色清单与运行绑定拆分：fresh install 使用职责名，三个 Profile 在 staging 前必须提供闭合的 model/provider/endpoint sealed selection；激活期可对三个 Profile 原子配置绑定。model/provider/endpoint 任一变化都会使 readiness、fingerprint 与依赖其派发证据失效。
 
 现有 marker 已提供名称无关的固定 component UUID，且发现、激活和卸载可按当前 Profile 名工作。这是迁移的身份基础，不需要重建组件或修改 Hermes 源码。
 
@@ -317,4 +317,4 @@ operational（仍要求 dispatcher/route/continuity）
 
 软件回滚事务必须先验证目标版本的 activation/discovery/uninstall 能力，再切换公共入口；失败时 compare-before-restore 当前新版本入口，不能留下“旧 activation + 无受支持 uninstaller”的混合集合。推理绑定和 provider definition 不随软件回滚迁移或覆盖，旧硬编码模型不得恢复。实施阶段必须以真实 0.1.8 fixture 验证旧默认名 → 新名 → 激活/卸载、中断恢复和入口回滚矩阵。
 
-本文是 Plan 06 的权威设计。当前 v0.2.0 离线发布候选已经实现职责名、显式三 Profile 绑定、旧默认名 journaled Hermes-native rename、用户改名保留和 readiness 失效；正式发布与托管读回完成前 0.1.8 仍是正式发布制品。真实 model canary、Gateway、Kanban mutation/live routing、tag、release 与托管读回均未执行且分别需授权，不能声称 operational。
+本文是 Plan 06 的权威设计。v0.2.0 已正式发布并实现职责名、显式三 Profile 绑定、旧默认名 journaled Hermes-native rename、用户改名保留和 readiness 失效。tag `v0.2.0` 精确指向 `be31eb2af67660780593c716d488ca88e508f710`；非预发布 GitHub Release、7 个托管 assets、checksum/verifier、fresh HTTPS clone、隔离 wheel import 与公开 `latest` bootstrap 字节回读均通过。真实 model canary、Gateway、Kanban mutation/live routing 均未执行且分别需授权，不能声称 operational。

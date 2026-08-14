@@ -1,6 +1,6 @@
 # AgentPorter 职责型 Worker 身份与自定义推理绑定实施计划
 
-> **状态：** Plan 06 离线代码候选已实现；唯一集中复审已完成，四项确定性 BLOCK 已关闭，复审后完整门禁通过。v0.2.0 发布候选准备中；正式发布与托管读回完成前 0.1.8 仍是正式发布版。未 tag、未发布、未托管读回。
+> **状态：** Plan 06 已随 v0.2.0 正式发布。代码/离线门禁、tag `v0.2.0`、非预发布 GitHub Release、7 个托管 assets 与外部读回均闭合；真实 model canary、Gateway、Kanban mutation/live routing 未执行，仍不 operational。
 
 **Goal:** 在保持三个 Worker 职责、component UUID 和 Hermes 原生边界不变的前提下，把模型语义名称迁移为职责型身份，并让三个 Profile 的 model/provider/endpoint 由用户显式配置和真实验证。
 
@@ -335,7 +335,7 @@ pytest -q tests/test_domain.py tests/test_planning.py tests/test_render.py tests
 
 Phase F 收口前必须逐行读回证据；任一 ROLE 不能用另一行或笼统 APPROVE 代替。
 
-## 8. Phase F：代码/离线门禁已闭合，复审与发布边界
+## 8. Phase F：代码/离线、发布与托管读回已闭合
 
 执行顺序：
 
@@ -369,12 +369,12 @@ git diff --check
 - **Phase C 停止条件：** 安装不存在默认/占位模型，sealed selection 贯穿 preview/materialize/render/readback。
 - **Phase D 停止条件：** 三 Profile 原子 binding、精确 canary 和旧 readiness 失效闭合。
 - **Phase E 停止条件：** old/new/user-renamed 跨版本矩阵及制品隐私门禁通过。
-- **Phase F 完成条件：** 完整门禁、唯一复审 BLOCK、文档、提交、授权 push、发布和托管制品读回全部闭合。真实模型/Gateway/Kanban 验收状态分别报告。
+- **Phase F 完成状态：** 完整门禁、唯一复审 BLOCK、发布提交、push、tag、非预发布 GitHub Release、7 个托管 assets 与托管读回已闭合。真实模型/Gateway/Kanban 验收仍分别报告为未执行。
 
-## 10. 当前候选关闭状态
+## 10. v0.2.0 发布关闭状态
 
-- 设计与计划：已同步到 Plan 06 候选事实；
-- 代码/schema/tests：冻结候选 `30f9d60` 的离线实现已完成；唯一集中复审提出的四项确定性代码 BLOCK 已全部关闭；
+- 设计与计划：已同步到 Plan 06 发布事实；
+- 代码/schema/tests：最终发布 commit `be31eb2af67660780593c716d488ca88e508f710` 包含已完成的离线实现；唯一集中复审提出的四项确定性代码 BLOCK 已全部关闭；
 - fresh install：使用 bounded/mechanical/orchestrator 职责名；三个 Profile 必须在 staging 前显式封闭 model/provider/endpoint；
 - legacy：精确旧默认名通过 `agentporter-activate` 独立确认的 Hermes-native journaled rename 迁移；用户改名保留；
 - readiness：model/provider/endpoint 任一变化都会使旧 readiness 与 binding-dependent evidence 失效；持久 authority 会从 marker/config/endpoint 重算职责与 fingerprint，拒绝 receipt 篡改；
@@ -382,7 +382,7 @@ git diff --check
 - 唯一独立复审：已完成，结论为 BLOCK；已关闭 rename effect/journal、逐 Profile credential-grant、三 Profile canary 授权计数和 readiness authority 重建四项问题。按用户要求不进行第二次或递归复审；
 - 复审关闭后完整门禁：`894 passed, 1 skipped`；Ruff format/check、Pyright 与 `git diff --check` 通过。唯一 skip 是 Hermes v0.20 无可证明禁用 tools/fallback 的 live-probe seam，不构成 live acceptance；
 - 本机正式 Profile、真实 model canary、Gateway、Kanban mutation/live routing：未执行，分别需授权；
-- v0.2.0 是发布候选；正式发布前 0.1.8 仍是正式发布版；tag、release、托管制品读回：未执行；候选不能称为 `operational`。
+- v0.2.0 已正式发布：tag 精确指向 `be31eb2af67660780593c716d488ca88e508f710`；GitHub Release `AgentPorter 0.2.0` 于 `2026-08-14T05:54:56Z` 发布，为非 draft/非 prerelease，7 个托管 assets、checksum/verifier、fresh HTTPS clone、隔离 wheel import 与 `latest` bootstrap 字节回读均通过。真实 model canary、Gateway、Kanban mutation/live routing 未执行，不能称为 `operational`。
 
 ## 11. ROLE-01…ROLE-22 离线关闭证据摘要
 
@@ -391,4 +391,4 @@ git diff --check
 - **ROLE-08…11：** 安装/迁移/activation 安全投影、分层状态及 model/provider/endpoint/fingerprint 变化导致 readiness 失效已有离线覆盖。
 - **ROLE-12…16：** fresh 三职责名、0.1.8 legacy UUID 兼容、用户改名保留、冲突/partial/duplicate/mixed-ID/unknown fail-closed，以及持久 journal continue/rollback/漂移 residue 已由隔离 Hermes/事务测试覆盖。
 - **ROLE-17…19：** old/new/user-renamed 激活与生命周期兼容、三个 Profile 独立相同/不同绑定、普通软件更新保留名称与绑定合同闭合。
-- **ROLE-20…22：** RED provenance、正式入口 reachability、focused/full offline gates、制品/链接/隐私边界与 offline/live 授权 ledger 已闭合；真实模型、Gateway、Kanban 与发布仍明确未验收。
+- **ROLE-20…22：** RED provenance、正式入口 reachability、focused/full offline gates、制品/链接/隐私边界与 offline/live 授权 ledger 已闭合；发布/托管读回已验收，真实模型、Gateway、Kanban 仍明确未验收。

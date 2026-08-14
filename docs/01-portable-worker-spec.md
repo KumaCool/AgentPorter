@@ -1,20 +1,20 @@
 # 可移植 Worker 规范
 
-## 0. Plan 06 未发布离线代码候选状态（Phase F）
+## 0. Plan 06 v0.2.0 正式发布状态（Phase F）
 
 | 维度 | 当前证据状态 |
 |---|---|
-| installation | Plan 06 fresh 三职责名与 legacy 旧默认名迁移已通过离线及隔离 Hermes 验证；候选未发布。 |
+| installation | Plan 06 fresh 三职责名与 legacy 旧默认名迁移已通过离线及隔离 Hermes 验证；v0.2.0 tag、7 个托管 assets 与外部读回已通过。 |
 | binding | fresh install 在 staging 前要求 bounded/mechanical/orchestrator 三个 Profile 的显式 sealed model/provider/endpoint；activation 原子 binding 已离线覆盖。 |
 | credential | 由操作者授权并由 Hermes/Profile 持有；计划、日志与 receipt 不披露秘密。 |
-| canary | 候选未执行真实 model canary；绑定变化会使旧 readiness 失效，未达到 operational。 |
+| canary | v0.2.0 未执行真实 model canary；绑定变化会使旧 readiness 失效，未达到 operational。 |
 | dispatcher | 专用 orchestrator 配置静态读回通过；未启动 Gateway，未验收 live dispatcher。 |
 | route | v0.20 为 `mutation-unsupported`，在 Kanban adapter 调用前关闭，零 Kanban mutation 调用。 |
 | continuity | DispatchReceipt、任务级订阅、运行观察、结构性恢复合同仅离线通过；未验收真实投递/接续。 |
 
-`hermes config check` 仅证明静态配置可解析。v0.2.0 已形成发布候选；正式发布前 0.1.8 仍是当前发布版，但真实 model canary、Gateway、Kanban mutation/live routing 均未执行。本文不得被理解为 Worker 已 operational。
+`hermes config check` 仅证明静态配置可解析。v0.2.0 已正式发布且 `latest` 已选择该版本；tag、托管 assets 与外部读回已通过，但真实 model canary、Gateway、Kanban mutation/live routing 均未执行。本文不得被理解为 Worker 已 operational。
 
-> **当前候选：** 新写入定义 `bounded_worker`、`mechanical_worker`、`agentporter_orchestrator`，固定 component UUID 与职责不变；fresh install 在 staging 前要求三个 Profile 分别显式封闭 model/provider/endpoint。
+> **当前发布版：** 新写入定义 `bounded_worker`、`mechanical_worker`、`agentporter_orchestrator`，固定 component UUID 与职责不变；fresh install 在 staging 前要求三个 Profile 分别显式封闭 model/provider/endpoint。
 
 > **迁移边界：** 精确旧默认名只经 `agentporter-activate` 独立确认的 Hermes-native journaled rename 迁移；用户改名保持不变。model/provider/endpoint 任一变化都会使旧 readiness 和 binding-dependent dispatch evidence 失效。
 

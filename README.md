@@ -2,9 +2,9 @@
 
 English | [简体中文](README.zh-CN.md)
 
-AgentPorter is an open-source deployment kit for a reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) multi-agent Worker team. It installs role-specific Profiles in one run and is evolving toward verified task decomposition and routing through Hermes-native Kanban orchestration. The [role-identity and configurable-binding design](docs/06-role-identities-and-configurable-model-binding-design.md) is implemented in the v0.2.0 release candidate.
+AgentPorter is an open-source deployment kit for a reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) multi-agent Worker team. It installs role-specific Profiles in one run and is evolving toward verified task decomposition and routing through Hermes-native Kanban orchestration. The [role-identity and configurable-binding design](docs/06-role-identities-and-configurable-model-binding-design.md) is published in v0.2.0.
 
-> **Current status:** v0.2.0 is the prepared release candidate; v0.1.8 remains the latest published release until publication. The candidate uses bounded/mechanical/orchestrator role names for fresh installs and requires explicit sealed model/provider/endpoint selections for all three Profiles before staging. Existing exact legacy defaults can be migrated only through a separately confirmed, Hermes-native, journaled rename in `agentporter-activate`; user-renamed Profiles are preserved. No credentialed model canary, Gateway change, Kanban mutation, live routing, release, or hosted-artifact readback has been performed for this candidate, so it is not `operational`.
+> **Current status:** v0.2.0 is the latest published non-prerelease release. Tag `v0.2.0` points to `be31eb2af67660780593c716d488ca88e508f710`; the GitHub Release and all seven hosted assets passed checksum/verifier, fresh HTTPS clone, isolated wheel import, and public `latest/download/install.sh` byte-readback checks. Fresh installs use bounded/mechanical/orchestrator role names and require explicit sealed model/provider/endpoint selections for all three Profiles before staging. No credentialed model canary, Gateway change, Kanban mutation, or live routing was performed, so this release is not `operational`.
 
 ## One-line install (POSIX)
 
@@ -31,7 +31,7 @@ If the command is not on `PATH`, run:
 
 Uninstall deletes the Worker Profiles installed by AgentPorter, including their local data and later customization, so back them up before confirming. After successful Profile deletion (or when they are already absent), a bootstrap-installed uninstaller also removes its exact published entry and versioned private Python environment. A trusted source-checkout `python uninstall.py` removes Profiles only and never deletes the checkout or its virtual environment. See the [installation guide](docs/04-installation-and-troubleshooting.md) for the inspect-first flow, PATH, trust boundary, and complete uninstall details.
 
-## What the v0.2.0 release candidate installs
+## What v0.2.0 installs
 
 One launch installs the current three-Profile foundation:
 
@@ -39,7 +39,7 @@ One launch installs the current three-Profile foundation:
 - `agentporter-mechanical-worker` — narrower, strictly mechanical delegation;
 - `agentporter-orchestrator` — dedicated Kanban control-plane owner; it does not execute implementation tasks.
 
-Fresh candidate installs use Portable IDs `bounded_worker`, `mechanical_worker`, and `agentporter_orchestrator` and require an explicit model/provider/endpoint binding for every Profile before staging. Permanent component UUIDs and role boundaries are unchanged. Exact 0.1.8 default names remain supported as legacy migration input; `agentporter-activate` independently confirms and journals Hermes-native rename operations, while any user-renamed Profile keeps its current name. Changing model, provider, or endpoint invalidates readiness and binding-dependent dispatch evidence.
+Fresh v0.2.0 installs use Portable IDs `bounded_worker`, `mechanical_worker`, and `agentporter_orchestrator` and require an explicit model/provider/endpoint binding for every Profile before staging. Permanent component UUIDs and role boundaries are unchanged. Exact 0.1.8 default names remain supported as legacy migration input; `agentporter-activate` independently confirms and journals Hermes-native rename operations, while any user-renamed Profile keeps its current name. Changing model, provider, or endpoint invalidates readiness and binding-dependent dispatch evidence.
 
 Each Profile contains Hermes-native configuration, instructions, routing description, and a non-secret ownership marker. AgentPorter composes Hermes primitives instead of replacing Profile storage, the Kanban task database, the decomposer, dispatcher, worktrees, or provider configuration.
 
@@ -59,7 +59,7 @@ Until a later Hermes seam passes separately authorized live acceptance, use Herm
 
 | Dimension | Current state |
 |---|---|
-| installation | v0.2.0 is a locally verified release candidate; v0.1.8 remains published until the tag/release and hosted readback complete. |
+| installation | v0.2.0 is published; its tag, seven hosted assets, release verifier, fresh HTTPS clone, isolated wheel import, and `latest` bootstrap byte readback passed. |
 | public entries | `agentporter`, `agentporter-activate`, and `agentporter-uninstall` are published by the bootstrap transaction. |
 | binding/credential | Custom-provider binding can inherit a sealed definition into each execution Worker; credential availability remains Profile/operator-owned and must be proven by a live call. |
 | canary/live call | No credentialed live canary is claimed for the 0.1.8 release; `config check=0` remains static-only evidence. |
@@ -67,7 +67,7 @@ Until a later Hermes seam passes separately authorized live acceptance, use Herm
 | dispatcher/route | The orchestrator's static configuration is read back; Gateway, Kanban mutation, and live routing are unaccepted. |
 | continuity | `DispatchReceipt`, task subscription (`notify-list`), observation, and structural-resume contracts remain offline-only; no live notification or continuation is claimed. |
 
-The released 0.1.8 publishes `agentporter-activate`, transactionally writes the selected custom-provider binding, and can run a separately confirmed one-shot. It does not modify Hermes source. A Worker must not be marked dispatchable without current binding-specific evidence; no live credentialed canary or Kanban routing acceptance is claimed by this document.
+The released v0.2.0 publishes `agentporter-activate`, transactionally writes the selected custom-provider binding, and can run a separately confirmed one-shot. It does not modify Hermes source. A Worker must not be marked dispatchable without current binding-specific evidence; no live credentialed canary or Kanban routing acceptance is claimed by this document.
 
 ## Safety boundary
 
@@ -108,7 +108,7 @@ Offline CI runs the complete portable suite and package/release contracts on Lin
 
 ## Repository map
 
-- `src/agentporter/resources/workers.yaml` — the candidate's role-only bounded/mechanical/orchestrator definitions; model/provider/endpoint come from explicit sealed operator selections;
+- `src/agentporter/resources/workers.yaml` — v0.2.0's role-only bounded/mechanical/orchestrator definitions; model/provider/endpoint come from explicit sealed operator selections;
 - `install.py`, `uninstall.py`, and `src/agentporter/` — the current one-shot deployment foundation and guarded independent uninstall;
 - `tests/` — unit, filesystem, transaction, stress, and isolated real-Hermes acceptance;
 - `scripts/verify_release.py` — fail-closed source/wheel/sdist contract verifier;
@@ -128,7 +128,7 @@ Design and evidence:
 - [Role-based identity and configurable-binding implementation plan](docs/plan/06-role-identities-and-configurable-model-binding.md)
 - [Changelog](CHANGELOG.md)
 
-The detailed design and plan documents are engineering history and contracts, not universal production-readiness claims. AgentPorter 0.1.8 remains the published baseline; the role-name/binding implementation is the v0.2.0 offline release candidate. Legacy model-derived names remain only compatibility and historical vocabulary and do not imply a Codex CLI adapter.
+The detailed design and plan documents are engineering history and contracts, not universal production-readiness claims. AgentPorter v0.2.0 is the latest published release; its role-name/binding implementation passed release and hosted readback gates, but not live model, Gateway, or Kanban acceptance. Legacy model-derived names remain only compatibility and historical vocabulary and do not imply a Codex CLI adapter.
 
 ## Development and security
 

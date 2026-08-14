@@ -2,7 +2,7 @@
 
 [English](04-installation-and-troubleshooting.md) | 简体中文
 
-AgentPorter v0.2.0 已准备为发布候选；正式发布前 v0.1.8 仍是当前正式发布版。该候选在 fresh install 中使用 `agentporter-bounded-worker`、`agentporter-mechanical-worker`、`agentporter-orchestrator`，并在 staging 前要求三个 Profile 分别显式封闭 model/provider/endpoint。精确旧默认名只能经 `agentporter-activate` 独立确认的 Hermes-native journaled rename 迁移；用户改名保留。Hermes v0.20.0 是**已观察版本**，不是承诺的最低版本或通用兼容范围。
+AgentPorter v0.2.0 是最新正式非预发布版；tag、7 个托管 assets、verifier、fresh HTTPS clone、隔离 wheel import 与公开 `latest` bootstrap 回读均通过。该发布版在 fresh install 中使用 `agentporter-bounded-worker`、`agentporter-mechanical-worker`、`agentporter-orchestrator`，并在 staging 前要求三个 Profile 分别显式封闭 model/provider/endpoint。精确旧默认名只能经 `agentporter-activate` 独立确认的 Hermes-native journaled rename 迁移；用户改名保留。Hermes v0.20.0 是**已观察版本**，不是承诺的最低版本或通用兼容范围。
 
 ## curl 一键安装（POSIX）
 
@@ -28,7 +28,7 @@ Linux 的真实 Hermes 验收证据最强。macOS 和 Windows 纳入离线 CI �
 
 ## 从发布制品安装
 
-v0.2.0 不可变制品发布后，如需手动安装候选 wheel，请先验证校验和并建立隔离环境：
+如需手动安装 v0.2.0 wheel，请先验证校验和并建立隔离环境：
 
 ```bash
 python -m venv .venv
@@ -40,9 +40,9 @@ agentporter
 
 `agentporter` 没有面向用户的参数或子命令。它会检测 Hermes、完整校验清单和目标集合、建立私有暂存区、一次性展示精确计划，并要求输入屏幕显示的确认短语。请逐项审核目标；取消或短语错误不会开始原生安装写入。
 
-## 发布候选引导脚本边界
+## 已发布引导脚本边界
 
-在托管的 v0.2.0 wheel、校验和与 `install.sh` assets 发布前，源码树中的 `install.sh` **不能作为用户安装入口执行**：它为正式发布预先固定到不可变的 `https://github.com/KumaCool/AgentPorter/releases/download/v0.2.0` assets。`latest` alias 在发布前仍解析到正式版 v0.1.8，并继续作为当前用户入口。发布时必须先上传不可变 assets，再从外部回读 v0.2.0 URL 和 `latest` alias，比较字节与校验和并重跑 verifier。
+源码树中的 `install.sh` 固定到不可变的 `https://github.com/KumaCool/AgentPorter/releases/download/v0.2.0` assets。非预发布 GitHub Release 已正式发布，公开 `latest` alias 已选择 v0.2.0。7 个托管 assets 全部下载并通过字节/校验和比较与 release verifier；fresh HTTPS clone、隔离 wheel import 和公开 `latest/download/install.sh` 字节比较也已通过。
 
 ## 从源码运行
 
@@ -61,7 +61,7 @@ python install.py
 
 终端状态会区分：成功、取消、预检失败、安装失败且补偿完成、补偿不完整、回读失败。只有明确成功结果才表示安装成功；不能根据部分 Profile 目录存在就推断成功。
 
-未发布候选以上述三个职责名安装两个专用 Worker Profile 和一个专用 orchestrator Profile。安装、rename 与静态读回不会覆盖用户改名、调用模型、安装常驻服务或创建任务数据库；binding 配置和 provider definition 继承仍属于独立确认的 activation。Profile 内凭据和其他运行数据仍由 Hermes 与用户管理。
+v0.2.0 发布版以上述三个职责名安装两个专用 Worker Profile 和一个专用 orchestrator Profile。安装、rename 与静态读回不会覆盖用户改名、调用模型、安装常驻服务或创建任务数据库；binding 配置和 provider definition 继承仍属于独立确认的 activation。Profile 内凭据和其他运行数据仍由 Hermes 与用户管理。
 
 静态 orchestrator 配置已经安装并读回，但自动分解仍关闭；AgentPorter **不会**启动 Gateway、创建 Kanban 任务、启用 live routing 或证明真实任务路由。上述能力由[多代理编排与路由计划](plan/02-multi-agent-orchestration.md)负责。
 
@@ -83,15 +83,15 @@ agentporter-uninstall
 
 | 维度 | 当前状态 |
 |---|---|
-| installation | v0.2.0 是本地完整验证的发布候选；tag/release 与托管读回完成前 v0.1.8 仍是正式发布版。 |
-| public entries | v0.2.0 打包三个入口；候选的旧名迁移只能经独立确认的 `agentporter-activate` 到达。 |
-| binding/credential | 候选 fresh install 在 staging 前要求三个 Profile 显式 model/provider/endpoint；凭据仍由 Profile/操作者持有。 |
+| installation | v0.2.0 已正式发布；tag、7 个托管 assets、verifier、fresh HTTPS clone、隔离 wheel import 与 `latest` bootstrap 字节回读均通过。 |
+| public entries | v0.2.0 打包三个入口；旧名迁移只能经独立确认的 `agentporter-activate` 到达。 |
+| binding/credential | v0.2.0 fresh install 在 staging 前要求三个 Profile 显式 model/provider/endpoint；凭据仍由 Profile/操作者持有。 |
 | canary/live call | 真实调用以 `No inference provider configured`失败；`config check`仍只证明静态有效，不是canary证据。 |
 | route proof | Hermes v0.20 usage可提供 model/provider/api_calls，但缺 tool/fallback字段；0.1.5成功调用先标为 incomplete proof。 |
 | dispatcher/route | Gateway未由AgentPorter启动；Kanban mutation和live routing未验收。 |
 | continuity | `DispatchReceipt`、任务订阅（`notify-list`）、运行观察和结构性恢复仍仅有离线合同；不声称真实通知或接续。 |
 
-Plan 06 代码/离线门禁已闭合，但未执行真实模型 canary、Gateway 变更、Kanban mutation/live routing、push、release 或托管制品读回；这些分别需要授权。候选不能称为 `operational`，也不修改 Hermes 源码。
+Plan 06 代码/离线、tag、release 与托管制品读回门禁均已闭合，但未执行真实模型 canary、Gateway 变更或 Kanban mutation/live routing；这些 live 行为分别需要授权。v0.2.0 不能称为 `operational`，也不修改 Hermes 源码。
 
 ## 故障排查
 
@@ -145,7 +145,7 @@ Plan 06 代码/离线门禁已闭合，但未执行真实模型 canary、Gateway
 6. 上传前检查校验和、提交身份、标签、变更日志、许可证、README 与验证器输出；只发布已经验证的同一字节序列。
 7. 下载托管制品，重新计算校验和并重跑验证。仅有标签或上传成功不构成验收。
 
-示例资源路径是 v0.2.0 发布候选契约。托管发布验收还会下载全部公开制品、重新计算校验和、重跑验证器，并检查公开的 `latest/download/install.sh` 端点。
+示例资源路径是 v0.2.0 发布契约。托管发布验收已下载全部公开制品、重新计算校验和、重跑验证器，并字节比较公开的 `latest/download/install.sh` 端点；全部通过。
 
 ## 历史 0.1.7 串联激活修订
 

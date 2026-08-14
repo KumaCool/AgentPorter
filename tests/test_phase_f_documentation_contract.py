@@ -16,7 +16,6 @@ def test_current_user_docs_publish_truthful_phase_f_state_matrix() -> None:
     ):
         text = _text(path)
         assert "0.2.0" in text
-        assert "0.1.8" in text
         assert "bounded" in text.lower()
         assert "mechanical" in text.lower()
         assert "model/provider/endpoint" in text
@@ -71,7 +70,7 @@ def test_activation_and_notify_receipt_boundaries_are_documented() -> None:
     assert "DispatchReceipt" in corpus
 
 
-def test_released_baseline_and_next_candidate_are_distinguished() -> None:
+def test_v020_publication_and_historical_baseline_are_distinguished() -> None:
     corpus = "\n".join(path.read_text(encoding="utf-8") for path in ROOT.rglob("*.md"))
     for stale in (
         "current supported patch release",
@@ -80,12 +79,14 @@ def test_released_baseline_and_next_candidate_are_distinguished() -> None:
         assert stale not in corpus
     assert "0.2.0" in corpus
     assert "0.1.8" in corpus
-    assert "release candidate" in corpus.lower() or "发布候选" in corpus
+    assert "latest published" in corpus.lower() or "最新正式" in corpus or "已正式发布" in corpus
+    assert "be31eb2af67660780593c716d488ca88e508f710" in corpus
+    assert "seven hosted assets" in corpus.lower() or "7 个托管 assets" in corpus
     assert "Plan 06" in corpus
     assert "离线实现" in corpus or "offline" in corpus.lower()
 
 
-def test_install_guides_describe_three_entries_three_profiles_and_candidate_boundary() -> None:
+def test_install_guides_describe_three_entries_three_profiles_and_release_boundary() -> None:
     for path in (
         "docs/04-installation-and-troubleshooting.md",
         "docs/04-installation-and-troubleshooting.zh-CN.md",
@@ -97,7 +98,6 @@ def test_install_guides_describe_three_entries_three_profiles_and_candidate_boun
         )
         assert "releases/latest/download/install.sh" in text
         assert "0.2.0" in text
-        assert "0.1.8" in text
         assert "agentporter-bounded-worker" in text
         assert "agentporter-mechanical-worker" in text
         assert "auto decomposition" in text or "自动分解" in text
