@@ -216,9 +216,10 @@ def test_activated_key_env_provider_is_recognized_by_real_hermes_without_model_c
     (found.hermes_home / ".env").chmod(0o600)
 
     plan = build_activation_plan(discovery, found, _inputs())
-    assert apply_activation(
-        plan, input_fn=lambda _prompt: plan.confirmation_phrase
-    ).status is ActivationStatus.CANARY_REQUIRED
+    assert (
+        apply_activation(plan, input_fn=lambda _prompt: plan.confirmation_phrase).status
+        is ActivationStatus.CANARY_REQUIRED
+    )
 
     env = {
         "HOME": str(found.hermes_home.parent.parent),

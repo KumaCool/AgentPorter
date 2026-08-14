@@ -111,7 +111,6 @@ class ActivationPlan:
     source_env_identity: tuple[int, int, str] | None = field(default=None, repr=False)
 
 
-
 @dataclass(frozen=True, slots=True)
 class ActivationItemResult:
     component_id: str
