@@ -4,6 +4,7 @@ import os
 import shutil
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -17,6 +18,9 @@ from agentporter.execution import CommandOutcome, CommandStatus
 from agentporter.hermes import HermesCapabilities, HermesDetection, ProfileEntry, ProfileEntryKind
 from agentporter.planning import plan_installation
 from agentporter.readback import InstalledProfileReadback, validate_installed_profile
+from tests.plan06_support import runtime_bindings
+
+plan_installation = partial(plan_installation, binding_selection=runtime_bindings())
 
 INSTALLATION_ID = UUID("12345678-1234-4abc-8def-1234567890ab")
 REQUIRED = frozenset({"install", "delete", "describe", "list", "info"})
@@ -49,8 +53,6 @@ def _fixtures(tmp_path: Path) -> tuple[HermesDetection, tuple[InstalledProfileRe
     source_manifest = Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml"
     manifest = tmp_path / "workers.yaml"
     data = yaml.safe_load(source_manifest.read_text(encoding="utf-8"))
-    for worker in data["workers"].values():
-        worker["provider"] = "static-public-provider"
     manifest.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     executable = tmp_path / "bin" / "hermes"
     executable.parent.mkdir()

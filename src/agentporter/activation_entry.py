@@ -17,7 +17,7 @@ from .activation_application import (
 )
 from .hermes import HermesDetection, detect_hermes
 from .hermes_runtime import HermesRuntime
-from .identity import COMPONENT_IDS
+from .identity import INSTALL_COMPONENT_IDS
 from .role_name_migration_application import (
     RoleMigrationApplicationStatus,
     run_role_name_migration_gate,
@@ -97,13 +97,15 @@ def _run_binding_activation(
     discovery = discover_installation(found.profiles_root)
     inputs: dict[str, ActivationBindingInput] = {}
     targets = {target.component_id: target for target in discovery.targets}
-    if not set(COMPONENT_IDS.values()) <= set(targets):
-        raise SystemExit("AgentPorter activation requires both worker components")
-    for component_id in COMPONENT_IDS.values():
+    if not set(INSTALL_COMPONENT_IDS.values()) <= set(targets):
+        raise SystemExit("AgentPorter activation requires all three components")
+    for component_id in INSTALL_COMPONENT_IDS.values():
         target = targets[component_id]
+        model = input_fn(f"Model ID for {target.current_name}: ").strip()
         provider = input_fn(f"Provider ID for {target.current_name}: ").strip()
         endpoint = endpoint_reader(f"Endpoint for {target.current_name} (hidden): ")
         inputs[target.component_id] = ActivationBindingInput(
+            model,
             provider,
             endpoint,
             "custom-provider-config",

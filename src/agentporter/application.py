@@ -8,8 +8,9 @@ from typing import TextIO
 
 from .execution import CommandExecutor
 from .hermes import HermesDetection, detect_hermes
+from .identity import INITIAL_PROFILE_NAMES, INSTALL_COMPONENT_IDS
 from .native import NativeHermesAdapter
-from .planning import InstallPlan, revalidate_install_plan
+from .planning import InstallPlan, RuntimeBindingSelection, revalidate_install_plan
 from .transaction import InstallTransactionResult, execute_install_transaction
 from .workflow import WorkflowOutcome, WorkflowStatus, preflight_and_confirm
 
@@ -34,6 +35,15 @@ def run_installer(
     ] = NativeHermesAdapter,
     **preflight_kwargs: object,
 ) -> InstallerResult:
+    if "binding_selection" not in preflight_kwargs:
+        bindings: dict[str, RuntimeBindingSelection] = {}
+        for portable_id in INSTALL_COMPONENT_IDS:
+            profile_name = INITIAL_PROFILE_NAMES[portable_id]
+            model = input_fn(f"Model ID for {profile_name}: ")
+            provider = input_fn(f"Provider ID for {profile_name}: ")
+            endpoint = input_fn(f"Endpoint for {profile_name}: ")
+            bindings[portable_id] = RuntimeBindingSelection(model, provider, endpoint)
+        preflight_kwargs["binding_selection"] = bindings
     transaction: InstallTransactionResult | None = None
 
     def current_detection() -> HermesDetection:

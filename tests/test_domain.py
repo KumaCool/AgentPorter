@@ -24,12 +24,14 @@ def test_repository_manifest_is_closed_and_typed() -> None:
     assert manifest.version == 1
     assert manifest.project == "agentporter"
     assert list(manifest.workers) == [
-        "luna_worker",
-        "codex_5_3_small_worker",
+        "bounded_worker",
+        "mechanical_worker",
         "agentporter_orchestrator",
     ]
-    assert manifest.workers["luna_worker"].tier == "bounded"
-    assert manifest.workers["codex_5_3_small_worker"].provider is None
+    assert manifest.workers["bounded_worker"].tier == "bounded"
+    fields = type(manifest.workers["mechanical_worker"]).model_fields
+    assert "provider" not in fields
+    assert "model" not in fields
 
 
 def test_manifest_rejects_unknown_fields() -> None:
@@ -39,7 +41,7 @@ def test_manifest_rejects_unknown_fields() -> None:
                 "version": 1,
                 "project": "agentporter",
                 "workers": {
-                    "luna_worker": {
+                    "bounded_worker": {
                         "display_name": "Luna",
                         "tier": "bounded",
                         "model": "model",
@@ -77,7 +79,7 @@ def test_hermes_profile_name_rejects_reserved_or_invalid_values(value: str) -> N
 
 def test_protocol_registry_has_permanent_distinct_uuid_values() -> None:
     assert str(UUID(PRODUCT_ID)) == PRODUCT_ID
-    assert set(COMPONENT_IDS) == {"luna_worker", "codex_5_3_small_worker"}
+    assert set(COMPONENT_IDS) == {"bounded_worker", "mechanical_worker"}
     assert len({PRODUCT_ID, *COMPONENT_IDS.values()}) == 3
     assert all(str(UUID(value)) == value for value in COMPONENT_IDS.values())
 
@@ -86,7 +88,7 @@ def test_marker_v1_is_exactly_five_fields_and_uses_canonical_uuids() -> None:
     marker = MarkerV1(
         schema_version=1,
         product_id=PRODUCT_ID,
-        component_id=COMPONENT_IDS["luna_worker"],
+        component_id=COMPONENT_IDS["bounded_worker"],
         installation_id="12345678-1234-4abc-8def-1234567890ab",
         distribution_version="0.1.0",
     )
@@ -116,7 +118,7 @@ def test_marker_v1_rejects_extra_unsupported_or_noncanonical_values(
     data: dict[str, object] = {
         "schema_version": 1,
         "product_id": PRODUCT_ID,
-        "component_id": COMPONENT_IDS["luna_worker"],
+        "component_id": COMPONENT_IDS["bounded_worker"],
         "installation_id": "12345678-1234-4abc-8def-1234567890ab",
         "distribution_version": "0.1.0",
     }

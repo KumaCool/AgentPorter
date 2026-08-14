@@ -4,6 +4,7 @@ import ast
 import hashlib
 import inspect
 from dataclasses import replace
+from functools import partial
 from io import StringIO
 from pathlib import Path
 from typing import Never
@@ -21,17 +22,19 @@ from agentporter.workflow import (
     render_plan_text,
     request_for_plan,
 )
+from tests.plan06_support import runtime_bindings
+
+plan_installation = partial(plan_installation, binding_selection=runtime_bindings())
 
 REQUIRED = frozenset({"install", "delete", "describe", "list", "info"})
+preflight_and_confirm = partial(preflight_and_confirm, binding_selection=runtime_bindings())
+
 INSTALLATION_ID = UUID("12345678-1234-4abc-8def-1234567890ab")
 
 
 def _manifest(tmp_path: Path, *, providers: bool = True) -> Path:
     source = Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml"
     data = yaml.safe_load(source.read_text(encoding="utf-8"))
-    if providers:
-        for worker in data["workers"].values():
-            worker["provider"] = "static-public-provider"
     path = tmp_path / "workers.yaml"
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     return path
@@ -95,7 +98,8 @@ def test_render_plan_text_is_explicit_privacy_allowlist(tmp_path: Path) -> None:
     assert f"Hermes executable: {plan.hermes.executable}" in text
     assert f"Hermes home: {plan.hermes.home}" in text
     assert f"Hermes profiles root: {plan.hermes.profiles_root}" in text
-    assert "Model: " in text and "Provider: static-public-provider" in text
+    assert "Model: bounded-test-model" in text and "Provider: test-provider" in text
+    assert "Endpoint: sha256:" in text
     assert "Copied data: none" in text and "Model calls: false" in text
     assert private_description not in text
     assert unsafe_reason not in text
@@ -120,15 +124,15 @@ def test_request_is_canonical_and_binds_artifact_seal(tmp_path: Path) -> None:
     assert cleanup_staging(plan).status in {"cleaned", "already-absent"}
 
 
-def test_configuration_required_plan_is_installable_and_confirmable(tmp_path: Path) -> None:
+def test_explicit_binding_plan_is_installable_and_confirmable(tmp_path: Path) -> None:
     plan = _plan(tmp_path, providers=False)
 
     request = request_for_plan(plan)
 
     assert plan.installable is True
     assert request is not None
-    assert "Run configuration remains required after installation" in request.plan_text
-    assert "not selected" in request.plan_text
+    assert "Collection status: ready" in request.plan_text
+    assert "Provider: test-provider" in request.plan_text
     assert cleanup_staging(plan).status in {"cleaned", "already-absent"}
 
 
@@ -429,8 +433,8 @@ def test_fresh_conflict_after_prompt_blocks_staging_and_continuation(tmp_path: P
         tmp_path,
         profile_entries=(
             ProfileEntry(
-                "luna_worker",
-                plan_detection.profiles_root / "luna_worker",
+                "agentporter-bounded-worker",
+                plan_detection.profiles_root / "agentporter-bounded-worker",
                 ProfileEntryKind.PROFILE,
             ),
         ),

@@ -20,7 +20,7 @@ from agentporter.activation_application import (
     build_activation_plan,
 )
 from agentporter.hermes import HermesCapabilities, HermesDetection
-from agentporter.identity import COMPONENT_IDS, ORCHESTRATOR_COMPONENT_ID, PRODUCT_ID
+from agentporter.identity import INSTALL_COMPONENT_IDS, PRODUCT_ID
 from agentporter.runtime_binding import RuntimeBindingPlan
 from agentporter.runtime_probe import ProbeObservation, ProbeResult
 from agentporter.uninstall_discovery import DiscoveryResult, DiscoveryStatus, discover_installation
@@ -59,7 +59,11 @@ def _installation(tmp_path: Path) -> tuple[HermesDetection, DiscoveryResult]:
                         "base_url": SECRET_ENDPOINT,
                         "api_key": "PRIVATE-CUSTOM-PROVIDER-KEY",
                         "model": "parent-model",
-                        "models": ["gpt-5.6-luna", "gpt-5.3-codex-spark"],
+                        "models": [
+                            "bounded-test-model",
+                            "mechanical-test-model",
+                            "orchestrator-test-model",
+                        ],
                         "extra_headers": {"X-Provider-Mode": "private"},
                     }
                 ],
@@ -70,11 +74,12 @@ def _installation(tmp_path: Path) -> tuple[HermesDetection, DiscoveryResult]:
     )
     (found.hermes_home / "config.yaml").chmod(0o600)
     models = {
-        "luna_worker": "gpt-5.6-luna",
-        "codex_5_3_small_worker": "gpt-5.3-codex-spark",
+        "bounded_worker": "bounded-current-model",
+        "mechanical_worker": "mechanical-current-model",
+        "agentporter_orchestrator": "orchestrator-current-model",
     }
-    names = ("renamed-luna", "renamed-codex")
-    for (portable_id, component_id), name in zip(COMPONENT_IDS.items(), names, strict=True):
+    names = ("renamed-bounded", "renamed-mechanical", "renamed-orchestrator")
+    for (portable_id, component_id), name in zip(INSTALL_COMPONENT_IDS.items(), names, strict=True):
         profile = found.profiles_root / name
         profile.mkdir(mode=0o700)
         (profile / "config.yaml").write_text(
@@ -100,12 +105,13 @@ def _installation(tmp_path: Path) -> tuple[HermesDetection, DiscoveryResult]:
 def _inputs() -> dict[str, ActivationBindingInput]:
     return {
         component_id: ActivationBindingInput(
+            model=f"{portable_id.removesuffix('_worker')}-test-model",
             provider_id="custom-provider",
             endpoint_value=SECRET_ENDPOINT,
             credential_grant_kind="custom-provider-config",
             credential_state="operator-authorized",
         )
-        for component_id in COMPONENT_IDS.values()
+        for portable_id, component_id in INSTALL_COMPONENT_IDS.items()
     }
 
 
@@ -117,10 +123,15 @@ def test_build_plan_uses_only_complete_discovered_installation_and_typed_snapsho
     plan = build_activation_plan(discovery, found, _inputs())
 
     assert plan.installation_id == INSTALLATION_ID
-    assert {item.profile_name for item in plan.bindings} == {"renamed-luna", "renamed-codex"}
+    assert {item.profile_name for item in plan.bindings} == {
+        "renamed-bounded",
+        "renamed-mechanical",
+        "renamed-orchestrator",
+    }
     assert {item.expected_model for item in plan.bindings} == {
-        "gpt-5.6-luna",
-        "gpt-5.3-codex-spark",
+        "bounded-test-model",
+        "mechanical-test-model",
+        "agentporter_orchestrator-test-model",
     }
     assert all(item.original_config.provider is None for item in plan.bindings)
     assert all(
@@ -205,58 +216,37 @@ def test_current_keyed_provider_preserves_unrelated_worker_providers(tmp_path: P
         assert list(loaded["providers"]) == ["keep-provider", "custom-provider"]
 
 
-def test_build_plan_accepts_complete_three_component_discovery_but_reads_only_workers(
+def test_build_plan_accepts_and_reads_complete_three_component_discovery(
     tmp_path: Path,
 ) -> None:
     found, _ = _installation(tmp_path)
-    orchestrator = found.profiles_root / "renamed-orchestrator"
-    orchestrator.mkdir(mode=0o700)
-    sentinel = b"orchestrator: untouched\n"
-    (orchestrator / "config.yaml").write_bytes(sentinel)
-    (orchestrator / "agentporter-profile.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "product_id": PRODUCT_ID,
-                "component_id": ORCHESTRATOR_COMPONENT_ID,
-                "installation_id": INSTALLATION_ID,
-                "distribution_version": "0.1.3",
-            }
-        ),
-        encoding="utf-8",
-    )
     discovery = discover_installation(found.profiles_root)
 
     plan = build_activation_plan(discovery, found, _inputs())
 
-    assert [binding.component_id for binding in plan.bindings] == list(COMPONENT_IDS.values())
-    assert (orchestrator / "config.yaml").read_bytes() == sentinel
+    assert [binding.component_id for binding in plan.bindings] == list(
+        INSTALL_COMPONENT_IDS.values()
+    )
 
 
-def test_formal_activation_entry_prompts_for_workers_in_component_order_only(
+def test_formal_activation_entry_prompts_for_all_profiles_in_component_order(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import agentporter.activation_entry as entry
 
     found, _ = _installation(tmp_path)
-    orchestrator = found.profiles_root / "renamed-orchestrator"
-    orchestrator.mkdir(mode=0o700)
-    (orchestrator / "config.yaml").write_bytes(b"orchestrator: untouched\n")
-    (orchestrator / "agentporter-profile.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "product_id": PRODUCT_ID,
-                "component_id": ORCHESTRATOR_COMPONENT_ID,
-                "installation_id": INSTALLATION_ID,
-                "distribution_version": "0.1.3",
-            }
-        ),
-        encoding="utf-8",
-    )
     prompts: list[str] = []
     captured: dict[str, ActivationBindingInput] = {}
-    answers = iter(("custom-provider", "custom-provider"))
+    answers = iter(
+        (
+            "bounded-test-model",
+            "custom-provider",
+            "mechanical-test-model",
+            "custom-provider",
+            "orchestrator-test-model",
+            "custom-provider",
+        )
+    )
     sentinel_plan = object()
     sentinel_result = object()
 
@@ -294,12 +284,17 @@ def test_formal_activation_entry_prompts_for_workers_in_component_order_only(
     )
 
     assert result is sentinel_result
-    assert list(captured) == list(COMPONENT_IDS.values())
+    assert list(captured) == list(INSTALL_COMPONENT_IDS.values())
     assert [prompt for prompt in prompts if prompt.startswith("Provider ID")] == [
-        "Provider ID for renamed-luna: ",
-        "Provider ID for renamed-codex: ",
+        "Provider ID for renamed-bounded: ",
+        "Provider ID for renamed-mechanical: ",
+        "Provider ID for renamed-orchestrator: ",
     ]
-    assert all("orchestrator" not in prompt for prompt in prompts)
+    assert [prompt for prompt in prompts if prompt.startswith("Model ID")] == [
+        "Model ID for renamed-bounded: ",
+        "Model ID for renamed-mechanical: ",
+        "Model ID for renamed-orchestrator: ",
+    ]
     assert all("Credential grant" not in prompt for prompt in prompts)
 
 
@@ -337,7 +332,11 @@ def test_apply_activation_confirms_once_then_writes_and_reads_back_without_cli(
                 "base_url": SECRET_ENDPOINT,
                 "api_key": "PRIVATE-CUSTOM-PROVIDER-KEY",
                 "model": "parent-model",
-                "models": ["gpt-5.6-luna", "gpt-5.3-codex-spark"],
+                "models": [
+                    "bounded-test-model",
+                    "mechanical-test-model",
+                    "orchestrator-test-model",
+                ],
                 "extra_headers": {"X-Provider-Mode": "private"},
             }
         ]
@@ -654,9 +653,10 @@ def test_authorized_activation_probes_each_worker_without_cross_fallback_and_upd
         json.loads((item.profile_path / "local/agentporter/runtime-binding.json").read_text())
         for item in plan.bindings
     ]
-    assert [item["canary_status"] for item in payloads] == ["failed", "passed"]
+    assert [item["canary_status"] for item in payloads] == ["failed", "passed", "passed"]
     assert [item["canary_reason_code"] for item in payloads] == [
         "authentication-failed",
+        "runtime-ready",
         "runtime-ready",
     ]
     assert all("error" not in item for item in payloads)

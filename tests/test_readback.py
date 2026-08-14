@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -18,6 +19,9 @@ from agentporter.readback import (
     validate_installed_profile,
     validate_readback_collection,
 )
+from tests.plan06_support import runtime_bindings
+
+plan_installation = partial(plan_installation, binding_selection=runtime_bindings())
 
 INSTALLATION_ID = UUID("12345678-1234-4abc-8def-1234567890ab")
 REQUIRED = frozenset({"install", "delete", "describe", "list", "info"})
@@ -27,8 +31,6 @@ def _plan(tmp_path: Path):
     source = Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml"
     manifest = tmp_path / "workers.yaml"
     data = yaml.safe_load(source.read_text(encoding="utf-8"))
-    for worker in data["workers"].values():
-        worker["provider"] = "static-public-provider"
     manifest.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     home = tmp_path / "hermes"
     (home / "profiles").mkdir(parents=True)

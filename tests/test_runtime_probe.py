@@ -262,7 +262,7 @@ def test_public_hermes_v020_seam_is_unsupported_without_tool_call_proof() -> Non
 
 def test_probe_directory_is_private_and_evidence_binds_version_config_and_ttl() -> None:
     binding = RuntimeBindingPlan.from_values(
-        portable_id="luna_worker",
+        portable_id="agentporter-bounded-worker",
         component_id="component-luna",
         current_profile_name="luna",
         expected_model="gpt-5.6-luna",

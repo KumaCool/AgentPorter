@@ -13,6 +13,7 @@ from agentporter.hermes import HermesCapabilities, HermesDetection
 from agentporter.identity import COMPONENT_IDS, INSTALL_COMPONENT_IDS, PRODUCT_ID
 from agentporter.transaction import InstallTransactionStatus
 from agentporter.workflow import WorkflowOutcome, WorkflowStatus
+from tests.plan06_support import runtime_bindings
 
 REQUIRED = frozenset({"install", "delete", "describe", "list", "info"})
 INSTALLATION_ID = UUID("12345678-1234-4abc-8def-1234567890ab")
@@ -21,9 +22,6 @@ INSTALLATION_ID = UUID("12345678-1234-4abc-8def-1234567890ab")
 def _manifest(tmp_path: Path, *, providers: bool = True) -> Path:
     source = Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml"
     data = yaml.safe_load(source.read_text(encoding="utf-8"))
-    if providers:
-        for worker in data["workers"].values():
-            worker["provider"] = "static-public-provider"
     path = tmp_path / "workers.yaml"
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     return path
@@ -164,6 +162,7 @@ def test_confirmed_application_composes_fresh_native_transaction(
         detector=detector,
         adapter_factory=adapter_factory,
         installation_id_factory=lambda: INSTALLATION_ID,
+        binding_selection=runtime_bindings(),
     )
 
     assert result.workflow.status is WorkflowStatus.CONFIRMED
@@ -227,6 +226,7 @@ def test_formal_installer_discovers_renamed_legacy_and_stages_only_orchestrator(
         executor_factory=lambda: object(),  # type: ignore[arg-type]
         adapter_factory=lambda *args: adapter,  # type: ignore[arg-type]
         installation_id_factory=lambda: pytest.fail("legacy upgrade must retain installation id"),
+        binding_selection=runtime_bindings(),
     )
 
     assert result.workflow.status is WorkflowStatus.CONFIRMED
@@ -273,6 +273,7 @@ def test_formal_installer_rejects_complete_current_installation_without_writes(
         executor_factory=lambda: pytest.fail("already installed must not execute"),
         installation_id_factory=lambda: pytest.fail("already installed must not create an id"),
         existing_installation=None,
+        binding_selection=runtime_bindings(),
     )
 
     assert result.workflow.status is WorkflowStatus.REJECTED
@@ -320,6 +321,7 @@ def test_cancel_has_zero_adapter_or_transaction(
         executor_factory=lambda: pytest.fail("cancel must not create executor"),
         adapter_factory=lambda *args: pytest.fail("cancel must not create adapter"),
         installation_id_factory=installation_id_factory,
+        binding_selection=runtime_bindings(),
     )
 
     assert result.workflow.status is WorkflowStatus.CANCELLED
@@ -364,6 +366,7 @@ def test_transaction_finishes_before_staging_cleanup(
         executor_factory=lambda: object(),  # type: ignore[arg-type]
         adapter_factory=lambda *args: Adapter(),  # type: ignore[arg-type]
         installation_id_factory=lambda: INSTALLATION_ID,
+        binding_selection=runtime_bindings(),
     )
 
     assert result.transaction is transaction
@@ -402,6 +405,7 @@ def test_cleanup_failure_discards_transaction_from_typed_result(
         detector=lambda **kwargs: _detection(tmp_path),
         executor_factory=lambda: object(),  # type: ignore[arg-type]
         adapter_factory=lambda *args: adapter,  # type: ignore[arg-type]
+        binding_selection=runtime_bindings(),
     )
 
     assert result.workflow.status is WorkflowStatus.CLEANUP_FAILED
@@ -437,6 +441,7 @@ def test_transaction_baseexception_propagates_after_cleanup(
             executor_factory=lambda: object(),  # type: ignore[arg-type]
             adapter_factory=lambda *args: Adapter(),  # type: ignore[arg-type]
             installation_id_factory=lambda: INSTALLATION_ID,
+            binding_selection=runtime_bindings(),
         )
 
     assert raised.value is original

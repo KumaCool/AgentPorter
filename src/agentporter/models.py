@@ -43,8 +43,6 @@ class ClosedModel(BaseModel):
 class WorkerDefinition(ClosedModel):
     display_name: NonEmptyString
     tier: Literal["bounded", "mechanical", "orchestrator"]
-    model: NonEmptyString
-    provider: NonEmptyString | None = None
     reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]
     description: NonEmptyString
     instructions: NonEmptyString

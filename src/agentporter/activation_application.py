@@ -21,7 +21,7 @@ from typing import TextIO, cast
 import yaml
 
 from .hermes import HermesDetection
-from .identity import COMPONENT_IDS
+from .identity import INSTALL_COMPONENT_IDS
 from .runtime_binding import (
     CredentialGrantKind,
     CredentialState,
@@ -52,6 +52,7 @@ class ActivationStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ActivationBindingInput:
+    model: str
     provider_id: str
     endpoint_value: str = field(repr=False)
     credential_grant_kind: CredentialGrantKind
@@ -328,6 +329,7 @@ def _updated_payload(target: ActivationTargetPlan) -> bytes:
     model_value = config["model"]
     assert isinstance(model_value, dict)
     model = cast(dict[str, object], model_value)
+    model["default"] = target.binding.expected_model
     model["provider"] = target.binding.provider_id
     model["base_url"] = target.binding.endpoint_value
     if target.provider_container == "custom_providers":
@@ -437,7 +439,7 @@ def build_activation_plan(
     """Bind operator inputs only to one descriptor-discovered complete installation."""
     if discovery.status is not DiscoveryStatus.READY or not discovery.targets:
         raise ValueError("activation requires one complete installation")
-    expected_components = set(COMPONENT_IDS.values())
+    expected_components = set(INSTALL_COMPONENT_IDS.values())
     if set(inputs) != expected_components:
         raise ValueError("activation inputs must exactly match installed components")
     if (
@@ -446,14 +448,16 @@ def build_activation_plan(
     ):
         raise ValueError("discovery does not match detected Hermes home")
     targets = _target_for_component(discovery)
-    portable_by_component = {component: portable for portable, component in COMPONENT_IDS.items()}
+    portable_by_component = {
+        component: portable for portable, component in INSTALL_COMPONENT_IDS.items()
+    }
     installation_ids = {target.installation_id for target in discovery.targets}
     if len(installation_ids) != 1:
         raise ValueError("activation requires one installation id")
     bindings: list[ActivationTargetPlan] = []
     source_path = detection.hermes_home / "config.yaml"
     source_snapshot = _read_config(detection.hermes_home)
-    for component_id in COMPONENT_IDS.values():
+    for component_id in INSTALL_COMPONENT_IDS.values():
         target = targets[component_id]
         snapshot = _read_config(target.path)
         marker_digest, marker_device, marker_inode = _marker_identity(target.path)
@@ -465,7 +469,7 @@ def build_activation_plan(
             portable_id=portable_by_component[component_id],
             component_id=component_id,
             current_profile_name=target.current_name,
-            expected_model=snapshot.model,
+            expected_model=supplied.model,
             provider_id=supplied.provider_id,
             endpoint_value=supplied.endpoint_value,
             credential_grant_kind=supplied.credential_grant_kind,

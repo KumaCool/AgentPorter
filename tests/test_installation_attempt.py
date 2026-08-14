@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from functools import partial
 from pathlib import Path
 from uuid import UUID
 
@@ -11,6 +12,9 @@ from agentporter.execution import CommandOutcome, CommandStatus
 from agentporter.hermes import HermesCapabilities, HermesDetection, ProfileEntry, ProfileEntryKind
 from agentporter.installation import AttemptClassification, attempt_native_installation
 from agentporter.planning import InstallPlan, cleanup_staging, plan_installation
+from tests.plan06_support import runtime_bindings
+
+plan_installation = partial(plan_installation, binding_selection=runtime_bindings())
 
 REQUIRED = frozenset({"install", "delete", "describe", "list", "info"})
 INSTALLATION_ID = UUID("12345678-1234-4abc-8def-1234567890ab")
@@ -22,8 +26,6 @@ def _manifest(tmp_path: Path) -> Path:
             encoding="utf-8"
         )
     )
-    for worker in data["workers"].values():
-        worker["provider"] = "static-public-provider"
     path = tmp_path / "workers.yaml"
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     return path

@@ -12,11 +12,17 @@ from agentporter import security
 from agentporter.manifest import load_manifest
 from agentporter.render import render_staging
 from agentporter.security import StagingViolation, scan_staging
+from tests.plan06_support import runtime_bindings
 
 
 def _valid_staging(tmp_path: Path) -> Path:
     manifest = load_manifest(Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml")
-    render_staging(manifest, tmp_path, UUID("12345678-1234-4abc-8def-1234567890ab"))
+    render_staging(
+        manifest,
+        tmp_path,
+        UUID("12345678-1234-4abc-8def-1234567890ab"),
+        bindings=runtime_bindings(),
+    )
     return tmp_path
 
 
@@ -60,7 +66,7 @@ def test_scan_fallback_does_not_consume_replaced_profile(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root = _valid_staging(tmp_path)
-    profile = root / "luna_worker"
+    profile = root / "agentporter-bounded-worker"
     original = root.parent / "original-profile"
     replacement = root.parent / "replacement-profile"
     shutil.copytree(profile, replacement)
@@ -105,7 +111,7 @@ def test_scan_fallback_does_not_consume_replaced_profile(
 
 def test_scan_rejects_unexpected_artifact(tmp_path: Path) -> None:
     root = _valid_staging(tmp_path)
-    (root / "luna_worker" / "auth.json").write_text("{}")
+    (root / "agentporter-bounded-worker" / "auth.json").write_text("{}")
 
     with pytest.raises(StagingViolation, match="unexpected-path"):
         scan_staging(root)
@@ -113,7 +119,7 @@ def test_scan_rejects_unexpected_artifact(tmp_path: Path) -> None:
 
 def test_scan_rejects_symlink_even_when_it_points_inside_staging(tmp_path: Path) -> None:
     root = _valid_staging(tmp_path)
-    profile = root / "luna_worker"
+    profile = root / "agentporter-bounded-worker"
     (profile / "SOUL.md").unlink()
     (profile / "SOUL.md").symlink_to(profile / "config.yaml")
 
@@ -125,7 +131,7 @@ def test_scan_rejects_artifact_swapped_to_symlink_before_open(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root = _valid_staging(tmp_path)
-    soul = root / "luna_worker" / "SOUL.md"
+    soul = root / "agentporter-bounded-worker" / "SOUL.md"
     original_open = os.open
     swapped = False
 
@@ -149,7 +155,7 @@ def test_scan_rejects_artifact_inode_replacement_before_open(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root = _valid_staging(tmp_path)
-    soul = root / "luna_worker" / "SOUL.md"
+    soul = root / "agentporter-bounded-worker" / "SOUL.md"
     profile = soul.parent
     replacement = root.parent / f"{root.name}-replacement"
     replacement.write_text("Replacement Worker SOUL\n")
@@ -182,7 +188,7 @@ def test_scan_rejects_profile_directory_replacement_before_open(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root = _valid_staging(tmp_path)
-    profile = root / "luna_worker"
+    profile = root / "agentporter-bounded-worker"
     moved = root.parent / f"{root.name}-moved-profile"
     replacement = root.parent / f"{root.name}-replacement-profile"
     replacement.mkdir()
@@ -218,7 +224,7 @@ def test_scan_rejects_sensitive_content(
     tmp_path: Path, filename: str, payload: str, category: str
 ) -> None:
     root = _valid_staging(tmp_path)
-    (root / "luna_worker" / filename).write_text(payload)
+    (root / "agentporter-bounded-worker" / filename).write_text(payload)
 
     with pytest.raises(StagingViolation, match=category) as error:
         scan_staging(root)
@@ -242,7 +248,7 @@ def test_scan_rejects_precise_sensitive_families(
     tmp_path: Path, payload: str, category: str
 ) -> None:
     root = _valid_staging(tmp_path)
-    (root / "luna_worker" / "SOUL.md").write_text(payload)
+    (root / "agentporter-bounded-worker" / "SOUL.md").write_text(payload)
 
     with pytest.raises(StagingViolation, match=category):
         scan_staging(root)
@@ -260,16 +266,16 @@ def test_scan_rejects_precise_sensitive_families(
 )
 def test_scan_allows_benign_security_vocabulary(tmp_path: Path, payload: str) -> None:
     root = _valid_staging(tmp_path)
-    (root / "luna_worker" / "SOUL.md").write_text(payload)
+    (root / "agentporter-bounded-worker" / "SOUL.md").write_text(payload)
 
     assert scan_staging(root) == ()
 
 
 def test_scan_revalidates_artifact_schema(tmp_path: Path) -> None:
     root = _valid_staging(tmp_path)
-    marker_path = root / "luna_worker" / "agentporter-profile.json"
+    marker_path = root / "agentporter-bounded-worker" / "agentporter-profile.json"
     marker = json.loads(marker_path.read_text())
-    marker["profile_name"] = "luna_worker"
+    marker["profile_name"] = "agentporter-bounded-worker"
     marker_path.write_text(json.dumps(marker))
 
     with pytest.raises(StagingViolation, match="invalid-schema"):
@@ -278,8 +284,8 @@ def test_scan_revalidates_artifact_schema(tmp_path: Path) -> None:
 
 def test_scan_rejects_marker_component_that_does_not_match_profile(tmp_path: Path) -> None:
     root = _valid_staging(tmp_path)
-    first = root / "luna_worker" / "agentporter-profile.json"
-    second = root / "codex-5-3-small-worker" / "agentporter-profile.json"
+    first = root / "agentporter-bounded-worker" / "agentporter-profile.json"
+    second = root / "agentporter-mechanical-worker" / "agentporter-profile.json"
     first_payload = json.loads(first.read_text())
     second_payload = json.loads(second.read_text())
     first_payload["component_id"] = second_payload["component_id"]
@@ -291,7 +297,7 @@ def test_scan_rejects_marker_component_that_does_not_match_profile(tmp_path: Pat
 
 def test_scan_rejects_markers_with_different_installation_ids(tmp_path: Path) -> None:
     root = _valid_staging(tmp_path)
-    marker_path = root / "luna_worker" / "agentporter-profile.json"
+    marker_path = root / "agentporter-bounded-worker" / "agentporter-profile.json"
     marker = json.loads(marker_path.read_text())
     marker["installation_id"] = "87654321-4321-4abc-8def-ba0987654321"
     marker_path.write_text(json.dumps(marker))
@@ -302,7 +308,7 @@ def test_scan_rejects_markers_with_different_installation_ids(tmp_path: Path) ->
 
 def test_scan_rejects_empty_soul(tmp_path: Path) -> None:
     root = _valid_staging(tmp_path)
-    (root / "luna_worker" / "SOUL.md").write_text("")
+    (root / "agentporter-bounded-worker" / "SOUL.md").write_text("")
 
     with pytest.raises(StagingViolation, match="invalid-schema"):
         scan_staging(root)

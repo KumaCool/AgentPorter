@@ -104,6 +104,7 @@ def test_unsupported_grant_returns_before_auth_or_probe(tmp_path: Path) -> None:
     inputs = inputs_fixture()
     first = next(iter(inputs))
     inputs[first] = type(inputs[first])(
+        "selected-test-model",
         "custom-provider",
         "https://activation-endpoint.invalid/v1",
         "profile-env",

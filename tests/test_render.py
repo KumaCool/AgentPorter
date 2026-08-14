@@ -10,6 +10,7 @@ from agentporter.identity import INSTALL_COMPONENT_IDS, PRODUCT_ID
 from agentporter.manifest import load_manifest
 from agentporter.models import MarkerV1
 from agentporter.render import render_staging
+from tests.plan06_support import runtime_bindings
 
 
 def test_render_staging_produces_three_profiles_with_isolated_orchestrator_control(
@@ -18,11 +19,11 @@ def test_render_staging_produces_three_profiles_with_isolated_orchestrator_contr
     manifest = load_manifest(Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml")
     installation_id = UUID("12345678-1234-4abc-8def-1234567890ab")
 
-    rendered = render_staging(manifest, tmp_path, installation_id)
+    rendered = render_staging(manifest, tmp_path, installation_id, bindings=runtime_bindings())
 
     assert [item.profile_name for item in rendered] == [
-        "luna_worker",
-        "codex-5-3-small-worker",
+        "agentporter-bounded-worker",
+        "agentporter-mechanical-worker",
         "agentporter-orchestrator",
     ]
     markers: list[MarkerV1] = []
@@ -47,7 +48,12 @@ def test_render_staging_produces_three_profiles_with_isolated_orchestrator_contr
         ]
         assert distribution["license"] == "MIT"
         assert {"model", "agent"} <= set(config)
-        assert "provider" not in config["model"]
+        binding = runtime_bindings()[item.portable_id]
+        assert config["model"] == {
+            "default": binding.model,
+            "provider": binding.provider,
+            "base_url": binding.endpoint,
+        }
         soul = (item.directory / "SOUL.md").read_text()
         assert "Do not change the delegated objective" in soul
         assert "Do not broaden the delegated scope" in soul
@@ -81,12 +87,18 @@ def test_render_staging_produces_three_profiles_with_isolated_orchestrator_contr
         assert not any("name" in key for key in payload)
 
 
-def test_render_includes_optional_provider_and_mechanical_boundary(tmp_path: Path) -> None:
+def test_render_includes_explicit_provider_and_mechanical_boundary(tmp_path: Path) -> None:
     manifest = load_manifest(Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml")
-    worker = manifest.workers["codex_5_3_small_worker"]
-    worker.provider = "public-provider"
-
-    rendered = render_staging(manifest, tmp_path, UUID("12345678-1234-4abc-8def-1234567890ab"))
+    bindings = runtime_bindings()
+    bindings["mechanical_worker"] = type(bindings["mechanical_worker"])(
+        "mechanical-test-model", "public-provider", "https://mechanical.invalid/v1"
+    )
+    rendered = render_staging(
+        manifest,
+        tmp_path,
+        UUID("12345678-1234-4abc-8def-1234567890ab"),
+        bindings=bindings,
+    )
     mechanical = rendered[1].directory
 
     config = yaml.safe_load((mechanical / "config.yaml").read_text())

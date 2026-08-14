@@ -46,6 +46,27 @@ class HermesPlanTarget:
 
 
 @dataclass(frozen=True)
+class RuntimeBindingSelection:
+    model: str
+    provider: str
+    endpoint: str
+
+    @property
+    def normalized(self) -> RuntimeBindingSelection:
+        model = self.model.strip()
+        provider = self.provider.strip()
+        endpoint = self.endpoint.strip()
+        if not model or not provider or not endpoint:
+            raise ValueError("binding selection values must be non-empty")
+        return RuntimeBindingSelection(model, provider, endpoint)
+
+    @property
+    def endpoint_summary(self) -> str:
+        digest = hashlib.sha256(self.endpoint.encode("utf-8")).hexdigest()
+        return f"sha256:{digest[:16]}"
+
+
+@dataclass(frozen=True)
 class WorkerInstallPlan:
     portable_id: str
     component_id: str
@@ -53,6 +74,7 @@ class WorkerInstallPlan:
     display_name: str
     model: str
     provider: str | None
+    endpoint_summary: str
     reasoning_effort: str
     description: str
     installable: bool
@@ -109,58 +131,38 @@ class InstallPlan:
     confirmation_token: str
 
 
-def _apply_provider_selection(
-    manifest: WorkersManifest, selection: Mapping[str, str] | None
-) -> tuple[WorkersManifest, frozenset[str]]:
+def _normalize_bindings(
+    manifest: WorkersManifest,
+    selection: Mapping[str, RuntimeBindingSelection] | None,
+) -> dict[str, RuntimeBindingSelection]:
     if selection is None:
-        return manifest, frozenset()
-    if not set(selection) <= set(manifest.workers):
-        raise ValueError("provider selection is not closed")
-    normalized: dict[str, str] = {}
-    for portable_id, provider in selection.items():
-        if not (trimmed := provider.strip()):
-            raise ValueError("provider selection is empty")
-        normalized[portable_id] = trimmed
-    workers = {
-        portable_id: worker.model_copy(
-            update={"provider": normalized[portable_id]} if portable_id in normalized else {}
-        )
-        for portable_id, worker in manifest.workers.items()
-    }
-    return manifest.model_copy(update={"workers": workers}), frozenset(normalized)
+        raise ValueError("binding selection is required")
+    if set(selection) != set(manifest.workers):
+        raise ValueError("binding selection is not closed")
+    return {portable_id: selection[portable_id].normalized for portable_id in manifest.workers}
 
 
 def _worker_plans(
-    manifest: WorkersManifest, selected: frozenset[str] = frozenset()
+    manifest: WorkersManifest, bindings: Mapping[str, RuntimeBindingSelection]
 ) -> tuple[WorkerInstallPlan, ...]:
     plans: list[WorkerInstallPlan] = []
     for portable_id, worker in manifest.workers.items():
-        if worker.provider is None:
-            status: PlanStatus = "configuration-required"
-            runtime: RuntimeConfiguration = "configuration-required"
-            reason = "explicit provider configuration is required"
-        elif portable_id in selected:
-            status = "ready"
-            runtime = "selected-but-runtime-unvalidated"
-            reason = "selected provider is static-only and runtime-unvalidated"
-        else:
-            status = "ready"
-            runtime = "configured-but-runtime-unvalidated"
-            reason = "static provider and model fields are complete; runtime not validated"
+        binding = bindings[portable_id]
         plans.append(
             WorkerInstallPlan(
                 portable_id=portable_id,
                 component_id=INSTALL_COMPONENT_IDS[portable_id],
                 profile_name=INITIAL_PROFILE_NAMES[portable_id],
                 display_name=worker.display_name,
-                model=worker.model,
-                provider=worker.provider,
+                model=binding.model,
+                provider=binding.provider,
+                endpoint_summary=binding.endpoint_summary,
                 reasoning_effort=worker.reasoning_effort,
                 description=worker.description,
                 installable=True,
-                runtime_configuration=runtime,
-                status=status,
-                reason=reason,
+                runtime_configuration="selected-but-runtime-unvalidated",
+                status="ready",
+                reason="selected binding is static-only and runtime-unvalidated",
             )
         )
     return tuple(plans)
@@ -413,19 +415,23 @@ def plan_installation(
     staging_parent: Path,
     installation_id_factory: Callable[[], UUID] = uuid4,
     staging_scanner: Callable[[Path], object] = scan_staging,
-    provider_selection: Mapping[str, str] | None = None,
+    binding_selection: Mapping[str, RuntimeBindingSelection] | None = None,
     existing_installation: DiscoveryResult | None = None,
     materialize: bool = True,
 ) -> InstallPlan:
     try:
         manifest = load_manifest(manifest_path)
-        manifest, selected = _apply_provider_selection(manifest, provider_selection)
+        bindings = _normalize_bindings(manifest, binding_selection)
     except (OSError, UnicodeError, yaml.YAMLError, ValidationError, ValueError):
-        return _base_plan(detection, status="invalid", reason="manifest is invalid")
-    workers = _worker_plans(manifest, selected)
+        return _base_plan(
+            detection,
+            status="invalid",
+            reason="manifest or binding selection is invalid",
+        )
+    workers = _worker_plans(manifest, bindings)
     installation_id_override: str | None = None
     if existing_installation is not None:
-        legacy_components = set(tuple(COMPONENT_IDS.values())[:2])
+        legacy_components = set(COMPONENT_IDS.values())
         if (
             existing_installation.status is not DiscoveryStatus.READY
             or existing_installation.findings
@@ -451,6 +457,7 @@ def plan_installation(
                 }
             }
         )
+        bindings = {"agentporter_orchestrator": bindings["agentporter_orchestrator"]}
     if not detection.capabilities.supports_required_profile_commands:
         return _base_plan(
             detection,
@@ -513,7 +520,7 @@ def plan_installation(
             parent_created = True
         staging_dir = Path(tempfile.mkdtemp(prefix="agentporter-", dir=staging_parent))
         staging_identity = _capture_identity(staging_dir)
-        render_staging(manifest, staging_dir, UUID(installation_id))
+        render_staging(manifest, staging_dir, UUID(installation_id), bindings=bindings)
         staging_scanner(staging_dir)
         artifacts = _capture_artifacts(staging_dir, workers)
     except (OSError, UnicodeError, yaml.YAMLError, StagingViolation, ValidationError, ValueError):

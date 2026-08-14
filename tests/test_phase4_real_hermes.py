@@ -6,6 +6,7 @@ import shutil
 import stat
 import subprocess
 from collections.abc import Iterator, Mapping, Sequence
+from functools import partial
 from io import StringIO
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,9 @@ from agentporter.uninstall_planning import (
     revalidate_uninstall_collection,
     run_uninstall_confirmation,
 )
+from tests.plan06_support import runtime_bindings
+
+plan_installation = partial(plan_installation, binding_selection=runtime_bindings())
 
 HERMES = Path("/usr/local/lib/hermes-agent/venv/bin/hermes")
 MANIFEST = Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml"

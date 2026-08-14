@@ -28,9 +28,9 @@ def test_binding_receipt_parser_is_versioned_and_closed() -> None:
 
 def plan(**changes: object) -> RuntimeBindingPlan:
     values: dict[str, object] = {
-        "portable_id": "luna_worker",
+        "portable_id": "agentporter-bounded-worker",
         "component_id": "component-luna",
-        "current_profile_name": "luna_worker",
+        "current_profile_name": "agentporter-bounded-worker",
         "expected_model": "gpt-5.6-luna",
         "provider_id": "custom",
         "endpoint_value": PRIVATE_ENDPOINT,
@@ -110,9 +110,9 @@ def test_binding_plan_receipt_repr_error_and_fingerprint_are_secret_safe() -> No
 
     with pytest.raises(ValueError) as caught:
         RuntimeBindingPlan.from_values(
-            portable_id="luna_worker",
+            portable_id="agentporter-bounded-worker",
             component_id="component-luna",
-            current_profile_name="luna_worker",
+            current_profile_name="agentporter-bounded-worker",
             expected_model="gpt-5.6-luna",
             provider_id="custom",
             endpoint_value=f"file://{PRIVATE_PATH}?key={PRIVATE_KEY}",

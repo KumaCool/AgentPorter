@@ -17,7 +17,7 @@ from agentporter.readiness import ReadinessEvidence, RuntimeBinding
 from agentporter.runtime_binding import RuntimeBindingPlan, binding_fingerprint
 
 COMPONENTS = {
-    "bounded_worker": "5c7f978c-a9a6-4cec-98fa-e65bbf8101cd",
+    "agentporter-bounded-worker": "5c7f978c-a9a6-4cec-98fa-e65bbf8101cd",
     "mechanical_worker": "7dab98fb-9ac0-44fa-90fb-4a4f30e1470c",
     "agentporter_orchestrator": "ee21f7f8-5a9d-4cf2-9e57-2508034cadc7",
 }
@@ -54,12 +54,10 @@ def test_three_profile_sealed_binding_set_is_closed_explicit_and_secret_safe() -
             selections={role: selection(role) for role in tuple(COMPONENTS)[:-1]},
         )
     with pytest.raises(ValueError, match="model"):
-        replace(selection("bounded_worker"), model=" ")
+        replace(selection("agentporter-bounded-worker"), model=" ")
 
 
-def test_binding_set_fingerprint_covers_public_route_fields_without_endpoint_disclosure() -> (
-    None
-):
+def test_binding_set_fingerprint_covers_public_route_fields_without_endpoint_disclosure() -> None:
     original = RoleBindingSet.create(
         expected_components=COMPONENTS,
         selections={role: selection(role) for role in COMPONENTS},
@@ -68,7 +66,9 @@ def test_binding_set_fingerprint_covers_public_route_fields_without_endpoint_dis
         expected_components=COMPONENTS,
         selections={
             **{role: selection(role) for role in COMPONENTS},
-            "bounded_worker": selection("bounded_worker", model="operator/other-model"),
+            "agentporter-bounded-worker": selection(
+                "agentporter-bounded-worker", model="operator/other-model"
+            ),
         },
     )
     assert original.fingerprint != changed.fingerprint
@@ -78,7 +78,7 @@ def test_binding_set_fingerprint_covers_public_route_fields_without_endpoint_dis
 def test_provider_definition_grant_classification_is_explicit_and_never_cross_worker() -> None:
     assert (
         classify_credential_grant(
-            portable_id="bounded_worker",
+            portable_id="agentporter-bounded-worker",
             existing_profile_definition=True,
             requested=CredentialGrantSelection.EXISTING_PROFILE_DEFINITION,
         )
@@ -146,8 +146,8 @@ def test_runtime_fingerprint_and_readiness_invalidate_on_model_provider_or_endpo
     None
 ):
     plan = RuntimeBindingPlan.from_values(
-        portable_id="bounded_worker",
-        component_id=COMPONENTS["bounded_worker"],
+        portable_id="agentporter-bounded-worker",
+        component_id=COMPONENTS["agentporter-bounded-worker"],
         current_profile_name="renamed-bounded",
         expected_model="operator/model-a",
         provider_id="provider-a",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 from collections.abc import Mapping, Sequence
+from functools import partial
 from pathlib import Path
 from uuid import UUID
 
@@ -12,6 +13,9 @@ from agentporter.hermes import HermesCapabilities, HermesDetection, ProfileEntry
 from agentporter.install_workflow import InstallWorkflowStatus, install_confirmed_plan
 from agentporter.planning import InstallPlan, WorkerInstallPlan, plan_installation
 from agentporter.readback import InstalledProfileReadback, validate_readback_collection
+from tests.plan06_support import runtime_bindings
+
+plan_installation = partial(plan_installation, binding_selection=runtime_bindings())
 
 REQUIRED = frozenset({"install", "delete", "describe", "list", "info"})
 INSTALLATION_ID = UUID("12345678-1234-4abc-8def-1234567890ab")
@@ -20,8 +24,6 @@ INSTALLATION_ID = UUID("12345678-1234-4abc-8def-1234567890ab")
 def _plan(tmp_path: Path) -> tuple[InstallPlan, HermesDetection]:
     source = Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml"
     data = yaml.safe_load(source.read_text(encoding="utf-8"))
-    for worker in data["workers"].values():
-        worker["provider"] = "static-public-provider"
     manifest = tmp_path / "workers.yaml"
     manifest.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     home = tmp_path / "hermes"

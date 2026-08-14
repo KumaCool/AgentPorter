@@ -136,7 +136,7 @@ def test_freshness_requires_time_version_config_and_binding_identity() -> None:
 def test_two_workers_aggregate_by_component_not_identical_binding() -> None:
     now = datetime(2026, 8, 12, 12, 1, tzinfo=UTC)
     luna_binding = binding(
-        portable_id="luna_worker",
+        portable_id="agentporter-bounded-worker",
         component_id="component-luna",
         current_profile_name="luna",
         expected_model="gpt-5.6-luna",

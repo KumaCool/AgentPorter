@@ -54,6 +54,7 @@ def render_plan_text(plan: InstallPlan) -> str:
                 f"  Display name: {worker.display_name}",
                 f"  Model: {worker.model}",
                 f"  Provider: {worker.provider or 'not selected'}",
+                f"  Endpoint: {worker.endpoint_summary}",
                 f"  Reasoning effort: {worker.reasoning_effort}",
                 f"  Status: {worker.status}",
             )

@@ -25,6 +25,7 @@ from agentporter.identity import INITIAL_PROFILE_NAMES, INSTALL_COMPONENT_IDS, P
 from agentporter.models import MarkerV1, WorkersManifest
 from agentporter.render import DISTRIBUTION_VERSION
 from agentporter.uninstall_application import UninstallerStatus
+from tests.plan06_support import runtime_bindings
 
 HERMES = Path("/usr/local/lib/hermes-agent/venv/bin/hermes")
 MANIFEST = Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml"
@@ -263,6 +264,7 @@ def _install_formally(
             input_fn=exact_answer,
             output=output,
             executor_factory=lambda: CommandExecutor(runner=runner, timeout_seconds=30),
+            binding_selection=runtime_bindings(),
         )
 
     monkeypatch.setattr(agentporter, "run_installer", entry_run_installer)
@@ -317,9 +319,12 @@ def _assert_exact_static_readback(env: Mapping[str, str], names: Sequence[str]) 
         marker = MarkerV1.model_validate_json(
             (profile / "agentporter-profile.json").read_text(encoding="utf-8")
         )
-        expected_model: dict[str, str] = {"default": worker.model}
-        if worker.provider is not None:
-            expected_model["provider"] = worker.provider
+        binding = runtime_bindings()[portable_id]
+        expected_model: dict[str, str] = {
+            "default": binding.model,
+            "provider": binding.provider,
+            "base_url": binding.endpoint,
+        }
         expected_config: dict[str, object] = {
             "model": expected_model,
             "agent": {"reasoning_effort": worker.reasoning_effort},

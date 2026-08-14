@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 from dataclasses import FrozenInstanceError, asdict, replace
+from functools import partial
 from pathlib import Path
 from typing import Never
 from uuid import UUID
@@ -29,12 +30,18 @@ from agentporter.planning import (
     preflight_installation,
     revalidate_install_plan,
 )
+from agentporter.planning import (
+    plan_installation as raw_plan_installation,
+)
 from agentporter.uninstall_discovery import (
     DiscoveryResult,
     DiscoveryStatus,
     FileIdentity,
     Target,
 )
+from tests.plan06_support import runtime_bindings
+
+plan_installation = partial(plan_installation, binding_selection=runtime_bindings())
 
 INSTALLATION_ID = UUID("12345678-1234-4abc-8def-1234567890ab")
 REQUIRED = frozenset({"install", "delete", "describe", "list", "info"})
@@ -43,9 +50,6 @@ REQUIRED = frozenset({"install", "delete", "describe", "list", "info"})
 def _manifest(tmp_path: Path, *, providers: bool = True) -> Path:
     source = Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml"
     data = yaml.safe_load(source.read_text(encoding="utf-8"))
-    if providers:
-        for worker in data["workers"].values():
-            worker["provider"] = "static-public-provider"
     path = tmp_path / "workers.yaml"
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     return path
@@ -76,13 +80,13 @@ def test_plan_aggregates_authoritative_order_shared_id_and_scanned_staging(tmp_p
     assert plan.status == "ready"
     assert plan.installation_id == str(INSTALLATION_ID)
     assert [worker.portable_id for worker in plan.workers] == [
-        "luna_worker",
-        "codex_5_3_small_worker",
+        "bounded_worker",
+        "mechanical_worker",
         "agentporter_orchestrator",
     ]
     assert [worker.profile_name for worker in plan.workers] == [
-        "luna_worker",
-        "codex-5-3-small-worker",
+        "agentporter-bounded-worker",
+        "agentporter-mechanical-worker",
         "agentporter-orchestrator",
     ]
     assert {worker.component_id for worker in plan.workers} == {
@@ -91,11 +95,11 @@ def test_plan_aggregates_authoritative_order_shared_id_and_scanned_staging(tmp_p
         "ee21f7f8-5a9d-4cf2-9e57-2508034cadc7",
     }
     assert all(worker.status == "ready" for worker in plan.workers)
-    assert all(worker.provider == "static-public-provider" for worker in plan.workers)
+    assert all(worker.provider == "test-provider" for worker in plan.workers)
     assert plan.staging_dir is not None and plan.staging_dir.is_dir()
     assert {path.name for path in plan.staging_dir.iterdir()} == {
-        "luna_worker",
-        "codex-5-3-small-worker",
+        "agentporter-bounded-worker",
+        "agentporter-mechanical-worker",
         "agentporter-orchestrator",
     }
     assert plan.hermes.executable == detection.executable
@@ -170,24 +174,18 @@ def test_legacy_upgrade_reuses_installation_id_and_stages_only_orchestrator(tmp_
     assert cleanup_staging(plan).status == "cleaned"
 
 
-def test_missing_provider_is_installable_and_staged_but_requires_runtime_configuration(
-    tmp_path: Path,
-) -> None:
+def test_missing_binding_is_invalid_and_creates_zero_staging(tmp_path: Path) -> None:
     staging_parent = tmp_path / "temporary-staging"
-    plan = plan_installation(
+    plan = raw_plan_installation(
         _detection(tmp_path),
         _manifest(tmp_path, providers=False),
         staging_parent=staging_parent,
     )
 
-    assert plan.status == "configuration-required"
-    assert plan.installable is True
-    assert {worker.status for worker in plan.workers} == {"configuration-required"}
-    assert all(worker.provider is None for worker in plan.workers)
-    assert plan.staging_dir is not None and plan.staging_dir.is_dir()
-    assert confirm_install_plan(plan, plan.confirmation_token)
-    assert plan.runtime_validated is False
-    assert cleanup_staging(plan).status == "cleaned"
+    assert plan.status == "invalid"
+    assert plan.installable is False
+    assert plan.staging_dir is None
+    assert not staging_parent.exists()
 
 
 def test_missing_required_profile_command_is_unsupported_before_staging(tmp_path: Path) -> None:
@@ -214,8 +212,8 @@ def test_any_target_name_entry_kind_is_a_conflict_before_staging(
     detection = _detection(
         tmp_path,
         ProfileEntry(
-            name="codex-5-3-small-worker",
-            path=tmp_path / "actual-hermes-home" / "profiles" / "codex-5-3-small-worker",
+            name="agentporter-mechanical-worker",
+            path=tmp_path / "actual-hermes-home" / "profiles" / "agentporter-mechanical-worker",
             kind=kind,
         ),
     )
@@ -233,11 +231,13 @@ def test_invalid_manifest_is_closed_and_does_not_expose_parser_detail(tmp_path: 
     manifest.write_text("secret: audit-secret-value\n", encoding="utf-8")
 
     plan = plan_installation(
-        _detection(tmp_path), manifest, staging_parent=tmp_path / "temporary-staging"
+        _detection(tmp_path),
+        manifest,
+        staging_parent=tmp_path / "temporary-staging",
     )
 
     assert plan.status == "invalid"
-    assert plan.reason == "manifest is invalid"
+    assert plan.reason == "manifest or binding selection is invalid"
     assert "audit-secret-value" not in repr(plan)
 
 
@@ -278,7 +278,9 @@ def test_staging_scan_failure_is_invalid_and_cleanup_is_verified(tmp_path: Path)
 
 def test_confirmation_binds_complete_current_plan_and_rejects_tampering(tmp_path: Path) -> None:
     plan = plan_installation(
-        _detection(tmp_path), _manifest(tmp_path), staging_parent=tmp_path / "staging"
+        _detection(tmp_path),
+        _manifest(tmp_path),
+        staging_parent=tmp_path / "staging",
     )
     assert confirm_install_plan(plan, plan.confirmation_token)
     assert not confirm_install_plan(plan, "0" * 64)
@@ -293,7 +295,9 @@ def test_plan_projection_excludes_secrets_endpoints_and_default_profile_state(
     tmp_path: Path,
 ) -> None:
     plan = plan_installation(
-        _detection(tmp_path), _manifest(tmp_path), staging_parent=tmp_path / "staging"
+        _detection(tmp_path),
+        _manifest(tmp_path),
+        staging_parent=tmp_path / "staging",
     )
     payload = json.dumps(asdict(plan), default=str, sort_keys=True)
 
@@ -326,7 +330,9 @@ def test_preflight_rejects_staging_inside_actual_hermes_home_without_writing(
 
 def test_cleanup_rejects_tampered_plan_path(tmp_path: Path) -> None:
     plan = plan_installation(
-        _detection(tmp_path), _manifest(tmp_path), staging_parent=tmp_path / "staging"
+        _detection(tmp_path),
+        _manifest(tmp_path),
+        staging_parent=tmp_path / "staging",
     )
     protected = tmp_path / "protected"
     protected.mkdir()
@@ -337,29 +343,37 @@ def test_cleanup_rejects_tampered_plan_path(tmp_path: Path) -> None:
     assert cleanup_staging(plan).status == "cleaned"
 
 
-def test_provider_overrides_are_trimmed_closed_and_isolated_per_worker(tmp_path: Path) -> None:
+def test_bindings_are_trimmed_closed_and_isolated_per_worker(tmp_path: Path) -> None:
     manifest = _manifest(tmp_path, providers=False)
-    plan = plan_installation(
+    bindings = runtime_bindings()
+    bindings["bounded_worker"] = replace(
+        bindings["bounded_worker"], provider="  selected-provider  "
+    )
+    plan = raw_plan_installation(
         _detection(tmp_path),
         manifest,
         staging_parent=tmp_path / "staging",
-        provider_selection={"luna_worker": "  selected-provider  "},
+        binding_selection=bindings,
     )
 
-    assert plan.status == "configuration-required"
+    assert plan.status == "ready"
     assert plan.installable is True
     assert plan.workers[0].provider == "selected-provider"
     assert plan.workers[0].runtime_configuration == "selected-but-runtime-unvalidated"
-    assert plan.workers[1].provider is None
-    assert plan.workers[1].runtime_configuration == "configuration-required"
+    assert plan.workers[1].provider == "test-provider"
+    assert plan.workers[1].runtime_configuration == "selected-but-runtime-unvalidated"
     assert cleanup_staging(plan).status == "cleaned"
 
-    for invalid in ({"unknown": "provider"}, {"luna_worker": "   "}):
-        rejected = plan_installation(
+    missing = runtime_bindings()
+    missing.pop("bounded_worker")
+    blank = runtime_bindings()
+    blank["bounded_worker"] = replace(blank["bounded_worker"], provider="   ")
+    for invalid in (missing, blank):
+        rejected = raw_plan_installation(
             _detection(tmp_path),
             manifest,
             staging_parent=tmp_path / "other-staging",
-            provider_selection=invalid,
+            binding_selection=invalid,
         )
         assert rejected.status == "invalid"
         assert rejected.staging_dir is None
@@ -367,7 +381,9 @@ def test_provider_overrides_are_trimmed_closed_and_isolated_per_worker(tmp_path:
 
 def test_artifact_change_makes_revalidation_and_confirmation_stale(tmp_path: Path) -> None:
     plan = plan_installation(
-        _detection(tmp_path), _manifest(tmp_path), staging_parent=tmp_path / "staging"
+        _detection(tmp_path),
+        _manifest(tmp_path),
+        staging_parent=tmp_path / "staging",
     )
     assert revalidate_install_plan(plan)
     assert plan.staging_dir is not None
@@ -381,7 +397,9 @@ def test_artifact_change_makes_revalidation_and_confirmation_stale(tmp_path: Pat
 
 def test_artifact_same_bytes_replacement_inode_makes_plan_stale(tmp_path: Path) -> None:
     plan = plan_installation(
-        _detection(tmp_path), _manifest(tmp_path), staging_parent=tmp_path / "staging"
+        _detection(tmp_path),
+        _manifest(tmp_path),
+        staging_parent=tmp_path / "staging",
     )
     assert plan.staging_dir is not None
     artifact = plan.staging_dir / plan.workers[0].profile_name / "config.yaml"
@@ -398,7 +416,9 @@ def test_revalidation_rejects_changed_detection_and_plan_repr_hides_staging_path
     tmp_path: Path,
 ) -> None:
     plan = plan_installation(
-        _detection(tmp_path), _manifest(tmp_path), staging_parent=tmp_path / "private-staging"
+        _detection(tmp_path),
+        _manifest(tmp_path),
+        staging_parent=tmp_path / "private-staging",
     )
     assert plan.staging_dir is not None
     assert str(plan.staging_dir) not in repr(plan)
@@ -416,7 +436,9 @@ def test_revalidation_rejects_changed_detection_and_plan_repr_hides_staging_path
 
 def test_cleanup_refuses_replacement_symlink_and_renamed_original(tmp_path: Path) -> None:
     plan = plan_installation(
-        _detection(tmp_path), _manifest(tmp_path), staging_parent=tmp_path / "staging"
+        _detection(tmp_path),
+        _manifest(tmp_path),
+        staging_parent=tmp_path / "staging",
     )
     assert plan.staging_dir is not None
     original = plan.staging_dir
@@ -441,7 +463,9 @@ def test_cleanup_race_never_deletes_replacement_inode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     plan = plan_installation(
-        _detection(tmp_path), _manifest(tmp_path), staging_parent=tmp_path / "staging"
+        _detection(tmp_path),
+        _manifest(tmp_path),
+        staging_parent=tmp_path / "staging",
     )
     assert plan.staging_dir is not None
     original = plan.staging_dir
@@ -482,7 +506,9 @@ def test_cleanup_isolates_before_rmtree_so_original_name_replacement_survives(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     plan = plan_installation(
-        _detection(tmp_path), _manifest(tmp_path), staging_parent=tmp_path / "staging"
+        _detection(tmp_path),
+        _manifest(tmp_path),
+        staging_parent=tmp_path / "staging",
     )
     assert plan.staging_dir is not None
     original = plan.staging_dir

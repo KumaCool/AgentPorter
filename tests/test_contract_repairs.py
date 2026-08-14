@@ -13,9 +13,10 @@ from agentporter.manifest import load_manifest
 from agentporter.models import WorkersManifest
 from agentporter.render import render_staging
 from agentporter.security import scan_staging
+from tests.plan06_support import runtime_bindings
 
 REPOSITORY_ROOT = Path(__file__).parents[1]
-EXPECTED_WORKERS = ("luna_worker", "codex_5_3_small_worker")
+EXPECTED_WORKERS = ("bounded_worker", "mechanical_worker")
 
 
 def _manifest_data() -> dict[str, object]:
@@ -26,7 +27,12 @@ def _manifest_data() -> dict[str, object]:
 def test_distribution_uses_only_phase_1_native_hermes_fields(tmp_path: Path) -> None:
     manifest = load_manifest(REPOSITORY_ROOT / "src/agentporter/resources/workers.yaml")
 
-    rendered = render_staging(manifest, tmp_path, UUID("12345678-1234-4abc-8def-1234567890ab"))
+    rendered = render_staging(
+        manifest,
+        tmp_path,
+        UUID("12345678-1234-4abc-8def-1234567890ab"),
+        bindings=runtime_bindings(),
+    )
 
     for profile in rendered:
         distribution = yaml.safe_load(
@@ -49,9 +55,9 @@ def test_distribution_uses_only_phase_1_native_hermes_fields(tmp_path: Path) -> 
 @pytest.mark.parametrize(
     "workers",
     [
-        ("luna_worker",),
-        ("luna_worker", "codex_5_3_small_worker", "extra_worker"),
-        ("codex_5_3_small_worker", "luna_worker"),
+        ("bounded_worker",),
+        ("bounded_worker", "mechanical_worker", "extra_worker"),
+        ("mechanical_worker", "bounded_worker"),
     ],
 )
 def test_manifest_workers_must_exactly_match_registry_in_declaration_order(
@@ -60,7 +66,7 @@ def test_manifest_workers_must_exactly_match_registry_in_declaration_order(
     data = _manifest_data()
     definitions = data["workers"]
     assert isinstance(definitions, dict)
-    template = definitions["luna_worker"]
+    template = definitions["bounded_worker"]
     data["workers"] = {worker: definitions.get(worker, template) for worker in workers}
 
     with pytest.raises(ValidationError, match="workers must exactly match"):
@@ -71,15 +77,15 @@ def test_load_manifest_rejects_duplicate_worker_key(tmp_path: Path) -> None:
     manifest = REPOSITORY_ROOT / "src/agentporter/resources/workers.yaml"
     source = manifest.read_text(encoding="utf-8")
     duplicate = source.replace(
-        "  codex_5_3_small_worker:\n",
-        "  luna_worker:\n"
+        "  mechanical_worker:\n",
+        "  bounded_worker:\n"
         "    display_name: Duplicate\n"
         "    tier: bounded\n"
         "    model: duplicate\n"
         "    reasoning_effort: max\n"
         "    description: duplicate\n"
         "    instructions: duplicate\n"
-        "  codex_5_3_small_worker:\n",
+        "  mechanical_worker:\n",
     )
     path = tmp_path / "workers.yaml"
     path.write_text(duplicate, encoding="utf-8")
@@ -103,7 +109,9 @@ def test_real_hermes_v020_installs_rendered_distributions_in_temporary_root(
     staging = tmp_path / "staging"
     staging.mkdir()
     manifest = load_manifest(REPOSITORY_ROOT / "src/agentporter/resources/workers.yaml")
-    rendered = render_staging(manifest, staging, UUID("12345678-1234-4abc-8def-1234567890ab"))
+    rendered = render_staging(
+        manifest, staging, UUID("12345678-1234-4abc-8def-1234567890ab"), bindings=runtime_bindings()
+    )
     hermes_home = tmp_path / "hermes-home"
     home = tmp_path / "home"
     home.mkdir()
@@ -128,7 +136,7 @@ def test_real_hermes_v020_installs_rendered_distributions_in_temporary_root(
 
     installed = hermes_home / "profiles"
     assert {path.name for path in installed.iterdir()} == {
-        "luna_worker",
-        "codex-5-3-small-worker",
+        "agentporter-bounded-worker",
+        "agentporter-mechanical-worker",
         "agentporter-orchestrator",
     }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 from collections.abc import Iterator, Mapping, Sequence
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,9 @@ from agentporter.planning import cleanup_staging, confirm_install_plan, plan_ins
 from agentporter.readback import validate_readback_collection
 from agentporter.transaction import InstallTransactionStatus, execute_install_transaction
 from agentporter.workflow import render_plan_text
+from tests.plan06_support import runtime_bindings
+
+plan_installation = partial(plan_installation, binding_selection=runtime_bindings())
 
 HERMES = Path("/usr/local/lib/hermes-agent/venv/bin/hermes")
 MANIFEST = Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml"
@@ -153,11 +157,11 @@ def test_real_hermes_installs_reads_back_collects_and_compensates_two_profiles(
 
     rendered = render_plan_text(plan)
     assert plan.installable is True
-    assert plan.status == "configuration-required"
+    assert plan.status == "ready"
     assert all(worker.installable for worker in plan.workers)
-    assert all(worker.provider is None for worker in plan.workers)
+    assert all(worker.provider == "test-provider" for worker in plan.workers)
     assert f"Fingerprint: {plan.fingerprint}" in rendered
-    assert "Provider: not selected" in rendered
+    assert "Provider: test-provider" in rendered
     assert "Model calls: false" in rendered
     assert plan.confirmation_token == plan.fingerprint
     assert confirm_install_plan(plan, plan.confirmation_token) is True

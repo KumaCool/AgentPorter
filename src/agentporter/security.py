@@ -241,10 +241,14 @@ def _validate_config(data: object, profile_name: str) -> None:
     typed_model = cast(dict[object, object], model)
     if not all(isinstance(key, str) for key in typed_model):
         raise ValueError("model shape")
-    if not {"default"} <= set(typed_model) <= {"default", "provider"}:
+    if set(typed_model) != {"default", "provider", "base_url"}:
         raise ValueError("model shape")
     if not all(isinstance(value, str) and value.strip() for value in typed_model.values()):
         raise ValueError("model values")
+    base_url = typed_model["base_url"]
+    assert isinstance(base_url, str)
+    if not re.fullmatch(r"https?://[^\s]+", base_url):
+        raise ValueError("model endpoint")
     if not isinstance(agent, dict):
         raise ValueError("agent shape")
     typed_agent = cast(dict[object, object], agent)
@@ -317,7 +321,23 @@ def scan_staging(staging_root: Path) -> tuple[()]:
                     if _contains_secret(text, data):
                         _fail("secret", artifact_relative)
                     if _contains_private_endpoint(text, data):
-                        _fail("private-endpoint", artifact_relative)
+                        config_data = (
+                            cast(dict[object, object], data) if isinstance(data, dict) else {}
+                        )
+                        model_data = config_data.get("model")
+                        intentional_binding_endpoint = (
+                            artifact_name == "config.yaml"
+                            and isinstance(model_data, dict)
+                            and set(cast(dict[object, object], model_data))
+                            == {"default", "provider", "base_url"}
+                            and set(config_data)
+                            in (
+                                {"model", "agent"},
+                                {"model", "agent", "kanban", "platform_toolsets"},
+                            )
+                        )
+                        if not intentional_binding_endpoint:
+                            _fail("private-endpoint", artifact_relative)
                     if any(pattern.search(text) for pattern in _PRIVATE_PATH_PATTERNS):
                         _fail("private-path", artifact_relative)
             finally:
