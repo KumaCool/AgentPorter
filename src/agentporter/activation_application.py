@@ -22,6 +22,7 @@ import yaml
 
 from .hermes import HermesDetection
 from .identity import INSTALL_COMPONENT_IDS
+from .planning import RuntimeBindingSelection
 from .runtime_binding import (
     CredentialGrantKind,
     CredentialState,
@@ -57,6 +58,17 @@ class ActivationBindingInput:
     endpoint_value: str = field(repr=False)
     credential_grant_kind: CredentialGrantKind
     credential_state: CredentialState
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeAuthority:
+    """Secret-free pre-mutation authority shared by install and activation."""
+
+    selections: Mapping[str, RuntimeBindingSelection]
+    inputs: Mapping[str, ActivationBindingInput]
+    hermes_home: Path = field(repr=False)
+    source_config_identity: tuple[int, int, str] | None = field(default=None, repr=False)
+    source_env_identity: tuple[int, int, str] | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -567,6 +579,96 @@ def _target_for_component(discovery: DiscoveryResult) -> Mapping[str, Target]:
     return MappingProxyType({target.component_id: target for target in discovery.targets})
 
 
+def seal_runtime_authority(
+    detection: HermesDetection,
+    inputs: Mapping[str, ActivationBindingInput],
+) -> RuntimeAuthority:
+    """Validate complete runtime choices without writing or retaining source secrets."""
+    if set(inputs) != set(INSTALL_COMPONENT_IDS.values()):
+        raise ValueError("runtime authority must exactly match both Workers")
+    portable_by_component = {
+        component: portable for portable, component in INSTALL_COMPONENT_IDS.items()
+    }
+    normalized_inputs: dict[str, ActivationBindingInput] = {}
+    selections: dict[str, RuntimeBindingSelection] = {}
+    needs_source = False
+    source_snapshot: ConfigSnapshot | None = None
+    source_env_identity: tuple[int, int, str] | None = None
+    for component_id in INSTALL_COMPONENT_IDS.values():
+        supplied = inputs[component_id]
+        model = supplied.model.strip()
+        provider = supplied.provider_id.strip()
+        endpoint = supplied.endpoint_value.strip()
+        if not model or not provider or not endpoint:
+            raise ValueError("runtime authority values must be non-empty")
+        if supplied.credential_grant_kind == "configuration-required":
+            raise ValueError("credential grant is required before installation")
+        normalized = ActivationBindingInput(
+            model,
+            provider,
+            endpoint,
+            supplied.credential_grant_kind,
+            supplied.credential_state,
+        )
+        normalized_inputs[component_id] = normalized
+        selections[portable_by_component[component_id]] = RuntimeBindingSelection(
+            model, provider, endpoint, supplied.credential_grant_kind
+        )
+        if supplied.credential_grant_kind in {
+            "explicit-source-inheritance",
+            "custom-provider-config",
+        }:
+            needs_source = True
+            if source_snapshot is None:
+                source_snapshot = _read_config(detection.hermes_home)
+            _, definition = _custom_provider(source_snapshot, provider, endpoint)
+            allowed = definition.get("models")
+            if isinstance(allowed, list) and model not in allowed:
+                raise ValueError("selected model is not allowed by source Provider")
+            key_env = definition.get("key_env")
+            inline_key = definition.get("api_key")
+            if isinstance(key_env, str) and key_env.strip():
+                assignment = _read_selected_env_assignment(detection.hermes_home / ".env", key_env)
+                if assignment is None:
+                    raise ValueError("selected source Provider key_env is unavailable")
+                source_env_identity = _env_identity(detection.hermes_home / ".env")
+            elif not isinstance(inline_key, str) or not inline_key:
+                raise ValueError("selected source Provider has no usable credential source")
+    source_identity = None
+    if needs_source:
+        assert source_snapshot is not None
+        source_identity = (
+            source_snapshot.device,
+            source_snapshot.inode,
+            source_snapshot.digest,
+        )
+    return RuntimeAuthority(
+        MappingProxyType(selections),
+        MappingProxyType(normalized_inputs),
+        detection.hermes_home,
+        source_identity,
+        source_env_identity,
+    )
+
+
+def validate_runtime_authority(authority: RuntimeAuthority, detection: HermesDetection) -> bool:
+    """Revalidate all source authority immediately before a mutation boundary."""
+    if detection.hermes_home != authority.hermes_home:
+        return False
+    try:
+        if authority.source_config_identity is not None:
+            current = _read_config(detection.hermes_home)
+            if (current.device, current.inode, current.digest) != authority.source_config_identity:
+                return False
+        if authority.source_env_identity is not None and (
+            _env_identity(detection.hermes_home / ".env") != authority.source_env_identity
+        ):
+            return False
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def _marker_identity(path: Path) -> tuple[str, int, int]:
     profile_fd = _safe_profile_fd(path)
     descriptor: int | None = None
@@ -600,6 +702,8 @@ def build_activation_plan(
     discovery: DiscoveryResult,
     detection: HermesDetection,
     inputs: Mapping[str, ActivationBindingInput],
+    *,
+    runtime_authority: RuntimeAuthority | None = None,
 ) -> ActivationPlan:
     """Bind operator inputs only to one descriptor-discovered complete installation."""
     if discovery.status is not DiscoveryStatus.READY or not discovery.targets:
@@ -607,6 +711,11 @@ def build_activation_plan(
     expected_components = set(INSTALL_COMPONENT_IDS.values())
     if set(inputs) != expected_components:
         raise ValueError("activation inputs must exactly match installed components")
+    if runtime_authority is not None and (
+        inputs is not runtime_authority.inputs
+        or not validate_runtime_authority(runtime_authority, detection)
+    ):
+        raise ValueError("runtime authority changed before activation planning")
     if (
         discovery.profiles_root != detection.profiles_root
         or discovery.hermes_home != detection.hermes_home

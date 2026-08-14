@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
 
+from .activation_application import RuntimeAuthority, validate_runtime_authority
 from .execution import CommandExecutor
 from .hermes import HermesDetection, detect_hermes
 from .identity import INITIAL_PROFILE_NAMES, INSTALL_COMPONENT_IDS
@@ -92,9 +93,12 @@ def run_installer(
     adapter_factory: Callable[
         [CommandExecutor, Mapping[str, str], HermesDetection], NativeHermesAdapter
     ] = NativeHermesAdapter,
+    runtime_authority: RuntimeAuthority | None = None,
     **preflight_kwargs: object,
 ) -> InstallerResult:
-    if "binding_selection" not in preflight_kwargs:
+    if runtime_authority is not None:
+        preflight_kwargs["binding_selection"] = runtime_authority.selections
+    elif "binding_selection" not in preflight_kwargs:
         bindings: dict[str, RuntimeBindingSelection] = {}
         for portable_id in INSTALL_COMPONENT_IDS:
             profile_name = INITIAL_PROFILE_NAMES[portable_id]
@@ -111,6 +115,10 @@ def run_installer(
     def install(plan: InstallPlan) -> None:
         nonlocal transaction
         detection = current_detection()
+        if runtime_authority is not None and not validate_runtime_authority(
+            runtime_authority, detection
+        ):
+            return
         if not revalidate_install_plan(plan, detection):
             return
         executor = executor_factory()

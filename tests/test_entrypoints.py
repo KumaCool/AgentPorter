@@ -5,6 +5,7 @@ import os
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -57,11 +58,18 @@ def test_product_entry_forwards_only_minimal_noncredential_environment(
         manifest: object,
         staging: object,
         env: dict[str, str],
+        **kwargs: object,
     ) -> _Result:
         captured.update(env)
         return _Result()
 
     monkeypatch.setattr(agentporter, "run_installer", fake_installer)
+    authority = SimpleNamespace(selections={}, inputs={})
+
+    def collect(_env: dict[str, str]) -> object:
+        return authority
+
+    monkeypatch.setattr(agentporter, "collect_runtime_authority", collect)
 
     with pytest.raises(SystemExit, match="cancelled"):
         agentporter.run_product_installer()
@@ -100,19 +108,82 @@ def test_product_entry_passes_install_choices_directly_to_activation(
         binding_selection=selected,
     )
     captured: list[object] = []
+    authority = SimpleNamespace(selections=selected, inputs={})
+
+    def collect(_env: dict[str, str]) -> object:
+        return authority
+
+    monkeypatch.setattr(agentporter, "collect_runtime_authority", collect)
     monkeypatch.setattr(agentporter, "run_installer", lambda *args, **kwargs: install_result)
     monkeypatch.setattr(
         agentporter,
         "run_activation_with_role_migration",
-        lambda env, *, binding_selection: (
-            captured.append((env, binding_selection))
+        lambda env, *, runtime_authority: (
+            captured.append((env, runtime_authority))
             or SimpleNamespace(status=ActivationStatus.ACTIVATED)
-        ),
+        ),  # pyright: ignore[reportUnknownLambdaType,reportUnknownArgumentType]
     )
 
     agentporter.run_product_installer()
 
-    assert captured and captured[0][1] is selected
+    assert captured and cast(tuple[object, object], captured[0])[1] is authority
+
+
+def test_product_entry_collects_credential_authority_before_profile_transaction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The formal install entry must not create Profiles before asking for grants."""
+    import agentporter
+    from agentporter.activation_application import ActivationStatus
+
+    events: list[str] = []
+    authority = object()
+    install_result = SimpleNamespace(
+        workflow=SimpleNamespace(status=agentporter.WorkflowStatus.CONFIRMED),
+        transaction=SimpleNamespace(status=agentporter.InstallTransactionStatus.INSTALLED),
+        binding_selection={},
+    )
+
+    def collect(*args: object, **kwargs: object) -> object:
+        events.append("credential-grant")
+        return authority
+
+    def profile_transaction(*args: object, **kwargs: object) -> object:
+        assert kwargs["runtime_authority"] is authority
+        events.append("profile-transaction")
+        return install_result
+
+    def activate(*args: object, **kwargs: object) -> object:
+        assert kwargs["runtime_authority"] is authority
+        events.append("activation")
+        return SimpleNamespace(status=ActivationStatus.ACTIVATED)
+
+    monkeypatch.setattr(agentporter, "collect_runtime_authority", collect)
+    monkeypatch.setattr(agentporter, "run_installer", profile_transaction)
+    monkeypatch.setattr(agentporter, "run_activation_with_role_migration", activate)
+
+    agentporter.run_product_installer()
+
+    assert events == ["credential-grant", "profile-transaction", "activation"]
+
+
+@pytest.mark.parametrize("failure", [ValueError("invalid"), EOFError(), KeyboardInterrupt()])
+def test_invalid_or_cancelled_runtime_authority_never_reaches_profile_transaction(
+    monkeypatch: pytest.MonkeyPatch, failure: BaseException
+) -> None:
+    import agentporter
+
+    def reject(_env: dict[str, str]) -> object:
+        raise failure
+
+    monkeypatch.setattr(agentporter, "collect_runtime_authority", reject)
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("Profile transaction must remain untouched")
+
+    monkeypatch.setattr(agentporter, "run_installer", forbidden)
+
+    with pytest.raises(SystemExit, match="authority cancelled or invalid"):
+        agentporter.run_product_installer()
 
 
 def test_uninstall_entry_forwards_only_minimal_noncredential_environment(

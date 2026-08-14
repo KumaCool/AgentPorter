@@ -9,7 +9,7 @@ from importlib.resources import as_file, files
 from pathlib import Path
 
 from .activation_application import ActivationStatus
-from .activation_entry import run_activation_with_role_migration
+from .activation_entry import collect_runtime_authority, run_activation_with_role_migration
 from .application import run_installer
 from .transaction import InstallTransactionStatus
 from .workflow import WorkflowStatus
@@ -49,10 +49,15 @@ def run_product_installer() -> None:
         tempfile.TemporaryDirectory(prefix="agentporter-run-") as temporary,
     ):
         environment = _minimal_install_environment(os.environ)
+        try:
+            runtime_authority = collect_runtime_authority(environment)
+        except (EOFError, KeyboardInterrupt, ValueError) as error:
+            raise SystemExit("AgentPorter runtime authority cancelled or invalid") from error
         result = run_installer(
             manifest,
             Path(temporary),
             environment,
+            runtime_authority=runtime_authority,
         )
     if result.workflow.status is WorkflowStatus.CANCELLED:
         raise SystemExit("AgentPorter installation cancelled")
@@ -62,7 +67,7 @@ def run_product_installer() -> None:
         raise SystemExit(f"AgentPorter installation failed: {result.transaction.status}")
     activation = run_activation_with_role_migration(
         environment,
-        binding_selection=result.binding_selection,
+        runtime_authority=runtime_authority,
     )
     if activation.status not in (ActivationStatus.ACTIVATED, ActivationStatus.RESTRICTED):
         raise SystemExit(f"AgentPorter activation {activation.status}")

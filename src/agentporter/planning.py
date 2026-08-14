@@ -57,6 +57,7 @@ class RuntimeBindingSelection:
     model: str
     provider: str
     endpoint: str
+    credential_grant_kind: str = "configuration-required"
 
     @property
     def normalized(self) -> RuntimeBindingSelection:
@@ -65,7 +66,10 @@ class RuntimeBindingSelection:
         endpoint = self.endpoint.strip()
         if not model or not provider or not endpoint:
             raise ValueError("binding selection values must be non-empty")
-        return RuntimeBindingSelection(model, provider, endpoint)
+        grant = self.credential_grant_kind.strip()
+        if not grant:
+            raise ValueError("credential grant must be non-empty")
+        return RuntimeBindingSelection(model, provider, endpoint, grant)
 
     @property
     def endpoint_summary(self) -> str:
@@ -82,6 +86,7 @@ class WorkerInstallPlan:
     model: str
     provider: str | None
     endpoint_summary: str
+    credential_grant_category: str
     reasoning_effort: str
     description: str
     installable: bool
@@ -164,6 +169,7 @@ def _worker_plans(
                 model=binding.model,
                 provider=binding.provider,
                 endpoint_summary=binding.endpoint_summary,
+                credential_grant_category=binding.credential_grant_kind,
                 reasoning_effort=worker.reasoning_effort,
                 description=worker.description,
                 installable=True,
