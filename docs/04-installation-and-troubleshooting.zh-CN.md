@@ -1,11 +1,11 @@
 # 安装、故障排查与安全发布
 
-> **v0.2.1 本地 release candidate（当前权威；尚未 push、tag 或发布）：** 当前产品恰好只有 `bounded_worker` 与 `mechanical_worker` 两个 Worker Profile；主 Hermes agent 是 orchestrator，不再有独立 orchestrator Profile。v0.2.0 确实发布了错误的第三个 `agentporter-orchestrator`；下文三 Profile 叙述仅是历史发布/阶段证据。legacy 组件现在仅支持发现/卸载，以及单独确认的迁移删除。fresh install、activation、canary 均闭合为两个 binding/call。
+> **v0.2.1 正式发布版（当前权威）：** 当前产品恰好只有 `bounded_worker` 与 `mechanical_worker` 两个 Worker Profile；主 Hermes agent 是 orchestrator，不再有独立 orchestrator Profile。v0.2.0 确实发布了错误的第三个 `agentporter-orchestrator`；下文三 Profile 叙述仅是历史发布/阶段证据。legacy 组件现在仅支持发现/卸载，以及单独确认的迁移删除。fresh install、activation、canary 均闭合为两个 binding/call。
 
 
 [English](04-installation-and-troubleshooting.md) | 简体中文
 
-AgentPorter v0.2.0 是最新正式非预发布版；tag、7 个托管 assets、verifier、fresh HTTPS clone、隔离 wheel import 与公开 `latest` bootstrap 回读均通过。该发布版历史上确实使用三个 Profile（含 `agentporter-orchestrator`），但这是错误拓扑。修正后的 fresh install 只使用 `agentporter-bounded-worker` 与 `agentporter-mechanical-worker`，并为两者显式封闭 model/provider/endpoint。精确旧默认名只能经 `agentporter-activate` 独立确认的 Hermes-native journaled rename 迁移；用户改名保留。Hermes v0.20.0 是**已观察版本**，不是承诺的最低版本或通用兼容范围。
+AgentPorter v0.2.1 是最新正式非预发布版；tag、7 个托管 assets、verifier、fresh HTTPS clone、隔离 package import 与公开 `latest` bootstrap 回读均通过。v0.2.0 历史上确实使用三个 Profile（含 `agentporter-orchestrator`），但这是错误拓扑。修正后的 v0.2.1 fresh install 只使用 `agentporter-bounded-worker` 与 `agentporter-mechanical-worker`，并为两者显式封闭 model/provider/endpoint。legacy orchestrator 删除必须经过单独确认的 Hermes-native 迁移；用户改名保留。Hermes v0.20.0 是**已观察版本**，不是承诺的最低版本或通用兼容范围。
 
 ## curl 一键安装（POSIX）
 
@@ -31,7 +31,7 @@ Linux 的真实 Hermes 验收证据最强。macOS 和 Windows 纳入离线 CI �
 
 ## 从发布制品安装
 
-如需测试本地生成的 v0.2.1 candidate wheel，请先验证校验和并建立隔离环境：
+如需检查已发布的 v0.2.1 wheel，请先验证校验和并建立隔离环境：
 
 ```bash
 python -m venv .venv

@@ -4,7 +4,7 @@
 
 AgentPorter 是一个开源的 [Hermes Agent](https://hermes-agent.nousresearch.com/) 多代理工作组部署方案：一次安装多个职责明确的 Worker Profile，并逐步接通 Hermes 原生 Kanban 的任务分解与合理路由。[职责型身份与自定义推理绑定设计](docs/06-role-identities-and-configurable-model-binding-design.md)已在 v0.2.0 正式发布。
 
-> **当前状态：** v0.2.1 是当前仅本地 release candidate，尚未 push、tag 或发布；v0.2.0 仍是最新正式非预发布版。tag `v0.2.0` 精确指向 `be31eb2af67660780593c716d488ca88e508f710`；GitHub Release 与 7 个托管 assets 已通过 checksum/verifier、fresh HTTPS clone、隔离 wheel import 和公开 `latest/download/install.sh` 字节回读。修正后的 fresh install 只创建 `bounded_worker` 与 `mechanical_worker` 两个 Worker Profile，并为两者显式封闭 model/provider/endpoint。主 Hermes agent 是 orchestrator；当前没有独立 orchestrator Profile。未执行真实模型 canary、Gateway 变更、Kanban mutation 或 live routing，因此不能称为 `operational`。
+> **当前状态：** v0.2.1 是最新正式非预发布版。tag `v0.2.1` 精确指向 `d7078ef0351f92867a033aafd1fdfc6786d13e88`；GitHub Release 与 7 个托管 assets 已通过 checksum/verifier、fresh HTTPS clone、隔离 package import 和公开 `latest/download/install.sh` 字节回读。修正后的 fresh install 只创建 `bounded_worker` 与 `mechanical_worker` 两个 Worker Profile，并为两者显式封闭 model/provider/endpoint。主 Hermes agent 是 orchestrator；当前没有独立 orchestrator Profile。未执行部署、真实模型 canary、Gateway 变更、Kanban mutation 或 live routing，因此不能称为 `operational`。
 
 ## curl 一键安装（POSIX）
 
@@ -56,7 +56,7 @@ agentporter-uninstall
 
 | 维度 | 当前状态 |
 |---|---|
-| installation | v0.2.0 已正式发布；tag、7 个托管 assets、verifier、fresh HTTPS clone、隔离 wheel import 与 `latest` bootstrap 字节回读均通过。 |
+| installation | v0.2.1 已正式发布；tag、7 个托管 assets、verifier、fresh HTTPS clone、隔离 package import 与 `latest` bootstrap 字节回读均通过。 |
 | public entries | bootstrap 会发布 `agentporter`、`agentporter-activate` 和 `agentporter-uninstall`。 |
 | binding/credential | custom Provider binding 可将封印的定义写入两个执行 Worker；凭据可用性仍由 Profile/操作者持有，必须由真实调用证明。 |
 | canary/live call | v0.2.0 发布不声称已执行带凭据的真实 canary；`config check=0`仍只证明静态有效。 |
@@ -161,6 +161,6 @@ AgentPorter 使用 [MIT License](LICENSE) 发布。
 
 AgentPorter v0.2.0 会在 Profile 安装成功后直接串联激活，不再额外询问“是否进入激活”。针对 Hermes v0.20 的 custom Provider，激活器不再调用不受支持的裸 Provider `auth add/status`；它要求主/default Profile 中存在唯一且 endpoint 一致的完整定义，封印来源配置后，将所选 `custom_providers` 条目事务化复制到每个 Worker，再执行绑定和单独确认的真实 canary。复制范围包含用户已放入该定义的 `api_key` 或 `key_env`，但不会打印定义或写入 AgentPorter receipt。缺失、重复、endpoint 不匹配或并发变化均 fail closed。
 
-### 真实 canary 合同（Unreleased 修正）
+### 真实 canary 合同（v0.2.1 修正）
 
 每个 Worker 的 canary timeout 默认 30 秒，支持显式配置为 90 秒。继承定义中的 `key_env` 未解析时必须返回 `credential-required`，除非目标 Worker Profile 自己的 `.env` 可解析。只有封印的具体 custom Provider 定义可使用 canonical provider `custom`，usage 中的 `custom` 也只能映射回该定义。即使退出码为 0，只要 usage 标记 `failed`，仍按封闭安全原因归类，绝不算成功。失败原因保持 `authentication-failed`、`model-unsupported`、`endpoint-unavailable`、`rate-limited`、`probe-timeout`、`response-contract-failed`、`usage-evidence-invalid` 与 `unexpected-runtime-route`。

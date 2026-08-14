@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
 
 AgentPorter is an open-source deployment kit for a reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) multi-agent Worker team. It installs role-specific Profiles in one run and is evolving toward verified task decomposition and routing through Hermes-native Kanban orchestration. The [role-identity and configurable-binding design](docs/06-role-identities-and-configurable-model-binding-design.md) is published in v0.2.0.
 
-> **Current status:** v0.2.1 is the current local release candidate and is not pushed, tagged, or published; v0.2.0 remains the latest published non-prerelease release. Tag `v0.2.0` points to `be31eb2af67660780593c716d488ca88e508f710`; the GitHub Release and all seven hosted assets passed checksum/verifier, fresh HTTPS clone, isolated wheel import, and public `latest/download/install.sh` byte-readback checks. The corrected current product installs exactly two Worker Profiles, `bounded_worker` and `mechanical_worker`, with explicit sealed model/provider/endpoint selections for both. The main Hermes agent is the orchestrator; no independent orchestrator Profile is current. No credentialed model canary, Gateway change, Kanban mutation, or live routing was performed, so this release is not `operational`.
+> **Current status:** v0.2.1 is the latest published non-prerelease release. Tag `v0.2.1` points to `d7078ef0351f92867a033aafd1fdfc6786d13e88`; its GitHub Release and seven hosted assets passed checksum/verifier, fresh HTTPS clone, isolated package import, and public `latest/download/install.sh` byte-readback checks. The corrected product installs exactly two Worker Profiles, `bounded_worker` and `mechanical_worker`, with explicit sealed model/provider/endpoint selections for both. The main Hermes agent is the orchestrator; no independent orchestrator Profile is current. No deployment, credentialed model canary, Gateway change, Kanban mutation, or live routing was performed, so this release is not `operational`.
 
 ## One-line install (POSIX)
 
@@ -56,7 +56,7 @@ Until a later Hermes seam passes separately authorized live acceptance, use Herm
 
 | Dimension | Current state |
 |---|---|
-| installation | v0.2.0 is published; its tag, seven hosted assets, release verifier, fresh HTTPS clone, isolated wheel import, and `latest` bootstrap byte readback passed. |
+| installation | v0.2.1 is published; its tag, seven hosted assets, release verifier, fresh HTTPS clone, isolated package import, and `latest` bootstrap byte readback passed. |
 | public entries | `agentporter`, `agentporter-activate`, and `agentporter-uninstall` are published by the bootstrap transaction. |
 | binding/credential | Custom-provider binding can inherit a sealed definition into each execution Worker; credential availability remains Profile/operator-owned and must be proven by a live call. |
 | canary/live call | No credentialed live canary is claimed for the 0.1.8 release; `config check=0` remains static-only evidence. |
@@ -125,7 +125,7 @@ Design and evidence:
 - [Role-based identity and configurable-binding implementation plan](docs/plan/06-role-identities-and-configurable-model-binding.md)
 - [Changelog](CHANGELOG.md)
 
-The detailed design and plan documents are engineering history and contracts, not universal production-readiness claims. AgentPorter v0.2.0 is the latest published release; its role-name/binding implementation passed release and hosted readback gates, but not live model, Gateway, or Kanban acceptance. Legacy model-derived names remain only compatibility and historical vocabulary and do not imply a Codex CLI adapter.
+The detailed design and plan documents are engineering history and contracts, not universal production-readiness claims. AgentPorter v0.2.1 is the latest published release; its corrected two-Worker topology and binding implementation passed release and hosted readback gates, but not deployment, live model, Gateway, or Kanban acceptance. Legacy model-derived names remain only compatibility and historical vocabulary and do not imply a Codex CLI adapter.
 
 ## Development and security
 
@@ -137,6 +137,6 @@ AgentPorter is licensed under the [MIT License](LICENSE).
 
 AgentPorter 0.1.8 chains activation immediately after a successful Profile installation; there is no extra “enter activation?” prompt. For Hermes v0.20 custom providers, activation does not call unsupported bare-provider `auth add/status`. Instead, it requires an exact provider definition in the main/default Profile, seals that source config, and transactionally copies the complete selected `custom_providers` entry into each Worker before binding and the separately confirmed live canary. This intentionally copies provider configuration, including whichever `api_key` or `key_env` field the operator already placed there; it never prints that definition or stores it in AgentPorter receipts. Missing, duplicate, endpoint-mismatched, or concurrently changed definitions fail closed.
 
-### Truthful canary contract (unreleased correction)
+### Truthful canary contract (v0.2.1 correction)
 
 Canary timeout defaults to 30 seconds per Worker and supports an explicit 90-second value. An inherited provider definition with unresolved `key_env` is `credential-required` unless that exact target Worker Profile owns a resolvable `.env`. A sealed concrete custom-provider definition is invoked through canonical provider `custom`; usage provider `custom` maps only to that sealed definition. Exit-zero usage marked `failed` is classified by its closed safe reason, never accepted. Closed failures remain `authentication-failed`, `model-unsupported`, `endpoint-unavailable`, `rate-limited`, `probe-timeout`, `response-contract-failed`, `usage-evidence-invalid`, and `unexpected-runtime-route`.

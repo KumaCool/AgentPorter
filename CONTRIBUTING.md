@@ -1,6 +1,6 @@
 # Contributing to AgentPorter
 
-AgentPorter v0.2.0 is the latest published release for role-based Profile identities and explicit model/provider/endpoint bindings; its tag, hosted assets, release verifier, and public `latest` readback passed. [Plan 06](docs/plan/06-role-identities-and-configurable-model-binding.md) and its [design](docs/06-role-identities-and-configurable-model-binding-design.md) are the current authority. Contributions must not modify Hermes source or weaken credential, lifecycle, or evidence boundaries.
+AgentPorter v0.2.1 is the latest published release, with the corrected two-Worker topology and explicit model/provider/endpoint bindings; its tag, hosted assets, release verifier, and public `latest` readback passed. [Plan 06](docs/plan/06-role-identities-and-configurable-model-binding.md) and its [design](docs/06-role-identities-and-configurable-model-binding-design.md) remain engineering authorities. Contributions must not modify Hermes source or weaken credential, lifecycle, or evidence boundaries.
 
 ## Before you start
 

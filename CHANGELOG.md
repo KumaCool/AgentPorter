@@ -4,7 +4,9 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
-AgentPorter 0.2.1 is prepared as a local release candidate only. It has not been pushed, tagged, published, or selected by the public `latest` alias; v0.2.0 remains the latest published release.
+## [0.2.1] - 2026-08-14
+
+AgentPorter 0.2.1 is published as the corrective two-Worker release. Tag `v0.2.1`, its seven hosted assets, checksums, release verifier, fresh HTTPS clone, isolated package import, and public `latest` bootstrap byte readback passed. No deployment or post-deployment canary was performed.
 
 ### Fixed
 

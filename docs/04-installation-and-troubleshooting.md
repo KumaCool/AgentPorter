@@ -1,11 +1,11 @@
 # Installation, troubleshooting, and safe release
 
-> **v0.2.1 local release candidate (current authority; not pushed, tagged, or published):** Current fresh install, activation, and canary target exactly two Worker Profiles, `bounded_worker` and `mechanical_worker`; the main Hermes agent is the orchestrator. v0.2.0 truly shipped the erroneous third `agentporter-orchestrator`, now supported only for discovery/uninstall and separately confirmed migration removal.
+> **v0.2.1 published release (current authority):** Fresh install, activation, and canary target exactly two Worker Profiles, `bounded_worker` and `mechanical_worker`; the main Hermes agent is the orchestrator. v0.2.0 truly shipped the erroneous third `agentporter-orchestrator`, now supported only for discovery/uninstall and separately confirmed migration removal.
 
 
 English | [简体中文](04-installation-and-troubleshooting.zh-CN.md)
 
-AgentPorter v0.2.0 is the latest published non-prerelease release. Its tag, seven hosted assets, verifier, fresh HTTPS clone, isolated wheel import, and public `latest` bootstrap readback passed. The published release historically used three Profiles, including `agentporter-orchestrator`; that is true release evidence but an erroneous topology. Corrected fresh installs use only `agentporter-bounded-worker` and `agentporter-mechanical-worker`, with explicit sealed model/provider/endpoint selections for both. Exact legacy defaults migrate only through separately confirmed, Hermes-native journaled rename in `agentporter-activate`; user-renamed Profiles are preserved. Hermes v0.20.0 is an **observed version**, not a promised minimum or universal compatibility range.
+AgentPorter v0.2.1 is the latest published non-prerelease release. Its tag, seven hosted assets, verifier, fresh HTTPS clone, isolated package import, and public `latest` bootstrap readback passed. v0.2.0 historically used three Profiles, including `agentporter-orchestrator`; that remains true release evidence but was an erroneous topology. Corrected v0.2.1 fresh installs use only `agentporter-bounded-worker` and `agentporter-mechanical-worker`, with explicit sealed model/provider/endpoint selections for both. Legacy orchestrator removal requires a separately confirmed Hermes-native migration; user-renamed Profiles are preserved. Hermes v0.20.0 is an **observed version**, not a promised minimum or universal compatibility range.
 
 ## One-line POSIX install
 
@@ -31,7 +31,7 @@ Linux has the strongest real-Hermes acceptance evidence. macOS and Windows are c
 
 ## Install from a release artifact
 
-To test the locally generated v0.2.1 candidate wheel, verify its checksum and create a disposable environment:
+To inspect the published v0.2.1 wheel, verify its checksum and create a disposable environment:
 
 ```bash
 python -m venv .venv
