@@ -2,7 +2,7 @@
 
 English | [简体中文](04-installation-and-troubleshooting.zh-CN.md)
 
-AgentPorter v0.1.4 is released. It installs and reads back three Profiles, but the released bootstrap publishes only `agentporter-uninstall`; the public `agentporter-activate` command is missing and the formal probe remains fixed to unsupported. The two Workers therefore still need a subsequent AgentPorter fix to automate provider/endpoint/Profile-local credentials and the live-call continuation. Hermes v0.20.0 is an **observed version**, not a promised minimum or universal compatibility range.
+AgentPorter v0.1.8 remains the current published release. The unreleased Plan 06 offline candidate uses `agentporter-bounded-worker`, `agentporter-mechanical-worker`, and `agentporter-orchestrator` for fresh installs and requires explicit sealed model/provider/endpoint selections for all three Profiles before staging. Exact legacy defaults migrate only through separately confirmed, Hermes-native journaled rename in `agentporter-activate`; user-renamed Profiles are preserved. Hermes v0.20.0 is an **observed version**, not a promised minimum or universal compatibility range.
 
 ## One-line POSIX install
 
@@ -28,13 +28,13 @@ Linux has the strongest real-Hermes acceptance evidence. macOS and Windows are c
 
 ## Install from a release artifact
 
-To install a downloaded v0.1.4 wheel manually, verify its published checksum and create a disposable environment:
+To install a downloaded v0.1.8 wheel manually, verify its published checksum and create a disposable environment:
 
 ```bash
 python -m venv .venv
 # POSIX: source .venv/bin/activate
 # Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install agentporter-0.1.4-py3-none-any.whl
+python -m pip install agentporter-0.1.8-py3-none-any.whl
 agentporter
 ```
 
@@ -42,7 +42,7 @@ agentporter
 
 ## Release-candidate bootstrap boundary
 
-Before the hosted v0.1.4 wheel, checksum, and `install.sh` assets exist, the source-tree `install.sh` is intentionally **not executable as a user installation path**: it is pinned to the immutable `https://github.com/KumaCool/AgentPorter/releases/download/v0.1.4` assets prepared for publication. Current users must continue to use `https://github.com/KumaCool/AgentPorter/releases/latest/download/install.sh`. Publication must upload immutable assets first, then externally read back both the v0.1.4 URLs and the `latest` alias, compare bytes/checksums, and rerun the verifier.
+Before the hosted v0.1.8 wheel, checksum, and `install.sh` assets exist, the source-tree `install.sh` is intentionally **not executable as a user installation path**: it is pinned to the immutable `https://github.com/KumaCool/AgentPorter/releases/download/v0.1.8` assets prepared for publication. Current users must continue to use `https://github.com/KumaCool/AgentPorter/releases/latest/download/install.sh`. Publication must upload immutable assets first, then externally read back both the v0.1.8 URLs and the `latest` alias, compare bytes/checksums, and rerun the verifier.
 
 ## Run from source
 
@@ -61,7 +61,7 @@ The source checkout and artifact must come from a commit you trust. Do not run f
 
 Terminal statuses distinguish success, cancellation, preflight failure, install failure with compensation, incomplete compensation, and readback failure. Treat anything other than the explicit success result as not installed or requiring inspection; never infer success from some profile directories being present.
 
-AgentPorter v0.1.4 installs two dedicated Worker Profiles and one dedicated orchestrator Profile. Its static orchestrator configuration is installed and read back. It does not overwrite existing profiles, copy provider credentials, invoke a model, install a daemon, or create a task database. Profile-local credentials and runtime data remain managed by Hermes and the user.
+The unreleased candidate installs two dedicated Worker Profiles and one dedicated orchestrator Profile under the three role names above. It does not overwrite user-renamed Profiles, invoke a model during install/rename/static readback, install a daemon, or create a task database. Binding configuration and any provider-definition inheritance remain independently confirmed activation work; Profile-local credentials and runtime data remain managed by Hermes and the user.
 
 Static orchestrator configuration is installed and read back, but auto decomposition remains disabled; AgentPorter does **not** start Gateway, create Kanban tasks, enable live routing, or prove live task routing. Those capabilities are tracked in the [multi-agent orchestration plan](plan/02-multi-agent-orchestration.md).
 
@@ -83,15 +83,15 @@ If discovery is absent, incomplete, duplicated, conflicting, malformed, changed,
 
 | Dimension | Current state |
 |---|---|
-| installation | 0.1.4 is released; fresh/legacy three-Profile lifecycle contracts and target-host installation readback passed. |
-| public entries | `agentporter-uninstall` is public; `agentporter-activate` exists only in the private environment until 0.1.5. |
-| binding/credential | Both Workers lack provider/endpoint/Profile-local credentials and remain `configuration-required`. |
+| installation | 0.1.8 is released; the Plan 06 offline candidate uses three role names and remains unpublished. |
+| public entries | 0.1.8 publishes all three entries; candidate legacy-name migration is reached only through independently confirmed `agentporter-activate`. |
+| binding/credential | Candidate fresh installs require explicit model/provider/endpoint for all three Profiles before staging; credentials remain Profile/operator-owned. |
 | canary/live call | Real calls failed with `No inference provider configured`; `config check` remains static-only and is not canary evidence. |
 | route proof | Hermes v0.20 usage exposes model/provider/api_calls but not tool/fallback fields; a 0.1.5 success initially has incomplete proof. |
 | dispatcher/route | AgentPorter does not start Gateway; Kanban mutation and live routing remain unaccepted. |
 | continuity | `DispatchReceipt`, task subscription (`notify-list`), observation, and structural resume remain offline-only; no live notification or continuation is claimed. |
 
-Released 0.1.4 cannot complete activation through a public command. The subsequent [0.1.5 design](05-runtime-activation-and-live-call-design.md) changes AgentPorter only: it publishes all three public entries, orchestrates native Profile auth, and runs a separately authorized real one-shot. It does not modify Hermes source.
+Plan 06 code/offline gates are closed, but no real model canary, Gateway change, Kanban mutation/live routing, push, release, or hosted-artifact readback was executed. Each requires separate authorization; the candidate is not `operational` and does not modify Hermes source.
 
 ## Troubleshooting
 
@@ -119,7 +119,7 @@ Never post raw config files, marker paths, credentials, sessions, memories, or p
 
    ```bash
    python scripts/verify_release.py \
-     --version 0.1.4 \
+     --version 0.1.8 \
      --dependency 'pydantic<3,>=2' \
      --dependency 'PyYAML<7,>=6' \
      --entry-point 'agentporter=agentporter:main' \
@@ -141,9 +141,9 @@ Never post raw config files, marker paths, credentials, sessions, memories, or p
 6. Inspect checksums, commit identity, tag, changelog, license, README, and verifier output before upload. Publish only the exact verified bytes.
 7. Download hosted artifacts, recompute checksums, and rerun verification. A tag or successful upload alone is not acceptance.
 
-The example resource path is the v0.1.4 release contract. Hosted release acceptance additionally downloads every published asset, recomputes checksums, reruns this verifier, and checks the public `latest/download/install.sh` endpoint.
+The example resource path is the v0.1.8 release contract. Hosted release acceptance additionally downloads every published asset, recomputes checksums, reruns this verifier, and checks the public `latest/download/install.sh` endpoint.
 
-## 0.1.7 release candidate
+## Historical 0.1.7 activation amendment
 
 The bootstrap now fails before downloading or creating installation paths when `/dev/tty` cannot actually be opened as a terminal; file readability alone is not treated as interactive-terminal authority.
 

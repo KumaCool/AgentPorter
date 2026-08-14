@@ -13,10 +13,31 @@ from typing import cast
 
 import yaml
 
+from .identity import PRODUCT_ID, portable_id_for_component
+from .models import MarkerV1
 from .readiness import ReadinessEvidence, RuntimeBinding
-from .runtime_binding import RuntimeBindingReceipt
+from .runtime_binding import RuntimeBindingPlan, RuntimeBindingReceipt, binding_fingerprint
 
 _MAX_FILE = 1024 * 1024
+_CANARY_FIELDS = {
+    *RuntimeBindingReceipt.__dataclass_fields__,
+    "config_readback_passed",
+    "canary_status",
+    "canary_reason_code",
+    "canary_evidence_digest",
+    "probe_started_at",
+    "probe_finished_at",
+    "fresh_until",
+    "binding_fingerprint",
+    "actual_model",
+    "actual_provider",
+    "api_calls",
+    "tool_calls_observed",
+    "fallback_used",
+    "response_contract_passed",
+    "nonce_contract_passed",
+    "nonce_digest",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,22 +93,51 @@ def load_profile_readiness(
             or not isinstance(receipt_obj, dict)
         ):
             raise ValueError("authority documents must be mappings")
-        marker = cast(dict[str, object], marker_obj)
+        marker = MarkerV1.model_validate(marker_obj)
+        if marker.product_id != PRODUCT_ID:
+            raise ValueError("marker provenance is invalid")
         config = cast(dict[str, object], config_obj)
         receipt = cast(dict[str, object], receipt_obj)
+        if set(receipt) != _CANARY_FIELDS:
+            raise ValueError("runtime authority receipt schema is invalid")
         model_obj = config.get("model")
         if not isinstance(model_obj, dict):
             raise ValueError("current model config is invalid")
         model = cast(dict[str, object], model_obj)
         base = {key: receipt[key] for key in RuntimeBindingReceipt.__dataclass_fields__}
         parsed = RuntimeBindingReceipt.from_dict(base)
+        current_model = model.get("default")
+        current_provider = model.get("provider")
+        current_endpoint = model.get("base_url")
+        if not all(
+            isinstance(value, str) and value.strip()
+            for value in (current_model, current_provider, current_endpoint)
+        ):
+            raise ValueError("current binding config is invalid")
+        portable_id = portable_id_for_component(marker.component_id)
+        current_config_digest = _digest(config_bytes)
+        reconstructed = RuntimeBindingPlan.from_values(
+            portable_id=portable_id,
+            component_id=marker.component_id,
+            current_profile_name=profile_path.name,
+            expected_model=cast(str, current_model),
+            provider_id=cast(str, current_provider),
+            endpoint_value=cast(str, current_endpoint),
+            credential_grant_kind=parsed.credential_grant_kind,
+            credential_state=parsed.credential_state,
+            hermes_version=hermes_version,
+            config_digest=current_config_digest,
+        )
         if (
-            marker.get("component_id") != parsed.component_id
+            marker.component_id != parsed.component_id
             or profile_path.name != parsed.profile_name
-            or model.get("default") != parsed.model
-            or model.get("provider") != parsed.provider
-            or _digest(config_bytes) != parsed.config_digest
+            or current_model != parsed.model
+            or current_provider != parsed.provider
+            or reconstructed.endpoint_digest != parsed.endpoint_digest
+            or current_config_digest != parsed.config_digest
             or hermes_version != parsed.hermes_version
+            or receipt.get("binding_fingerprint") != binding_fingerprint(reconstructed)
+            or receipt.get("config_readback_passed") is not True
             or receipt.get("canary_status") != "passed"
             or receipt.get("canary_reason_code") != "runtime-ready"
             or receipt.get("actual_model") != parsed.model
@@ -102,14 +152,15 @@ def load_profile_readiness(
         finished = datetime.fromisoformat(cast(str, receipt["probe_finished_at"]))
         fresh_until = datetime.fromisoformat(cast(str, receipt["fresh_until"]))
         binding = RuntimeBinding(
-            parsed.profile_name,
+            portable_id,
             parsed.component_id,
             parsed.profile_name,
             parsed.model,
             parsed.provider,
             "profile-config",
-            cast(str, receipt["binding_fingerprint"]),
+            binding_fingerprint(reconstructed),
             parsed.config_digest,
+            parsed.endpoint_digest,
         )
         evidence = ReadinessEvidence(
             "runtime-ready",

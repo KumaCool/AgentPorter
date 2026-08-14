@@ -1,13 +1,13 @@
 # AgentPorter 职责型 Worker 身份与自定义推理绑定设计
 
-- **状态：** 设计已批准，尚未开发
+- **状态：** Plan 06 离线代码候选已实现；0.1.8 仍是正式发布版，候选尚未发布
 - **目标版本：** 下一功能版本（版本号由发布阶段决定）
 - **依赖：** 已发布的 AgentPorter 0.1.8、Hermes 名称无关 Profile marker、现有运行绑定与真实 canary 合同
 - **实施计划：** [Plan 06](plan/06-role-identities-and-configurable-model-binding.md)
 
 ## 1. 目标
 
-下一功能版本同时完成两项不可分割的产品语义修正：
+Plan 06 离线代码候选已完成两项不可分割的产品语义修正：
 
 1. Worker 的产品名称只表达职责，不再包含 `Luna`、`Codex`、`GPT`、模型版本或能力规模；
 2. model/provider/endpoint 成为用户可配置的运行绑定，不再由打包清单写死，同时保持每个 Worker 的功能职责不变。
@@ -28,9 +28,9 @@
 
 名称、职责、模型和凭据不得互相推导。
 
-## 2. 当前事实与缺口
+## 2. 当前候选事实与发布/现场缺口
 
-当前 0.1.8 的三个打包 Profile 为：
+0.1.8 发布制品的三个历史默认 Profile 如下；当前候选的新写入不再使用这些名称：
 
 | 当前 Portable ID | 当前初始 Profile 名 | 当前模型请求 | 职责 |
 |---|---|---|---|
@@ -38,7 +38,7 @@
 | `codex_5_3_small_worker` | `codex-5-3-small-worker` | `gpt-5.3-codex-spark` | 更窄的机械任务 |
 | `agentporter_orchestrator` | `agentporter-orchestrator` | `gpt-5.6-luna` | Kanban 编排控制面 |
 
-现有模型贯穿 `workers.yaml`、安装计划、渲染配置、激活绑定、readiness、派发收据和测试。当前安装期只支持 provider selection；激活期只收集 provider/endpoint，并把 Profile 中已有 model 当作不可变预期值。结果是职责、产品名称和推理实现被错误绑定。
+Plan 06 候选已将角色清单与运行绑定拆分：fresh install 使用职责名，三个 Profile 在 staging 前必须提供闭合的 model/provider/endpoint sealed selection；激活期可对三个 Profile 原子配置绑定。model/provider/endpoint 任一变化都会使 readiness、fingerprint 与依赖其派发证据失效。
 
 现有 marker 已提供名称无关的固定 component UUID，且发现、激活和卸载可按当前 Profile 名工作。这是迁移的身份基础，不需要重建组件或修改 Hermes 源码。
 
@@ -301,7 +301,7 @@ operational（仍要求 dispatcher/route/continuity）
 - 自动发现 Provider 模型目录并替用户决策；
 - 修改 Hermes 的 Profile、auth、Gateway 或 Kanban 实现；
 - 把 Profile 重命名变成通用 AgentPorter 管理命令；
-- 在本次文档阶段开发代码、修改 schema、运行真实模型或发布版本。
+- 在未单独授权时运行真实模型、变更 Gateway、执行 Kanban mutation、push 或发布版本。
 
 ## 9. 迁移、软件回滚与卸载连续性
 
@@ -317,4 +317,4 @@ operational（仍要求 dispatcher/route/continuity）
 
 软件回滚事务必须先验证目标版本的 activation/discovery/uninstall 能力，再切换公共入口；失败时 compare-before-restore 当前新版本入口，不能留下“旧 activation + 无受支持 uninstaller”的混合集合。推理绑定和 provider definition 不随软件回滚迁移或覆盖，旧硬编码模型不得恢复。实施阶段必须以真实 0.1.8 fixture 验证旧默认名 → 新名 → 激活/卸载、中断恢复和入口回滚矩阵。
 
-本文是下一功能版本的权威目标设计；在 Plan 06 完成并发布前，0.1.8 的现有名称和固定模型仍是当前实现事实，不能描述为已经迁移。
+本文是 Plan 06 的权威设计。HEAD 30f9d60 的离线代码候选已经实现职责名、显式三 Profile 绑定、旧默认名 journaled Hermes-native rename、用户改名保留和 readiness 失效；0.1.8 仍是正式发布制品。真实 model canary、Gateway、Kanban mutation/live routing、push、release 与托管读回均未执行且分别需授权，不能声称 operational。

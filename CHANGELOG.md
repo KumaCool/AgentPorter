@@ -4,9 +4,18 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
-### Documentation
+### Added
 
-- Approved and documented the next functional version's role-based Worker identities and configurable inference bindings. The target preserves all three permanent component UUIDs and role boundaries, migrates model-derived default names to bounded/mechanical names without overwriting user-renamed Profiles, and requires explicit per-Profile model/provider/endpoint bindings with readiness invalidation on change. No implementation or live model operation is included in this documentation change.
+- Implemented the unreleased Plan 06 offline candidate for role-based Worker identities and configurable inference bindings. Fresh installs use bounded/mechanical/orchestrator role names and require explicit sealed model/provider/endpoint selections for all three Profiles before staging.
+- Added an independently confirmed `agentporter-activate` migration for exact legacy default names using Hermes-native, persistent-journaled rename operations. Permanent component UUIDs and user-renamed Profile names are preserved.
+
+### Changed
+
+- Model, provider, or endpoint changes now invalidate prior readiness and binding-dependent dispatch evidence; role definitions no longer carry fixed model IDs.
+
+### Security
+
+- The candidate's install, static readback, rename, update, and uninstall paths remain offline and fail closed. No real model canary, Gateway change, Kanban mutation, live routing, push, release, or hosted-artifact readback has been performed; 0.1.8 remains the current published release and the candidate is not `operational`.
 
 ## [0.1.8] - 2026-08-14
 

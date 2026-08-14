@@ -18,6 +18,7 @@ from .activation_application import (
 from .hermes import HermesDetection, detect_hermes
 from .hermes_runtime import HermesRuntime
 from .identity import INSTALL_COMPONENT_IDS
+from .plan06_role_bindings import CredentialGrantSelection, classify_credential_grant
 from .role_name_migration_application import (
     RoleMigrationApplicationStatus,
     run_role_name_migration_gate,
@@ -104,12 +105,34 @@ def _run_binding_activation(
         model = input_fn(f"Model ID for {target.current_name}: ").strip()
         provider = input_fn(f"Provider ID for {target.current_name}: ").strip()
         endpoint = endpoint_reader(f"Endpoint for {target.current_name} (hidden): ")
+        raw_grant = input_fn(
+            f"Credential grant for {target.current_name} "
+            "(existing-profile-definition/explicit-source-inheritance/profile-auth, "
+            "blank=configuration-required): "
+        ).strip()
+        requested = CredentialGrantSelection(raw_grant) if raw_grant else None
+        classification = classify_credential_grant(
+            portable_id=next(
+                portable
+                for portable, expected_component in INSTALL_COMPONENT_IDS.items()
+                if expected_component == component_id
+            ),
+            existing_profile_definition=True,
+            requested=requested,
+            source_profile_kind="main-default"
+            if requested is CredentialGrantSelection.EXPLICIT_SOURCE_INHERITANCE
+            else None,
+        )
+        grant_kind = classification
+        credential_state = (
+            "unresolved" if classification == "configuration-required" else "operator-authorized"
+        )
         inputs[target.component_id] = ActivationBindingInput(
             model,
             provider,
             endpoint,
-            "custom-provider-config",
-            "operator-authorized",
+            grant_kind,
+            credential_state,
         )
     plan = build_activation_plan(discovery, found, inputs)
     runtime = runtime_factory(found.executable)

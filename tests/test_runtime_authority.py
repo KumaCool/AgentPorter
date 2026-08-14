@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -8,6 +9,7 @@ import yaml
 from test_activation_application import _inputs, _installation
 
 from agentporter.activation_application import apply_activation, build_activation_plan
+from agentporter.identity import portable_id_for_component
 from agentporter.runtime_authority import invalidate_runtime_readiness, load_profile_readiness
 from agentporter.runtime_probe import ProbeObservation
 
@@ -41,7 +43,39 @@ def test_authority_is_rebuilt_from_current_marker_config_version_and_receipt(
     )
 
     assert token.evidence[0].binding.component_id == target.component_id
+    assert token.evidence[0].binding.portable_id == portable_id_for_component(target.component_id)
     assert token.evidence[0].dispatch_eligibility == "eligible"
+
+
+def test_authority_recomputes_canonical_fingerprint_from_current_state(tmp_path: Path) -> None:
+    plan = _activate(tmp_path)
+    target = plan.bindings[0]
+    receipt_path = target.profile_path / "local/agentporter/runtime-binding.json"
+    original = json.loads(receipt_path.read_text())
+
+    tampered_documents: list[dict[str, object]] = []
+    for field, value in (
+        ("binding_fingerprint", "0" * 64),
+        ("endpoint_digest", "1" * 64),
+        ("component_id", plan.bindings[1].component_id),
+        ("profile_name", plan.bindings[1].profile_name),
+        ("config_digest", "2" * 64),
+    ):
+        changed = deepcopy(original)
+        changed[field] = value
+        tampered_documents.append(changed)
+    extended = deepcopy(original)
+    extended["untrusted_extension"] = True
+    tampered_documents.append(extended)
+
+    for receipt in tampered_documents:
+        receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+        assert (
+            load_profile_readiness(
+                target.profile_path, hermes_version="0.20.0", now=datetime.now(UTC)
+            ).evidence
+            == ()
+        )
 
 
 def test_authority_rejects_current_config_or_marker_drift(tmp_path: Path) -> None:

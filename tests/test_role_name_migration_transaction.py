@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from agentporter.execution import CommandOutcome, CommandStatus
 from agentporter.identity import PRODUCT_ID
 from agentporter.role_identity_compat import CANONICAL_COMPONENT_IDS
@@ -106,6 +108,40 @@ def test_second_failure_compensates_only_first_when_still_bound(tmp_path: Path) 
         (OLD_NAMES[1], NEW_NAMES[1]),
         (NEW_NAMES[0], OLD_NAMES[0]),
     ]
+    assert all((root / name).is_dir() for name in OLD_NAMES)
+    assert not journal.exists()
+
+
+@pytest.mark.parametrize(
+    ("failure_status", "returncode"),
+    [
+        (CommandStatus.FAILED, 9),
+        (CommandStatus.TIMED_OUT, None),
+        (CommandStatus.INTERRUPTED, None),
+    ],
+)
+def test_unsuccessful_cli_after_rename_effect_is_discovered_journaled_and_compensated(
+    tmp_path: Path, failure_status: CommandStatus, returncode: int | None
+) -> None:
+    root = (tmp_path / "hermes" / "profiles").resolve()
+    _set(root)
+    journal = tmp_path / "private" / "role-name-migration.json"
+    calls: list[tuple[str, str]] = []
+
+    def rename_then_report_failure(current: str, target: str) -> CommandOutcome:
+        calls.append((current, target))
+        (root / current).rename(root / target)
+        status = failure_status if len(calls) == 1 else CommandStatus.SUCCEEDED
+        return CommandOutcome(status, ("hermes",), returncode if len(calls) == 1 else 0, "", "")
+
+    result = execute_role_name_migration(
+        build_role_name_migration_plan(discover_installation(root), journal),
+        rename=rename_then_report_failure,
+        rediscover=lambda: discover_installation(root),
+    )
+
+    assert result.status is MigrationStatus.COMPENSATED
+    assert calls == [(OLD_NAMES[0], NEW_NAMES[0]), (NEW_NAMES[0], OLD_NAMES[0])]
     assert all((root / name).is_dir() for name in OLD_NAMES)
     assert not journal.exists()
 

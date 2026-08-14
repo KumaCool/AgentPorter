@@ -1,6 +1,6 @@
 # AgentPorter 职责型 Worker 身份与自定义推理绑定实施计划
 
-> **状态：** 设计已批准，实施待开始；本次提交仅落地文档，不开发、不调用真实模型、不发布。
+> **状态：** Plan 06 离线代码候选已实现；唯一集中复审已完成，四项确定性 BLOCK 已关闭，复审后完整门禁通过。0.1.8 仍是正式发布版；未 push、未发布、未托管读回。
 
 **Goal:** 在保持三个 Worker 职责、component UUID 和 Hermes 原生边界不变的前提下，把模型语义名称迁移为职责型身份，并让三个 Profile 的 model/provider/endpoint 由用户显式配置和真实验证。
 
@@ -335,7 +335,7 @@ pytest -q tests/test_domain.py tests/test_planning.py tests/test_render.py tests
 
 Phase F 收口前必须逐行读回证据；任一 ROLE 不能用另一行或笼统 APPROVE 代替。
 
-## 8. Phase F：门禁、一次复审、交付
+## 8. Phase F：代码/离线门禁已闭合，复审与发布边界
 
 执行顺序：
 
@@ -371,12 +371,24 @@ git diff --check
 - **Phase E 停止条件：** old/new/user-renamed 跨版本矩阵及制品隐私门禁通过。
 - **Phase F 完成条件：** 完整门禁、唯一复审 BLOCK、文档、提交、授权 push、发布和托管制品读回全部闭合。真实模型/Gateway/Kanban 验收状态分别报告。
 
-## 10. 本次文档落地状态
+## 10. 当前候选关闭状态
 
-- 设计：已批准并落地；
-- 计划：已落地；
-- 代码/schema/tests：未修改；
-- 本机正式 Profile：未修改；
-- 模型调用：零；
-- Gateway/Kanban：零操作；
-- 发布：未执行。
+- 设计与计划：已同步到 Plan 06 候选事实；
+- 代码/schema/tests：冻结候选 `30f9d60` 的离线实现已完成；唯一集中复审提出的四项确定性代码 BLOCK 已全部关闭；
+- fresh install：使用 bounded/mechanical/orchestrator 职责名；三个 Profile 必须在 staging 前显式封闭 model/provider/endpoint；
+- legacy：精确旧默认名通过 `agentporter-activate` 独立确认的 Hermes-native journaled rename 迁移；用户改名保留；
+- readiness：model/provider/endpoint 任一变化都会使旧 readiness 与 binding-dependent evidence 失效；持久 authority 会从 marker/config/endpoint 重算职责与 fingerprint，拒绝 receipt 篡改；
+- ROLE-01…ROLE-22：代码与离线证据已逐项关闭，摘要见下节；
+- 唯一独立复审：已完成，结论为 BLOCK；已关闭 rename effect/journal、逐 Profile credential-grant、三 Profile canary 授权计数和 readiness authority 重建四项问题。按用户要求不进行第二次或递归复审；
+- 复审关闭后完整门禁：`894 passed, 1 skipped`；Ruff format/check、Pyright 与 `git diff --check` 通过。唯一 skip 是 Hermes v0.20 无可证明禁用 tools/fallback 的 live-probe seam，不构成 live acceptance；
+- 本机正式 Profile、真实 model canary、Gateway、Kanban mutation/live routing：未执行，分别需授权；
+- 0.1.8 仍是正式发布版；push、release、托管制品读回：未授权、未执行；候选不能称为 `operational`。
+
+## 11. ROLE-01…ROLE-22 离线关闭证据摘要
+
+- **ROLE-01…04：** 当前 manifest、职责名和用户输出使用 bounded/mechanical/orchestrator；固定 UUID、tier、SOUL、路由职责与拒绝边界保持。
+- **ROLE-05…07：** install/update/rename/static readback/uninstall 的零 live-side-effect guard、无默认/占位/fallback 模型、用户配置与 Profile-owned 数据保持合同闭合。
+- **ROLE-08…11：** 安装/迁移/activation 安全投影、分层状态及 model/provider/endpoint/fingerprint 变化导致 readiness 失效已有离线覆盖。
+- **ROLE-12…16：** fresh 三职责名、0.1.8 legacy UUID 兼容、用户改名保留、冲突/partial/duplicate/mixed-ID/unknown fail-closed，以及持久 journal continue/rollback/漂移 residue 已由隔离 Hermes/事务测试覆盖。
+- **ROLE-17…19：** old/new/user-renamed 激活与生命周期兼容、三个 Profile 独立相同/不同绑定、普通软件更新保留名称与绑定合同闭合。
+- **ROLE-20…22：** RED provenance、正式入口 reachability、focused/full offline gates、制品/链接/隐私边界与 offline/live 授权 ledger 已闭合；真实模型、Gateway、Kanban 与发布仍明确未验收。

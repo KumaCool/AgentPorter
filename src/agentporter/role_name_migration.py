@@ -402,6 +402,10 @@ def _unlink_private(path: Path) -> bool:
         return False
 
 
+def _complete_old_collection(discovery: DiscoveryResult, plan: RoleNameMigrationPlan) -> bool:
+    return all(_bound(discovery, item, item.current_name) for item in plan.items)
+
+
 def execute_role_name_migration(
     plan: RoleNameMigrationPlan,
     *,
@@ -430,9 +434,8 @@ def execute_role_name_migration(
                     True,
                 )
             outcome = rename(item.target_name, item.current_name)
-            if outcome.status is not CommandStatus.SUCCEEDED or not _bound(
-                rediscover(), item, item.current_name
-            ):
+            observed = rediscover()
+            if not _bound(observed, item, item.current_name):
                 return MigrationResult(
                     MigrationStatus.COMPENSATION_INCOMPLETE,
                     tuple(completed),
@@ -441,6 +444,15 @@ def execute_role_name_migration(
                 )
             completed.remove(item.portable_id)
             _write_private(plan.journal_path, _encoded(_payload(plan, tuple(completed))))
+            if outcome.status is not CommandStatus.SUCCEEDED:
+                continue
+        if not _complete_old_collection(rediscover(), plan):
+            return MigrationResult(
+                MigrationStatus.COMPENSATION_INCOMPLETE,
+                tuple(completed),
+                tuple(item.portable_id for item in plan.items),
+                True,
+            )
         removed = _unlink_private(plan.journal_path)
         return MigrationResult(MigrationStatus.COMPENSATED, journal_residue=not removed)
 
@@ -458,9 +470,12 @@ def execute_role_name_migration(
                 MigrationStatus.AMBIGUOUS, tuple(completed), journal_residue=True
             )
         outcome = rename(item.current_name, item.target_name)
-        if outcome.status is not CommandStatus.SUCCEEDED or not _bound(
-            rediscover(), item, item.target_name
-        ):
+        observed = rediscover()
+        effect_completed = _bound(observed, item, item.target_name)
+        if effect_completed and item.portable_id not in completed:
+            completed.append(item.portable_id)
+            _write_private(plan.journal_path, _encoded(_payload(plan, tuple(completed))))
+        if outcome.status is not CommandStatus.SUCCEEDED or not effect_completed:
             if not compensate_on_failure:
                 return MigrationResult(
                     MigrationStatus.FAILED, tuple(completed), journal_residue=True
@@ -472,10 +487,9 @@ def execute_role_name_migration(
                 if not _bound(rediscover(), restored, restored.target_name):
                     residue.append(restored.portable_id)
                     continue
-                rollback = rename(restored.target_name, restored.current_name)
-                if rollback.status is not CommandStatus.SUCCEEDED or not _bound(
-                    rediscover(), restored, restored.current_name
-                ):
+                rename(restored.target_name, restored.current_name)
+                rollback_observed = rediscover()
+                if not _bound(rollback_observed, restored, restored.current_name):
                     residue.append(restored.portable_id)
                     continue
                 completed.remove(restored.portable_id)
@@ -487,10 +501,15 @@ def execute_role_name_migration(
                     tuple(residue),
                     True,
                 )
+            if not _complete_old_collection(rediscover(), plan):
+                return MigrationResult(
+                    MigrationStatus.COMPENSATION_INCOMPLETE,
+                    tuple(completed),
+                    tuple(item.portable_id for item in plan.items),
+                    True,
+                )
             removed = _unlink_private(plan.journal_path)
             return MigrationResult(MigrationStatus.COMPENSATED, journal_residue=not removed)
-        completed.append(item.portable_id)
-        _write_private(plan.journal_path, _encoded(_payload(plan, tuple(completed))))
 
     current = rediscover()
     if any(not _bound(current, item, item.target_name) for item in plan.items):

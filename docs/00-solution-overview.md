@@ -12,7 +12,7 @@
 | route proof | Hermes v0.20 `--usage-file`可报告 model/provider/api_calls，但不报告 tool_calls/fallback；未来成功调用应分层为 `live-call-passed + route-proof-incomplete`。 |
 | dispatcher | 专用 orchestrator静态配置已读回；未启动 Gateway，未验收 live dispatcher/Kanban。 |
 
-0.1.5–0.1.8 已交付运行激活基础。下一功能版本的已批准主线是[职责型 Worker 身份与自定义推理绑定设计](06-role-identities-and-configurable-model-binding-design.md)及[Plan 06](plan/06-role-identities-and-configurable-model-binding.md)：保持永久 component UUID 与 Worker 职责不变，将模型语义名称迁移为职责型名称，并让三个 Profile 的 model/provider/endpoint 由用户显式配置。当前仅完成文档，尚未开发；不得修改或 import Hermes 源码。
+0.1.5–0.1.8 已交付运行激活基础。下一功能版本的已批准主线是[职责型 Worker 身份与自定义推理绑定设计](06-role-identities-and-configurable-model-binding-design.md)及[Plan 06](plan/06-role-identities-and-configurable-model-binding.md)：保持永久 component UUID 与 Worker 职责不变，将模型语义名称迁移为职责型名称，并让三个 Profile 的 model/provider/endpoint 由用户显式配置。Plan 06 离线代码候选已实现并通过代码/离线门禁；0.1.8 仍是正式发布版。候选尚未 push、发布或托管读回，不得修改或 import Hermes 源码，也不得据此声称 operational。
 
 ## 1. 产品定位
 
@@ -24,16 +24,16 @@ AgentPorter 的核心产品是 **Hermes 多代理工作组的一键部署与任�
 
 - **已发布版本（v0.1.8）：** 三 Profile 生命周期、三公共入口、custom Provider binding 和离线派发/观察合同已发布。
 - **仍待真实验收：** 带凭据的真实 canary、完整 route proof、Gateway/Kanban mutation、通知接续和 live routing。
-- **下一功能版本：** [职责型 Worker 身份与自定义推理绑定设计](06-role-identities-and-configurable-model-binding-design.md)和[Plan 06](plan/06-role-identities-and-configurable-model-binding.md)已批准并落地，代码尚未实现。
+- **未发布代码候选：** [Plan 06](plan/06-role-identities-and-configurable-model-binding.md) 离线实现已完成；fresh install 使用 bounded/mechanical/orchestrator 职责名，三个 Profile 在 staging 前显式封闭 model/provider/endpoint。
 - **证据边界：** Hermes v0.20 可通过 usage报告 model/provider/api_calls，但不提供 tool_calls/fallback证明；成功调用最多先达到 `live-call-passed + route-proof-incomplete`。
 - **仍不受支持：** revision-safe Kanban mutation和完整 live routing；不得声称 `operational`。
 
 首个工作组当前包含：
 
-- `luna_worker`：在目标、范围、约束和验收均已冻结时执行有界实现或分析；
-- `codex-5-3-small-worker`：只执行严格更简单、更机械的工作。
+- `bounded_worker` / `agentporter-bounded-worker`：在目标、范围、约束和验收均已冻结时执行有界实现或分析；
+- `mechanical_worker` / `agentporter-mechanical-worker`：只执行严格更简单、更机械的工作。
 
-以上仍是 0.1.8 当前实现事实。下一功能版本将以不变的 component UUID 把两个执行角色分别投影为 `bounded_worker` / `agentporter-bounded-worker` 与 `mechanical_worker` / `agentporter-mechanical-worker`；用户已经自行修改的 Profile 名保持不变。名称迁移不会改变职责，也不会自动重建或删除 Profile。
+以上是未发布 Plan 06 候选的当前代码事实；0.1.8 发布制品仍使用旧默认名。旧默认名由 `agentporter-activate` 独立确认后以 Hermes-native journaled rename 迁移；用户改名保持不变。名称迁移不改变 component UUID/职责，也不重建或删除 Profile。
 
 Plan 02 已冻结下列兼容设计，Phase A 先以 RED 和当前代码取证证明其可实现性：新增 orchestrator 取得独立永久 component ID，并继续使用当前可解析的 `MarkerV1`；既有两个 Worker 的 marker schema 与 v0.1.0 distribution version 不回写；完整无歧义的 v0.1.0 双组件集合可按同一 installation ID 附加第三组件；空环境直接安装三组件；legacy 双组件和当前三组件都可由卸载器识别。升级失败采用 drift-safe compare-before-restore：无漂移时恢复并补偿本事务新增 orchestrator，发生漂移则保留用户新值与承载它的 orchestrator Profile 并报告 residue；旧 Worker 始终不删除。卸载三组件默认保留共享 Kanban boards/tasks，并在专用 gateway/dispatcher、任何非终态任务或 owner 不明时 fail closed。具体 RED 与状态矩阵见 [Plan 02 Phase A](plan/02-multi-agent-orchestration.md#phase-a兼容路由与事务合同先-red)。
 
@@ -67,7 +67,7 @@ AgentPorter 负责定义和部署工作组、配置专用 orchestrator 控制面
 
 ## 3. 权威输入与产物
 
-`src/agentporter/resources/workers.yaml` 当前是 Worker 语义和固定模型请求的权威输入。下一功能版本将拆分该权威：清单只拥有职责，model/provider/endpoint 来自用户显式 sealed binding。字段 schema 和 artifact 规则见 [Worker 规范](01-portable-worker-spec.md)，目标设计见[职责型 Worker 身份与自定义推理绑定设计](06-role-identities-and-configurable-model-binding-design.md)，Hermes 映射与读回见 [Hermes Adapter](02-platform-adapters.md)。
+`src/agentporter/resources/workers.yaml` 在 Plan 06 候选中只拥有职责；model/provider/endpoint 来自用户显式 sealed binding，三个 Profile 未形成闭合选择前不得进入 staging。字段 schema 和 artifact 规则见 [Worker 规范](01-portable-worker-spec.md)，目标设计见[职责型 Worker 身份与自定义推理绑定设计](06-role-identities-and-configurable-model-binding-design.md)，Hermes 映射与读回见 [Hermes Adapter](02-platform-adapters.md)。
 
 面向编排的后续 schema 必须继续以 Worker 定义为单一角色来源，并显式补齐：
 
@@ -138,4 +138,4 @@ AgentPorter 负责定义和部署工作组、配置专用 orchestrator 控制面
 - [0.1.5 运行激活与真实调用闭环设计](05-runtime-activation-and-live-call-design.md)：公共入口、凭据接续、真实 one-shot、分层 readiness 与升级/卸载边界；
 - [0.1.5 运行激活与真实调用闭环计划](plan/05-runtime-activation-and-live-call-closure.md)：0.1.5–0.1.8 运行激活基础的实施记录；
 - [职责型 Worker 身份与自定义推理绑定设计](06-role-identities-and-configurable-model-binding-design.md)：下一功能版本的命名、身份迁移、自定义模型与兼容权威；
-- [职责型 Worker 身份与自定义推理绑定计划](plan/06-role-identities-and-configurable-model-binding.md)：设计已批准，尚未开发的下一功能版本实施计划。
+- [职责型 Worker 身份与自定义推理绑定计划](plan/06-role-identities-and-configurable-model-binding.md)：离线代码候选与代码/离线门禁已闭合；发布与 live 验收仍待授权。

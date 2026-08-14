@@ -105,7 +105,7 @@ class ActivationPlan:
     bindings: tuple[ActivationTargetPlan, ...]
     confirmation_phrase: str
     source_config_path: Path = field(repr=False)
-    source_config: ConfigSnapshot = field(repr=False)
+    source_config: ConfigSnapshot | None = field(repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,6 +332,11 @@ def _updated_payload(target: ActivationTargetPlan) -> bytes:
     model["default"] = target.binding.expected_model
     model["provider"] = target.binding.provider_id
     model["base_url"] = target.binding.endpoint_value
+    if target.binding.credential_grant_kind in {
+        "existing-profile-definition",
+        "profile-auth",
+    }:
+        return yaml.safe_dump(config, sort_keys=False).encode("utf-8")
     if target.provider_container == "custom_providers":
         providers = config.get("custom_providers")
         if providers is None:
@@ -398,6 +403,13 @@ def _custom_provider(
     return container, dict(definition)
 
 
+def _profile_provider(
+    snapshot: ConfigSnapshot, provider_id: str, endpoint: str
+) -> tuple[str, dict[str, object]]:
+    """Seal one Profile's own definition without consulting another Profile."""
+    return _custom_provider(snapshot, provider_id, endpoint)
+
+
 def _target_for_component(discovery: DiscoveryResult) -> Mapping[str, Target]:
     return MappingProxyType({target.component_id: target for target in discovery.targets})
 
@@ -456,15 +468,37 @@ def build_activation_plan(
         raise ValueError("activation requires one installation id")
     bindings: list[ActivationTargetPlan] = []
     source_path = detection.hermes_home / "config.yaml"
-    source_snapshot = _read_config(detection.hermes_home)
+    needs_source = any(
+        supplied.credential_grant_kind in {"explicit-source-inheritance", "custom-provider-config"}
+        for supplied in inputs.values()
+    )
+    source_snapshot = _read_config(detection.hermes_home) if needs_source else None
     for component_id in INSTALL_COMPONENT_IDS.values():
         target = targets[component_id]
         snapshot = _read_config(target.path)
         marker_digest, marker_device, marker_inode = _marker_identity(target.path)
         supplied = inputs[component_id]
-        provider_container, provider_definition = _custom_provider(
-            source_snapshot, supplied.provider_id, supplied.endpoint_value
-        )
+        if supplied.credential_grant_kind == "existing-profile-definition":
+            provider_container, provider_definition = _profile_provider(
+                snapshot, supplied.provider_id, supplied.endpoint_value
+            )
+        elif supplied.credential_grant_kind in {
+            "explicit-source-inheritance",
+            "custom-provider-config",
+        }:
+            if source_snapshot is None:
+                raise ValueError("source Profile definition was not sealed")
+            provider_container, provider_definition = _custom_provider(
+                source_snapshot, supplied.provider_id, supplied.endpoint_value
+            )
+        elif supplied.credential_grant_kind in {
+            "profile-auth",
+            "profile-env",
+            "configuration-required",
+        }:
+            provider_container, provider_definition = "none", {}
+        else:
+            raise ValueError("unsupported credential grant")
         binding = RuntimeBindingPlan.from_values(
             portable_id=portable_by_component[component_id],
             component_id=component_id,
@@ -502,6 +536,12 @@ def build_activation_plan(
     )
 
 
+def _source_is_bound(plan: ActivationPlan) -> bool:
+    return plan.source_config is None or _same_config(
+        _read_config(plan.source_config_path.parent), plan.source_config
+    )
+
+
 def _safe_summary(plan: ActivationPlan, output: TextIO) -> None:
     print(f"AgentPorter activation targets: {len(plan.bindings)}", file=output)
     for target in plan.bindings:
@@ -511,8 +551,8 @@ def _safe_summary(plan: ActivationPlan, output: TextIO) -> None:
             file=output,
         )
     print(
-        "Activation copies the selected main-Profile custom Provider definition and writes "
-        "the Worker binding; a separately confirmed live canary follows.",
+        "Activation applies each sealed Profile binding and credential grant in one transaction; "
+        "a separately confirmed live canary follows.",
         file=output,
     )
 
@@ -933,11 +973,28 @@ def apply_activation(
 ) -> ActivationResult:
     """Confirm once, compare/write/read back, and safely compensate on failure."""
     del command_observer  # The secure direct-file seam intentionally executes no command.
+    if any(target.binding.credential_state != "operator-authorized" for target in plan.bindings):
+        return ActivationResult(ActivationStatus.CREDENTIAL_REQUIRED)
+    if any(
+        target.binding.credential_grant_kind == "configuration-required" for target in plan.bindings
+    ):
+        return ActivationResult(ActivationStatus.CREDENTIAL_REQUIRED)
+    if any(
+        target.binding.credential_grant_kind
+        not in {
+            "profile-auth",
+            "custom-provider-config",
+            "existing-profile-definition",
+            "explicit-source-inheritance",
+        }
+        for target in plan.bindings
+    ):
+        return ActivationResult(ActivationStatus.CREDENTIAL_SOURCE_UNSUPPORTED)
     _safe_summary(plan, output)
     if input_fn("Type the activation phrase exactly: ") != plan.confirmation_phrase:
         return ActivationResult(ActivationStatus.CANCELLED)
     try:
-        if not _same_config(_read_config(plan.source_config_path.parent), plan.source_config):
+        if not _source_is_bound(plan):
             return ActivationResult(ActivationStatus.STALE)
         for target in plan.bindings:
             if not _target_is_bound(target) or not _same_config(
@@ -955,7 +1012,7 @@ def apply_activation(
     try:
         receipt_snapshots = [(target, _receipt_snapshot(target), None) for target in plan.bindings]
         for index, target in enumerate(plan.bindings):
-            if not _same_config(_read_config(plan.source_config_path.parent), plan.source_config):
+            if not _source_is_bound(plan):
                 raise ValueError("main Profile custom Provider changed before write")
             current = _read_config(target.profile_path)
             if not _target_is_bound(target) or not _same_config(current, target.original_config):
@@ -976,12 +1033,12 @@ def apply_activation(
             ):
                 raise ValueError("activation readback mismatch")
             readbacks.append(current_readback)
-        if not _same_config(_read_config(plan.source_config_path.parent), plan.source_config):
+        if not _source_is_bound(plan):
             raise ValueError("main Profile custom Provider changed after Worker writes")
         for index, (target, expected_readback) in enumerate(
             zip(plan.bindings, readbacks, strict=True)
         ):
-            if not _same_config(_read_config(plan.source_config_path.parent), plan.source_config):
+            if not _source_is_bound(plan):
                 raise ValueError("main Profile custom Provider changed before receipt")
             current_readback = _read_config(target.profile_path)
             if (
@@ -993,7 +1050,7 @@ def apply_activation(
             published = _write_receipt(target, current_readback)
             original = receipt_snapshots[index][1]
             receipt_snapshots[index] = (target, original, published)
-        if not _same_config(_read_config(plan.source_config_path.parent), plan.source_config):
+        if not _source_is_bound(plan):
             raise ValueError("main Profile custom Provider changed during receipt publication")
         for target, expected_readback in zip(plan.bindings, readbacks, strict=True):
             current_readback = _read_config(target.profile_path)
@@ -1023,13 +1080,6 @@ def apply_activation(
         ActivationItemResult(target.component_id, target.profile_name, True)
         for target in plan.bindings
     )
-    if any(target.binding.credential_state != "operator-authorized" for target in plan.bindings):
-        return ActivationResult(ActivationStatus.CREDENTIAL_REQUIRED, items)
-    if any(
-        target.binding.credential_grant_kind not in {"profile-auth", "custom-provider-config"}
-        for target in plan.bindings
-    ):
-        return ActivationResult(ActivationStatus.CREDENTIAL_SOURCE_UNSUPPORTED, items)
     needs_profile_auth = any(
         target.binding.credential_grant_kind == "profile-auth" for target in plan.bindings
     )
@@ -1049,12 +1099,20 @@ def apply_activation(
     if not probe_supported:
         return ActivationResult(ActivationStatus.PROBE_UNSUPPORTED, items)
     if require_runtime_confirmations:
+        authorized_profiles = tuple(target.profile_name for target in plan.bindings)
+        authorized_count = len(authorized_profiles)
+        authorization_phrase = f"RUN {authorized_count} WORKER CALLS"
         print(
-            "Live plan: at most 2 Worker calls, possible fees, and Hermes-owned Profile-local "
+            f"Live plan: at most {authorized_count} Worker calls for Profiles "
+            f"{', '.join(authorized_profiles)}; possible fees, and Hermes-owned Profile-local "
             "session/usage/memory state. AgentPorter will not operate on state.db.",
             file=output,
         )
-        if input_fn("Type RUN 2 WORKER CALLS to authorize live calls: ") != "RUN 2 WORKER CALLS":
+        live_prompt = f"Type {authorization_phrase} to authorize live calls: "
+        if input_fn(live_prompt) != authorization_phrase:
+            return ActivationResult(ActivationStatus.CANARY_REQUIRED, items)
+        confirmed_profiles = tuple(target.profile_name for target in plan.bindings)
+        if confirmed_profiles != authorized_profiles or len(plan.bindings) != authorized_count:
             return ActivationResult(ActivationStatus.CANARY_REQUIRED, items)
 
     # Binding publication commits before canaries begin. Canary receipt updates

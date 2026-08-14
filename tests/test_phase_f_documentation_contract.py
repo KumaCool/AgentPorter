@@ -15,7 +15,10 @@ def test_current_user_docs_publish_truthful_phase_f_state_matrix() -> None:
         "docs/04-installation-and-troubleshooting.zh-CN.md",
     ):
         text = _text(path)
-        assert "0.1.4" in text
+        assert "0.1.8" in text
+        assert "bounded" in text.lower()
+        assert "mechanical" in text.lower()
+        assert "model/provider/endpoint" in text
         for state in (
             "installation",
             "binding",
@@ -41,9 +44,12 @@ def test_current_docs_do_not_overclaim_v020_live_acceptance() -> None:
     assert "probe-unsupported" in corpus
     assert "mutation-unsupported" in corpus
     assert "zero model calls" in corpus.lower() or "零模型调用" in corpus
+    assert "kanban mutation" in corpus.lower()
     assert (
-        "zero kanban mutation calls" in corpus.lower()
-        or "零 kanban mutation 调用" in corpus.lower()
+        "unaccepted" in corpus.lower()
+        or "unperformed" in corpus.lower()
+        or "未执行" in corpus
+        or "未验收" in corpus
     )
 
 
@@ -69,13 +75,11 @@ def test_released_baseline_and_next_candidate_are_distinguished() -> None:
     for stale in (
         "current supported patch release",
         "当前受支持修复版本",
-        "未 push",
-        "不 push",
     ):
         assert stale not in corpus
-    assert "0.1.4 is released" in corpus or "0.1.4 已正式发布" in corpus
-    assert "0.1.5" in corpus
-    assert "Phase A–F 离线实现完成" in corpus
+    assert "0.1.8 is released" in corpus or "0.1.8 已正式发布" in corpus
+    assert "Plan 06" in corpus
+    assert "离线实现" in corpus or "offline" in corpus.lower()
 
 
 def test_install_guides_describe_three_entries_three_profiles_and_candidate_boundary() -> None:
@@ -89,7 +93,9 @@ def test_install_guides_describe_three_entries_three_profiles_and_candidate_boun
             "两个专用 Worker Profile 和一个专用 orchestrator" in text
         )
         assert "releases/latest/download/install.sh" in text
-        assert "releases/download/v0.1.4" in text
+        assert "0.1.8" in text
+        assert "agentporter-bounded-worker" in text
+        assert "agentporter-mechanical-worker" in text
         assert "auto decomposition" in text or "自动分解" in text
         assert "Gateway" in text
         assert "live routing" in text

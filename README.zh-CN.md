@@ -2,9 +2,9 @@
 
 [English](README.md) | 简体中文
 
-AgentPorter 是一个开源的 [Hermes Agent](https://hermes-agent.nousresearch.com/) 多代理工作组部署方案：一次安装多个职责明确的 Worker Profile，并逐步接通 Hermes 原生 Kanban 的任务分解与合理路由。下一功能版本已完成[职责型身份与自定义推理绑定设计](docs/06-role-identities-and-configurable-model-binding-design.md)，但尚未开发。
+AgentPorter 是一个开源的 [Hermes Agent](https://hermes-agent.nousresearch.com/) 多代理工作组部署方案：一次安装多个职责明确的 Worker Profile，并逐步接通 Hermes 原生 Kanban 的任务分解与合理路由。[职责型身份与自定义推理绑定设计](docs/06-role-identities-and-configurable-model-binding-design.md)现已在尚未发布的 Plan 06 离线代码候选中实现。
 
-> **当前状态：** 0.1.8 已正式发布。bootstrap 会发布三个生命周期入口、安装三个 Profile，并在安装后串联激活。Hermes v0.20 custom Provider 绑定已通过受保护的 Profile 配置继承实现，但带凭据的真实 canary、完整 `operational`、Gateway mutation 和 live routing 仍需分别授权且尚未证明。下一功能版本的职责型名称和自定义模型目前只有文档，没有代码实现。
+> **当前状态：** 0.1.8 仍是当前正式发布版。尚未发布的 Plan 06 代码候选在 fresh install 中使用 bounded/mechanical/orchestrator 职责名，并在 staging 前要求三个 Profile 分别显式封闭 model/provider/endpoint。精确旧默认名只能经 `agentporter-activate` 独立确认的 Hermes-native 持久 journal rename 迁移；用户改名保留。该候选未执行真实模型 canary、Gateway 变更、Kanban mutation、live routing、push 或发布，因此不能称为 `operational`。
 
 ## curl 一键安装（POSIX）
 
@@ -31,15 +31,15 @@ agentporter-uninstall
 
 卸载会删除 AgentPorter 安装的 Worker Profile 及其中的本地数据和后续自定义；确认前请先备份。Profile 删除成功（或已不存在）后，通过发布版引导脚本安装的卸载器还会删除自身的精确公开入口和对应版本私有 Python 环境。从可信源码检出运行的 `python uninstall.py` 只删除 Profile，绝不删除源码仓库或其虚拟环境。检查后执行方式、PATH、信任边界与完整卸载说明见[安装指南](docs/04-installation-and-troubleshooting.zh-CN.md)。
 
-## v0.1.8 安装内容
+## 尚未发布的 Plan 06 候选安装内容
 
 一次运行会安装当前三 Profile 基础：
 
-- `luna_worker`：在父 Agent 已明确目标、范围、约束和验收标准后，执行有边界的实现与分析任务；
-- `codex-5-3-small-worker`：仅接受更窄、严格机械化的委派；
+- `agentporter-bounded-worker`：在父 Agent 已明确目标、范围、约束和验收标准后，执行有边界的实现与分析任务；
+- `agentporter-mechanical-worker`：仅接受更窄、严格机械化的委派；
 - `agentporter-orchestrator`：专用 Kanban 控制面 owner，不执行实现任务。
 
-这些是 0.1.8 当前名称。下一功能版本将保持永久 component UUID 和职责不变，把两个执行角色改为 `bounded_worker` / `agentporter-bounded-worker` 与 `mechanical_worker` / `agentporter-mechanical-worker`，并允许三个 Profile 分别显式选择 model/provider/endpoint。用户已自行修改的 Profile 名不会被自动覆盖；当前代码尚未实现该迁移。
+fresh 候选使用 `bounded_worker`、`mechanical_worker`、`agentporter_orchestrator` Portable ID，并在 staging 前要求每个 Profile 显式选择 model/provider/endpoint。永久 component UUID 与职责不变。精确 0.1.8 默认名仍作为兼容迁移输入；`agentporter-activate` 独立确认并 journal 化 Hermes-native rename，用户改名保持不变。model/provider/endpoint 任一变化都会使 readiness 与依赖绑定的派发证据失效。
 
 每个 Profile 都包含 Hermes 原生配置、指令、路由描述以及一个非秘密的所有权标记。AgentPorter 组合 Hermes 原生能力，不替代 Profile 存储、Kanban 任务库、decomposer、dispatcher、worktree 或供应商配置。
 
@@ -130,7 +130,7 @@ agentporter-uninstall
 
 ## 仓库结构
 
-- `src/agentporter/resources/workers.yaml`：0.1.8 打包内的 Worker 定义及固定模型请求；下一功能版本将只保留职责，模型改为用户显式绑定；
+- `src/agentporter/resources/workers.yaml`：候选中的 bounded/mechanical/orchestrator 职责定义；model/provider/endpoint 来自用户显式 sealed binding；
 - `install.py`、`uninstall.py` 与 `src/agentporter/`：当前一次性工作组部署基础和受保护的独立卸载实现；
 - `tests/`：单元、文件系统、事务、压力和隔离真实 Hermes 验收测试；
 - `scripts/verify_release.py`：fail-closed 的源码、wheel 和 sdist 发布契约验证器；
@@ -150,7 +150,7 @@ agentporter-uninstall
 - [职责型 Worker 身份与自定义推理绑定计划](docs/plan/06-role-identities-and-configurable-model-binding.md)
 - [变更日志](CHANGELOG.md)
 
-这些详细设计和计划记录的是工程契约及验收历史，并不构成对所有环境的通用生产就绪声明。0.1.8 不包含 Codex CLI 平台适配器；当前模型语义名称也不代表已经支持 Codex CLI。下一功能版本将移除当前产品名称中的模型语义，但在发布前旧名称仍是实现事实。
+这些详细设计和计划记录的是工程契约及验收历史，并不构成对所有环境的通用生产就绪声明。0.1.8 不包含 Codex CLI 平台适配器；当前模型语义名称也不代表已经支持 Codex CLI。职责型名称实现仍是未发布离线候选；旧模型语义名称只保留在兼容与明确历史上下文。
 
 ## 开发、安全与许可证
 

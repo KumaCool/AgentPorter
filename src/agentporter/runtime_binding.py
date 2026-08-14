@@ -10,7 +10,13 @@ from typing import Literal, cast
 from urllib.parse import urlsplit
 
 CredentialGrantKind = Literal[
-    "external-secret", "profile-auth", "profile-env", "custom-provider-config"
+    "external-secret",
+    "profile-auth",
+    "profile-env",
+    "custom-provider-config",
+    "existing-profile-definition",
+    "explicit-source-inheritance",
+    "configuration-required",
 ]
 CredentialState = Literal["unresolved", "operator-authorized"]
 CredentialStatus = Literal["unknown", "logged-out", "logged-in"]
@@ -79,6 +85,9 @@ class RuntimeBindingReceipt:
             "profile-auth",
             "profile-env",
             "custom-provider-config",
+            "existing-profile-definition",
+            "explicit-source-inheritance",
+            "configuration-required",
         }:
             raise ValueError("invalid receipt credential grant kind")
         if self.credential_state not in {"unresolved", "operator-authorized"}:
@@ -169,6 +178,9 @@ class RuntimeBindingPlan:
             "profile-auth",
             "profile-env",
             "custom-provider-config",
+            "existing-profile-definition",
+            "explicit-source-inheritance",
+            "configuration-required",
         }:
             raise ValueError("invalid credential_grant_kind")
         if self.credential_state not in {"unresolved", "operator-authorized"}:
@@ -230,7 +242,14 @@ def evaluate_binding_gate(
         return BindingGateResult("canary-required")
     if provider_id is None or not provider_id.strip() or not _valid_endpoint(endpoint_value):
         return BindingGateResult("configuration-required")
-    if credential_grant_kind not in {"profile-auth", "custom-provider-config"}:
+    if credential_grant_kind == "configuration-required":
+        return BindingGateResult("configuration-required")
+    if credential_grant_kind not in {
+        "profile-auth",
+        "custom-provider-config",
+        "existing-profile-definition",
+        "explicit-source-inheritance",
+    }:
         return BindingGateResult("credential-source-unsupported")
     if credential_state != "operator-authorized":
         return BindingGateResult("credential-required")

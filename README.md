@@ -2,9 +2,9 @@
 
 English | [简体中文](README.zh-CN.md)
 
-AgentPorter is an open-source deployment kit for a reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) multi-agent Worker team. It installs role-specific Profiles in one run and is evolving toward verified task decomposition and routing through Hermes-native Kanban orchestration. The next functional version has an approved [role-identity and configurable-binding design](docs/06-role-identities-and-configurable-model-binding-design.md), but it is not implemented yet.
+AgentPorter is an open-source deployment kit for a reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) multi-agent Worker team. It installs role-specific Profiles in one run and is evolving toward verified task decomposition and routing through Hermes-native Kanban orchestration. The [role-identity and configurable-binding design](docs/06-role-identities-and-configurable-model-binding-design.md) is now implemented in the unreleased Plan 06 offline code candidate.
 
-> **Current status:** 0.1.8 is released. The bootstrap publishes all three lifecycle entries, installs the three Profiles, and chains activation after installation. Hermes v0.20 custom-provider binding is implemented with guarded Profile-config inheritance, but a credentialed live canary, full `operational` state, Gateway mutation, and live routing remain separately authorized and unproven. The next functional version's role-name and configurable-model work is documentation-only today.
+> **Current status:** 0.1.8 remains the latest published release. The current unreleased Plan 06 code candidate uses bounded/mechanical/orchestrator role names for fresh installs and requires explicit sealed model/provider/endpoint selections for all three Profiles before staging. Existing exact legacy defaults can be migrated only through a separately confirmed, Hermes-native, journaled rename in `agentporter-activate`; user-renamed Profiles are preserved. No credentialed model canary, Gateway change, Kanban mutation, live routing, push, or release has been performed for this candidate, so it is not `operational`.
 
 ## One-line install (POSIX)
 
@@ -31,15 +31,15 @@ If the command is not on `PATH`, run:
 
 Uninstall deletes the Worker Profiles installed by AgentPorter, including their local data and later customization, so back them up before confirming. After successful Profile deletion (or when they are already absent), a bootstrap-installed uninstaller also removes its exact published entry and versioned private Python environment. A trusted source-checkout `python uninstall.py` removes Profiles only and never deletes the checkout or its virtual environment. See the [installation guide](docs/04-installation-and-troubleshooting.md) for the inspect-first flow, PATH, trust boundary, and complete uninstall details.
 
-## What v0.1.8 installs
+## What the unreleased Plan 06 candidate installs
 
 One launch installs the current three-Profile foundation:
 
-- `luna_worker` — bounded implementation and analysis after the parent fixes goal, scope, constraints, and acceptance;
-- `codex-5-3-small-worker` — narrower, strictly mechanical delegation;
+- `agentporter-bounded-worker` — bounded implementation and analysis after the parent fixes goal, scope, constraints, and acceptance;
+- `agentporter-mechanical-worker` — narrower, strictly mechanical delegation;
 - `agentporter-orchestrator` — dedicated Kanban control-plane owner; it does not execute implementation tasks.
 
-These are the current 0.1.8 names. The next functional version preserves permanent component UUIDs and role boundaries, renames the execution roles to `bounded_worker` / `agentporter-bounded-worker` and `mechanical_worker` / `agentporter-mechanical-worker`, and lets the operator explicitly bind model/provider/endpoint for all three Profiles. User-renamed Profiles remain unchanged. This migration is documented but not implemented.
+Fresh candidate installs use Portable IDs `bounded_worker`, `mechanical_worker`, and `agentporter_orchestrator` and require an explicit model/provider/endpoint binding for every Profile before staging. Permanent component UUIDs and role boundaries are unchanged. Exact 0.1.8 default names remain supported as legacy migration input; `agentporter-activate` independently confirms and journals Hermes-native rename operations, while any user-renamed Profile keeps its current name. Changing model, provider, or endpoint invalidates readiness and binding-dependent dispatch evidence.
 
 Each Profile contains Hermes-native configuration, instructions, routing description, and a non-secret ownership marker. AgentPorter composes Hermes primitives instead of replacing Profile storage, the Kanban task database, the decomposer, dispatcher, worktrees, or provider configuration.
 
@@ -108,7 +108,7 @@ Offline CI runs the complete portable suite and package/release contracts on Lin
 
 ## Repository map
 
-- `src/agentporter/resources/workers.yaml` — the 0.1.8 Worker definitions and fixed model requests; the next functional version keeps roles here and moves models to explicit operator bindings;
+- `src/agentporter/resources/workers.yaml` — the candidate's role-only bounded/mechanical/orchestrator definitions; model/provider/endpoint come from explicit sealed operator selections;
 - `install.py`, `uninstall.py`, and `src/agentporter/` — the current one-shot deployment foundation and guarded independent uninstall;
 - `tests/` — unit, filesystem, transaction, stress, and isolated real-Hermes acceptance;
 - `scripts/verify_release.py` — fail-closed source/wheel/sdist contract verifier;
@@ -128,7 +128,7 @@ Design and evidence:
 - [Role-based identity and configurable-binding implementation plan](docs/plan/06-role-identities-and-configurable-model-binding.md)
 - [Changelog](CHANGELOG.md)
 
-The detailed design and plan documents are engineering history and contracts, not universal production-readiness claims. AgentPorter 0.1.8 does not provide a Codex CLI adapter, and its current model-derived Worker name does not imply one. The next functional version removes model semantics from current product names, but the old names remain implementation facts until that version ships.
+The detailed design and plan documents are engineering history and contracts, not universal production-readiness claims. AgentPorter 0.1.8 remains the published baseline; the role-name/binding implementation is an unreleased offline candidate. Legacy model-derived names remain only compatibility and historical vocabulary and do not imply a Codex CLI adapter.
 
 ## Development and security
 

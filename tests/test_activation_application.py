@@ -241,10 +241,13 @@ def test_formal_activation_entry_prompts_for_all_profiles_in_component_order(
         (
             "bounded-test-model",
             "custom-provider",
+            "explicit-source-inheritance",
             "mechanical-test-model",
             "custom-provider",
+            "explicit-source-inheritance",
             "orchestrator-test-model",
             "custom-provider",
+            "profile-auth",
         )
     )
     sentinel_plan = object()
@@ -295,7 +298,7 @@ def test_formal_activation_entry_prompts_for_all_profiles_in_component_order(
         "Model ID for renamed-mechanical: ",
         "Model ID for renamed-orchestrator: ",
     ]
-    assert all("Credential grant" not in prompt for prompt in prompts)
+    assert len([prompt for prompt in prompts if prompt.startswith("Credential grant")]) == 3
 
 
 def test_apply_activation_confirms_once_then_writes_and_reads_back_without_cli(
@@ -387,6 +390,62 @@ def test_activation_preserves_unrelated_worker_provider_and_never_renders_copied
             "keep-provider",
             "custom-provider",
         ]
+
+
+def test_existing_profile_definition_never_reads_main_or_rewrites_definition(
+    tmp_path: Path,
+) -> None:
+    found, discovery = _installation(tmp_path)
+    (found.hermes_home / "config.yaml").unlink()
+    inputs = _inputs()
+    before_definitions: dict[str, object] = {}
+    for target in discovery.targets:
+        config_path = target.path / "config.yaml"
+        config = yaml.safe_load(config_path.read_text())
+        definition = {
+            "name": "custom-provider",
+            "base_url": SECRET_ENDPOINT,
+            "api_key": f"OWN-{target.current_name}",
+        }
+        config["custom_providers"] = [definition]
+        config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+        before_definitions[target.current_name] = definition
+        inputs[target.component_id] = replace(
+            inputs[target.component_id],
+            credential_grant_kind="existing-profile-definition",
+        )
+
+    plan = build_activation_plan(discover_installation(found.profiles_root), found, inputs)
+    result = apply_activation(plan, input_fn=lambda _: plan.confirmation_phrase)
+
+    assert result.status is ActivationStatus.CANARY_REQUIRED
+    for target in plan.bindings:
+        config = yaml.safe_load((target.profile_path / "config.yaml").read_text())
+        assert config["custom_providers"] == [before_definitions[target.profile_name]]
+
+
+def test_unresolved_grant_stops_before_confirmation_and_first_write(tmp_path: Path) -> None:
+    found, discovery = _installation(tmp_path)
+    inputs = _inputs()
+    first = discovery.targets[0]
+    inputs[first.component_id] = replace(
+        inputs[first.component_id],
+        credential_grant_kind="configuration-required",
+        credential_state="unresolved",
+    )
+    before = {
+        target.current_name: (target.path / "config.yaml").read_bytes()
+        for target in discovery.targets
+    }
+    plan = build_activation_plan(discovery, found, inputs)
+
+    result = apply_activation(plan, input_fn=lambda _: pytest.fail("must stop before confirmation"))
+
+    assert result.status is ActivationStatus.CREDENTIAL_REQUIRED
+    assert {
+        target.current_name: (target.path / "config.yaml").read_bytes()
+        for target in discovery.targets
+    } == before
 
 
 def test_source_provider_drift_after_confirmation_compensates_worker_writes(
