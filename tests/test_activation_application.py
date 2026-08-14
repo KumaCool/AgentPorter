@@ -62,7 +62,6 @@ def _installation(tmp_path: Path) -> tuple[HermesDetection, DiscoveryResult]:
                         "models": [
                             "bounded-test-model",
                             "mechanical-test-model",
-                            "orchestrator-test-model",
                         ],
                         "extra_headers": {"X-Provider-Mode": "private"},
                     }
@@ -76,9 +75,8 @@ def _installation(tmp_path: Path) -> tuple[HermesDetection, DiscoveryResult]:
     models = {
         "bounded_worker": "bounded-current-model",
         "mechanical_worker": "mechanical-current-model",
-        "agentporter_orchestrator": "orchestrator-current-model",
     }
-    names = ("renamed-bounded", "renamed-mechanical", "renamed-orchestrator")
+    names = ("renamed-bounded", "renamed-mechanical")
     for (portable_id, component_id), name in zip(INSTALL_COMPONENT_IDS.items(), names, strict=True):
         profile = found.profiles_root / name
         profile.mkdir(mode=0o700)
@@ -126,12 +124,10 @@ def test_build_plan_uses_only_complete_discovered_installation_and_typed_snapsho
     assert {item.profile_name for item in plan.bindings} == {
         "renamed-bounded",
         "renamed-mechanical",
-        "renamed-orchestrator",
     }
     assert {item.expected_model for item in plan.bindings} == {
         "bounded-test-model",
         "mechanical-test-model",
-        "agentporter_orchestrator-test-model",
     }
     assert all(item.original_config.provider is None for item in plan.bindings)
     assert all(
@@ -216,7 +212,7 @@ def test_current_keyed_provider_preserves_unrelated_worker_providers(tmp_path: P
         assert list(loaded["providers"]) == ["keep-provider", "custom-provider"]
 
 
-def test_build_plan_accepts_and_reads_complete_three_component_discovery(
+def test_build_plan_accepts_and_reads_complete_two_worker_discovery(
     tmp_path: Path,
 ) -> None:
     found, _ = _installation(tmp_path)
@@ -245,9 +241,6 @@ def test_formal_activation_entry_prompts_for_all_profiles_in_component_order(
             "mechanical-test-model",
             "custom-provider",
             "explicit-source-inheritance",
-            "orchestrator-test-model",
-            "custom-provider",
-            "profile-auth",
         )
     )
     sentinel_plan = object()
@@ -291,14 +284,12 @@ def test_formal_activation_entry_prompts_for_all_profiles_in_component_order(
     assert [prompt for prompt in prompts if prompt.startswith("Provider ID")] == [
         "Provider ID for renamed-bounded: ",
         "Provider ID for renamed-mechanical: ",
-        "Provider ID for renamed-orchestrator: ",
     ]
     assert [prompt for prompt in prompts if prompt.startswith("Model ID")] == [
         "Model ID for renamed-bounded: ",
         "Model ID for renamed-mechanical: ",
-        "Model ID for renamed-orchestrator: ",
     ]
-    assert len([prompt for prompt in prompts if prompt.startswith("Credential grant")]) == 3
+    assert len([prompt for prompt in prompts if prompt.startswith("Credential grant")]) == 2
 
 
 def test_apply_activation_confirms_once_then_writes_and_reads_back_without_cli(
@@ -338,7 +329,6 @@ def test_apply_activation_confirms_once_then_writes_and_reads_back_without_cli(
                 "models": [
                     "bounded-test-model",
                     "mechanical-test-model",
-                    "orchestrator-test-model",
                 ],
                 "extra_headers": {"X-Provider-Mode": "private"},
             }
@@ -712,10 +702,9 @@ def test_authorized_activation_probes_each_worker_without_cross_fallback_and_upd
         json.loads((item.profile_path / "local/agentporter/runtime-binding.json").read_text())
         for item in plan.bindings
     ]
-    assert [item["canary_status"] for item in payloads] == ["failed", "passed", "passed"]
+    assert [item["canary_status"] for item in payloads] == ["failed", "passed"]
     assert [item["canary_reason_code"] for item in payloads] == [
         "authentication-failed",
-        "runtime-ready",
         "runtime-ready",
     ]
     assert all("error" not in item for item in payloads)

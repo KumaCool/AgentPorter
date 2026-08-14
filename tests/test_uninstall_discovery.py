@@ -7,7 +7,12 @@ from pathlib import Path
 import pytest
 
 from agentporter import uninstall_discovery
-from agentporter.identity import COMPONENT_IDS, INSTALL_COMPONENT_IDS, PRODUCT_ID
+from agentporter.identity import (
+    COMPONENT_IDS,
+    INSTALL_COMPONENT_IDS,
+    LEGACY_V020_COMPONENT_IDS,
+    PRODUCT_ID,
+)
 from agentporter.uninstall_discovery import DiscoveryStatus, FindingCode, discover_installation
 
 INSTALLATION_A = "12345678-1234-4abc-8def-1234567890ab"
@@ -42,15 +47,19 @@ def _marker(
 
 
 def _complete(root: Path, *, installation_id: str = INSTALLATION_A, legacy: bool = False) -> None:
-    components = tuple(COMPONENT_IDS.values()) if legacy else tuple(INSTALL_COMPONENT_IDS.values())
-    names = (
-        ("renamed-one", "totally-different")
+    components = (
+        tuple(LEGACY_V020_COMPONENT_IDS.values())
         if legacy
-        else (
+        else tuple(INSTALL_COMPONENT_IDS.values())
+    )
+    names = (
+        (
             "renamed-one",
             "totally-different",
             "control-plane",
         )
+        if legacy
+        else ("renamed-one", "totally-different")
     )
     for name, component in zip(names, components, strict=True):
         _marker(root, name, component, installation_id=installation_id)
@@ -76,7 +85,6 @@ def test_batch_renamed_complete_set_is_ready_with_identity_snapshots(tmp_path: P
 
     assert result.status is DiscoveryStatus.READY
     assert [target.current_name for target in result.targets] == [
-        "control-plane",
         "renamed-one",
         "totally-different",
     ]
@@ -91,15 +99,19 @@ def test_batch_renamed_complete_set_is_ready_with_identity_snapshots(tmp_path: P
     assert result.findings == ()
 
 
-def test_legacy_two_component_installation_remains_a_complete_uninstall_set(tmp_path: Path) -> None:
+def test_legacy_v020_three_component_installation_remains_a_complete_uninstall_set(
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "profiles"
     _complete(root, legacy=True)
 
     result = discover_installation(root)
 
     assert result.status is DiscoveryStatus.READY
-    assert len(result.targets) == 2
-    assert {target.component_id for target in result.targets} == set(COMPONENT_IDS.values())
+    assert len(result.targets) == 3
+    assert {target.component_id for target in result.targets} == set(
+        LEGACY_V020_COMPONENT_IDS.values()
+    )
 
 
 def test_valid_unrelated_marker_and_profiles_without_markers_are_ignored(tmp_path: Path) -> None:

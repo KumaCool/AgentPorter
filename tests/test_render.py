@@ -13,7 +13,7 @@ from agentporter.render import render_staging
 from tests.plan06_support import runtime_bindings
 
 
-def test_render_staging_produces_three_profiles_with_isolated_orchestrator_control(
+def test_render_staging_produces_exactly_two_worker_profiles(
     tmp_path: Path,
 ) -> None:
     manifest = load_manifest(Path(__file__).parents[1] / "src/agentporter/resources/workers.yaml")
@@ -24,7 +24,6 @@ def test_render_staging_produces_three_profiles_with_isolated_orchestrator_contr
     assert [item.profile_name for item in rendered] == [
         "agentporter-bounded-worker",
         "agentporter-mechanical-worker",
-        "agentporter-orchestrator",
     ]
     markers: list[MarkerV1] = []
     for item in rendered:
@@ -60,23 +59,10 @@ def test_render_staging_produces_three_profiles_with_isolated_orchestrator_contr
         assert "report the exact blocker" in soul
         assert "Never invent results" in soul
 
-    orchestrator = rendered[2].directory
-    orchestrator_config = yaml.safe_load((orchestrator / "config.yaml").read_text())
-    assert set(orchestrator_config) == {"model", "agent", "kanban", "platform_toolsets"}
-    assert orchestrator_config["kanban"] == {
-        "auto_decompose": False,
-        "max_in_progress_per_profile": 1,
-        "dispatch_interval_seconds": 10,
-        "orchestrator_profile": "agentporter-orchestrator",
-        "auto_subscribe_on_create": True,
-    }
-    assert "default_assignee" not in orchestrator_config["kanban"]
-    assert orchestrator_config["platform_toolsets"] == {"cli": ["kanban"]}
-    for worker in rendered[:2]:
+    for worker in rendered:
         worker_config = yaml.safe_load((worker.directory / "config.yaml").read_text())
         assert "kanban" not in worker_config
         assert "platform_toolsets" not in worker_config
-    assert "does not execute" in (orchestrator / "SOUL.md").read_text(encoding="utf-8").lower()
 
     assert {marker.installation_id for marker in markers} == {str(installation_id)}
     assert {marker.product_id for marker in markers} == {PRODUCT_ID}

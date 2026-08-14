@@ -12,7 +12,7 @@ from typing import Final, cast
 
 from pydantic import ValidationError
 
-from .identity import COMPONENT_IDS, INSTALL_COMPONENT_IDS, PRODUCT_ID
+from .identity import INSTALL_COMPONENT_IDS, LEGACY_V020_COMPONENT_IDS, PRODUCT_ID
 from .models import MarkerV1
 
 MARKER_NAME: Final = "agentporter-profile.json"
@@ -326,7 +326,7 @@ def discover_installation(profiles_root: Path) -> DiscoveryResult:
                 assert marker is not None
                 if marker.product_id != PRODUCT_ID:
                     continue
-                if marker.component_id not in INSTALL_COMPONENT_IDS.values():
+                if marker.component_id not in LEGACY_V020_COMPONENT_IDS.values():
                     findings.append(
                         _finding(FindingCode.UNKNOWN_COMPONENT, marker_path, "unknown component")
                     )
@@ -358,7 +358,7 @@ def discover_installation(profiles_root: Path) -> DiscoveryResult:
         return DiscoveryResult(DiscoveryStatus.ALREADY_ABSENT, (), ())
 
     current = set(INSTALL_COMPONENT_IDS.values())
-    legacy = set(COMPONENT_IDS.values())
+    legacy = set(LEGACY_V020_COMPONENT_IDS.values())
     by_installation: dict[str, list[Target]] = defaultdict(list)
     for target in matching:
         by_installation[target.marker.installation_id].append(target)

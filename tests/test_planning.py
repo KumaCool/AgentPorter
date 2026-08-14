@@ -19,7 +19,7 @@ from agentporter.hermes import (
     ProfileEntry,
     ProfileEntryKind,
 )
-from agentporter.identity import COMPONENT_IDS
+from agentporter.identity import LEGACY_V020_COMPONENT_IDS
 from agentporter.models import MarkerV1
 from agentporter.planning import (
     CleanupOutcome,
@@ -82,17 +82,14 @@ def test_plan_aggregates_authoritative_order_shared_id_and_scanned_staging(tmp_p
     assert [worker.portable_id for worker in plan.workers] == [
         "bounded_worker",
         "mechanical_worker",
-        "agentporter_orchestrator",
     ]
     assert [worker.profile_name for worker in plan.workers] == [
         "agentporter-bounded-worker",
         "agentporter-mechanical-worker",
-        "agentporter-orchestrator",
     ]
     assert {worker.component_id for worker in plan.workers} == {
         "5c7f978c-a9a6-4cec-98fa-e65bbf8101cd",
         "7dab98fb-9ac0-44fa-90fb-4a4f30e1470c",
-        "ee21f7f8-5a9d-4cf2-9e57-2508034cadc7",
     }
     assert all(worker.status == "ready" for worker in plan.workers)
     assert all(worker.provider == "test-provider" for worker in plan.workers)
@@ -100,7 +97,6 @@ def test_plan_aggregates_authoritative_order_shared_id_and_scanned_staging(tmp_p
     assert {path.name for path in plan.staging_dir.iterdir()} == {
         "agentporter-bounded-worker",
         "agentporter-mechanical-worker",
-        "agentporter-orchestrator",
     }
     assert plan.hermes.executable == detection.executable
     assert plan.hermes.version == detection.version
@@ -122,12 +118,14 @@ def test_plan_aggregates_authoritative_order_shared_id_and_scanned_staging(tmp_p
     assert plan.staging_dir is not None and not plan.staging_dir.exists()
 
 
-def test_legacy_upgrade_reuses_installation_id_and_stages_only_orchestrator(tmp_path: Path) -> None:
+def test_v020_three_component_update_requires_separate_profile_removal_authorization(
+    tmp_path: Path,
+) -> None:
     detection = _detection(tmp_path)
     root = detection.profiles_root
     root.mkdir(parents=True)
     targets: list[Target] = []
-    for index, component_id in enumerate(tuple(COMPONENT_IDS.values())[:2]):
+    for index, component_id in enumerate(LEGACY_V020_COMPONENT_IDS.values()):
         name = f"legacy-{index}"
         profile = root / name
         profile.mkdir()
@@ -167,11 +165,14 @@ def test_legacy_upgrade_reuses_installation_id_and_stages_only_orchestrator(tmp_
         existing_installation=legacy,
     )
 
-    assert plan.installation_id == str(INSTALLATION_ID)
-    assert [worker.portable_id for worker in plan.workers] == ["agentporter_orchestrator"]
-    assert plan.staging_dir is not None
-    assert {path.name for path in plan.staging_dir.iterdir()} == {"agentporter-orchestrator"}
-    assert cleanup_staging(plan).status == "cleaned"
+    assert plan.status == "migration-required"
+    assert (
+        plan.reason
+        == "v0.2.0 orchestrator Profile removal requires a separate authorized migration"
+    )
+    assert plan.installable is False
+    assert plan.staging_dir is None
+    assert not (tmp_path / "upgrade-stage").exists()
 
 
 def test_missing_binding_is_invalid_and_creates_zero_staging(tmp_path: Path) -> None:

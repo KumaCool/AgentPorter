@@ -9,9 +9,18 @@ from typing import TextIO
 from .execution import CommandExecutor
 from .hermes import HermesDetection, detect_hermes
 from .identity import INITIAL_PROFILE_NAMES, INSTALL_COMPONENT_IDS
+from .legacy_migration import (
+    LegacyMigrationResult,
+    LegacyMigrationStatus,
+    build_legacy_migration_plan,
+    execute_legacy_migration,
+    run_legacy_migration_confirmation,
+)
 from .native import NativeHermesAdapter
 from .planning import InstallPlan, RuntimeBindingSelection, revalidate_install_plan
 from .transaction import InstallTransactionResult, execute_install_transaction
+from .uninstall_discovery import discover_installation
+from .uninstall_planning import revalidate_uninstall_collection, revalidate_uninstall_target
 from .workflow import WorkflowOutcome, WorkflowStatus, preflight_and_confirm
 
 
@@ -19,6 +28,53 @@ from .workflow import WorkflowOutcome, WorkflowStatus, preflight_and_confirm
 class InstallerResult:
     workflow: WorkflowOutcome
     transaction: InstallTransactionResult | None
+
+
+def run_legacy_orchestrator_migration(
+    env: Mapping[str, str],
+    *,
+    journal_path: Path,
+    input_fn: Callable[[str], str] = input,
+    output: TextIO = sys.stdout,
+    detector: Callable[..., HermesDetection] = detect_hermes,
+    executor_factory: Callable[[], CommandExecutor] = CommandExecutor,
+    adapter_factory: Callable[
+        [CommandExecutor, Mapping[str, str], HermesDetection], NativeHermesAdapter
+    ] = NativeHermesAdapter,
+) -> LegacyMigrationResult:
+    """Formal separately-authorized v0.2.0 component-set contraction lifecycle."""
+    initial = detector(env=env)
+    plan = build_legacy_migration_plan(
+        discover_installation(initial.profiles_root),
+        executable=initial.executable,
+        journal_path=journal_path,
+    )
+
+    def continue_migration() -> LegacyMigrationResult:
+        current = detector(env=env)
+        if (
+            current.executable != initial.executable
+            or current.hermes_home != initial.hermes_home
+            or current.profiles_root != initial.profiles_root
+        ):
+            return LegacyMigrationResult(LegacyMigrationStatus.STALE)
+        executor = executor_factory()
+        adapter = adapter_factory(executor, env, current)
+        return execute_legacy_migration(
+            plan,
+            executor=executor,
+            env=env,
+            per_target_revalidate=revalidate_uninstall_target,
+            enumerate_profiles=adapter.enumerate_profiles,
+        )
+
+    return run_legacy_migration_confirmation(
+        plan,
+        revalidate_collection=revalidate_uninstall_collection,
+        continuation=continue_migration,
+        input_fn=input_fn,
+        output=output,
+    )
 
 
 def run_installer(

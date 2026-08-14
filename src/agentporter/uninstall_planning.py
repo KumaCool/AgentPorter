@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Generic, Protocol, TextIO, TypeVar, cast
 from uuid import UUID
 
-from .identity import COMPONENT_IDS, INSTALL_COMPONENT_IDS, PRODUCT_ID
+from .identity import INSTALL_COMPONENT_IDS, LEGACY_V020_COMPONENT_IDS, PRODUCT_ID
 from .models import HermesProfileName, MarkerV1
 from .uninstall_discovery import (
     MARKER_NAME,
@@ -214,7 +214,10 @@ def build_uninstall_plan(
             return _invalid_plan()
         home = candidates[0].hermes_home
         root = candidates[0].profiles_root
-    allowed_sets = (tuple(COMPONENT_IDS.values()), tuple(INSTALL_COMPONENT_IDS.values()))
+    allowed_sets = (
+        tuple(LEGACY_V020_COMPONENT_IDS.values()),
+        tuple(INSTALL_COMPONENT_IDS.values()),
+    )
     if len(candidates) not in {len(item) for item in allowed_sets}:
         return _invalid_plan()
 

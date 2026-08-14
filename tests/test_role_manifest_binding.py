@@ -14,6 +14,7 @@ from agentporter.identity import (
     INITIAL_PROFILE_NAMES,
     INSTALL_COMPONENT_IDS,
     LEGACY_PORTABLE_IDS,
+    LEGACY_V020_COMPONENT_IDS,
     portable_id_for_component,
 )
 from agentporter.manifest import load_manifest
@@ -46,15 +47,16 @@ def _bindings() -> dict[str, RuntimeBindingSelection]:
         "mechanical_worker": RuntimeBindingSelection(
             "model-b", "provider-b", "https://b.invalid/v1"
         ),
-        "agentporter_orchestrator": RuntimeBindingSelection(
-            "model-a", "provider-a", "https://a.invalid/v1"
-        ),
     }
 
 
 def test_role_registry_uses_role_names_but_preserves_permanent_component_ids() -> None:
     assert tuple(COMPONENT_IDS) == ("bounded_worker", "mechanical_worker")
     assert tuple(INSTALL_COMPONENT_IDS) == (
+        "bounded_worker",
+        "mechanical_worker",
+    )
+    assert tuple(LEGACY_V020_COMPONENT_IDS) == (
         "bounded_worker",
         "mechanical_worker",
         "agentporter_orchestrator",
@@ -66,7 +68,6 @@ def test_role_registry_uses_role_names_but_preserves_permanent_component_ids() -
     assert INITIAL_PROFILE_NAMES == {
         "bounded_worker": "agentporter-bounded-worker",
         "mechanical_worker": "agentporter-mechanical-worker",
-        "agentporter_orchestrator": "agentporter-orchestrator",
     }
     assert LEGACY_PORTABLE_IDS == {
         "luna_worker": "bounded_worker",
@@ -120,7 +121,6 @@ def test_explicit_bindings_flow_through_plan_render_and_fingerprint(tmp_path: Pa
     assert [(w.portable_id, w.model, w.provider) for w in plan.workers] == [
         ("bounded_worker", "model-a", "provider-a"),
         ("mechanical_worker", "model-b", "provider-b"),
-        ("agentporter_orchestrator", "model-a", "provider-a"),
     ]
     assert plan.workers[0].endpoint_summary != selection["bounded_worker"].endpoint
     assert selection["bounded_worker"].endpoint not in plan.workers[0].endpoint_summary

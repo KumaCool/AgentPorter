@@ -47,7 +47,6 @@ MODEL_COMMANDS = frozenset({"chat", "run"})
 RENAMED = (
     "zz-phase4-renamed-luna",
     "aa-phase4-renamed-orion",
-    "mm-phase4-renamed-orchestrator",
 )
 
 
@@ -286,7 +285,7 @@ def test_real_renamed_collection_confirms_and_deletes_in_fixed_component_order(
     result = outcome.continuation_result
     assert result is not None
     assert result.status is UninstallExecutionStatus.DELETED
-    assert [item.status for item in result.items] == [UninstallItemStatus.DELETED] * 3
+    assert [item.status for item in result.items] == [UninstallItemStatus.DELETED] * 2
     rendered = output.getvalue()
     assert render_uninstall_plan(plan) in rendered
     assert "WARNING:" in rendered
@@ -408,6 +407,5 @@ def test_real_second_rename_at_callback_barrier_is_partial_and_never_deletes_rep
     assert {entry.name for entry in native.enumerate_profiles()} == {
         survivor.name,
         second.current_name,
-        plan.targets[2].current_name,
     }
     _assert_audit(runner)

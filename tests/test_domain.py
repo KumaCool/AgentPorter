@@ -26,7 +26,6 @@ def test_repository_manifest_is_closed_and_typed() -> None:
     assert list(manifest.workers) == [
         "bounded_worker",
         "mechanical_worker",
-        "agentporter_orchestrator",
     ]
     assert manifest.workers["bounded_worker"].tier == "bounded"
     fields = type(manifest.workers["mechanical_worker"]).model_fields

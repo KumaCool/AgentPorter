@@ -12,14 +12,14 @@ COMPONENT_IDS: Final[Mapping[str, str]] = MappingProxyType(
     }
 )
 ORCHESTRATOR_COMPONENT_ID: Final = "ee21f7f8-5a9d-4cf2-9e57-2508034cadc7"
-INSTALL_COMPONENT_IDS: Final[Mapping[str, str]] = MappingProxyType(
+INSTALL_COMPONENT_IDS: Final[Mapping[str, str]] = MappingProxyType(dict(COMPONENT_IDS))
+LEGACY_V020_COMPONENT_IDS: Final[Mapping[str, str]] = MappingProxyType(
     {**COMPONENT_IDS, "agentporter_orchestrator": ORCHESTRATOR_COMPONENT_ID}
 )
 INITIAL_PROFILE_NAMES: Final[Mapping[str, str]] = MappingProxyType(
     {
         "bounded_worker": "agentporter-bounded-worker",
         "mechanical_worker": "agentporter-mechanical-worker",
-        "agentporter_orchestrator": "agentporter-orchestrator",
     }
 )
 
@@ -34,13 +34,13 @@ LEGACY_INITIAL_PROFILE_NAMES: Final[Mapping[str, str]] = MappingProxyType(
     }
 )
 _PORTABLE_ID_BY_COMPONENT: Final[Mapping[str, str]] = MappingProxyType(
-    {component_id: portable_id for portable_id, component_id in INSTALL_COMPONENT_IDS.items()}
+    {component_id: portable_id for portable_id, component_id in LEGACY_V020_COMPONENT_IDS.items()}
 )
 
 
 def normalize_portable_id(portable_id: str) -> str:
     current = LEGACY_PORTABLE_IDS.get(portable_id, portable_id)
-    if current not in INSTALL_COMPONENT_IDS:
+    if current not in LEGACY_V020_COMPONENT_IDS:
         raise ValueError("unknown Portable ID")
     return current
 

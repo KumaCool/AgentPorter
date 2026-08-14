@@ -229,9 +229,6 @@ def _validate_config(data: object, profile_name: str) -> None:
     if not all(isinstance(key, str) for key in config):
         raise ValueError("config shape")
     expected = {"model", "agent"}
-    orchestrator = profile_name == INITIAL_PROFILE_NAMES["agentporter_orchestrator"]
-    if orchestrator:
-        expected |= {"kanban", "platform_toolsets"}
     if set(config) != expected:
         raise ValueError("config shape")
     model = config["model"]
@@ -256,13 +253,6 @@ def _validate_config(data: object, profile_name: str) -> None:
         raise ValueError("agent shape")
     if set(typed_agent) != {"reasoning_effort"}:
         raise ValueError("agent shape")
-    if orchestrator:
-        from .render import ORCHESTRATOR_CONFIG
-
-        if config["kanban"] != ORCHESTRATOR_CONFIG:
-            raise ValueError("kanban shape")
-        if config["platform_toolsets"] != {"cli": ["kanban"]}:
-            raise ValueError("platform toolsets shape")
 
 
 def scan_staging(staging_root: Path) -> tuple[()]:
@@ -365,10 +355,7 @@ def scan_staging(staging_root: Path) -> tuple[()]:
     finally:
         if root_fd is not None:
             os.close(root_fd)
-    allowed_profile_sets = {
-        frozenset(INITIAL_PROFILE_NAMES.values()),
-        frozenset({INITIAL_PROFILE_NAMES["agentporter_orchestrator"]}),
-    }
+    allowed_profile_sets = {frozenset(INITIAL_PROFILE_NAMES.values())}
     if frozenset(actual_profiles) not in allowed_profile_sets:
         _fail("unexpected-path", Path("."))
     if len(installation_ids) != 1:

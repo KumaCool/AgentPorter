@@ -17,14 +17,21 @@ import yaml
 from pydantic import ValidationError
 
 from .hermes import DetectionError, HermesDetection, ProfileEntryKind
-from .identity import COMPONENT_IDS, INITIAL_PROFILE_NAMES, INSTALL_COMPONENT_IDS
+from .identity import INITIAL_PROFILE_NAMES, INSTALL_COMPONENT_IDS, LEGACY_V020_COMPONENT_IDS
 from .manifest import load_manifest
 from .models import WorkersManifest
 from .render import DISTRIBUTION_OWNED, render_staging
 from .security import StagingViolation, scan_staging
 from .uninstall_discovery import DiscoveryResult, DiscoveryStatus, discover_installation
 
-PlanStatus = Literal["ready", "configuration-required", "unsupported", "conflict", "invalid"]
+PlanStatus = Literal[
+    "ready",
+    "configuration-required",
+    "migration-required",
+    "unsupported",
+    "conflict",
+    "invalid",
+]
 RuntimeConfiguration = Literal[
     "configured-but-runtime-unvalidated",
     "selected-but-runtime-unvalidated",
@@ -431,7 +438,7 @@ def plan_installation(
     workers = _worker_plans(manifest, bindings)
     installation_id_override: str | None = None
     if existing_installation is not None:
-        legacy_components = set(COMPONENT_IDS.values())
+        legacy_components = set(LEGACY_V020_COMPONENT_IDS.values())
         if (
             existing_installation.status is not DiscoveryStatus.READY
             or existing_installation.findings
@@ -444,20 +451,11 @@ def plan_installation(
                 status="conflict",
                 reason="legacy installation is not upgradable",
             )
-        installation_id_override = existing_installation.targets[0].installation_id
-        workers = tuple(
-            worker for worker in workers if worker.portable_id == "agentporter_orchestrator"
+        return _base_plan(
+            detection,
+            status="migration-required",
+            reason="v0.2.0 orchestrator Profile removal requires a separate authorized migration",
         )
-        manifest = manifest.model_copy(
-            update={
-                "workers": {
-                    key: value
-                    for key, value in manifest.workers.items()
-                    if key == "agentporter_orchestrator"
-                }
-            }
-        )
-        bindings = {"agentporter_orchestrator": bindings["agentporter_orchestrator"]}
     if not detection.capabilities.supports_required_profile_commands:
         return _base_plan(
             detection,
@@ -665,16 +663,6 @@ def _same_detection(plan: InstallPlan, detection: HermesDetection) -> bool:
         or not detection.capabilities.supports_required_profile_commands
     ):
         return False
-    planned_components = {worker.component_id for worker in plan.workers}
-    orchestrator_component = INSTALL_COMPONENT_IDS["agentporter_orchestrator"]
-    if planned_components == {orchestrator_component}:
-        current = discover_installation(detection.profiles_root)
-        return (
-            current.status is DiscoveryStatus.READY
-            and not current.findings
-            and {target.component_id for target in current.targets} == set(COMPONENT_IDS.values())
-            and {target.installation_id for target in current.targets} == {plan.installation_id}
-        )
     targets = {worker.profile_name for worker in plan.workers}
     return not any(entry.name in targets for entry in detection.profile_entries)
 

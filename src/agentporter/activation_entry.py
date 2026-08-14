@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import getpass
 import os
+import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import TextIO
@@ -15,6 +16,7 @@ from .activation_application import (
     apply_activation,
     build_activation_plan,
 )
+from .application import run_legacy_orchestrator_migration
 from .hermes import HermesDetection, detect_hermes
 from .hermes_runtime import HermesRuntime
 from .identity import INSTALL_COMPONENT_IDS
@@ -34,6 +36,10 @@ def _default_migration_journal(found: HermesDetection) -> Path:
     return found.hermes_home.parent / "agentporter" / "role-name-migration.json"
 
 
+def _default_component_migration_journal(found: HermesDetection) -> Path:
+    return found.hermes_home.parent / "agentporter" / "legacy-component-migration.json"
+
+
 def run_activation_with_role_migration(
     env: Mapping[str, str],
     *,
@@ -45,6 +51,18 @@ def run_activation_with_role_migration(
 ) -> ActivationResult:
     """Public activate composition: independent rename gate before binding/canary gates."""
     found = detector(env=env)
+    discovery = discover_installation(found.profiles_root)
+    observed_components = {target.component_id for target in discovery.targets}
+    if observed_components != set(INSTALL_COMPONENT_IDS.values()):
+        component_migration = run_legacy_orchestrator_migration(
+            env,
+            journal_path=_default_component_migration_journal(found),
+            input_fn=input_fn,
+            output=output if output is not None else sys.stdout,
+            detector=detector,
+        )
+        if component_migration.status.value != "migrated":
+            return ActivationResult(ActivationStatus.FAILED)
     activation: ActivationResult | None = None
 
     def binding_gate() -> None:
@@ -99,7 +117,7 @@ def _run_binding_activation(
     inputs: dict[str, ActivationBindingInput] = {}
     targets = {target.component_id: target for target in discovery.targets}
     if not set(INSTALL_COMPONENT_IDS.values()) <= set(targets):
-        raise SystemExit("AgentPorter activation requires all three components")
+        raise SystemExit("AgentPorter activation requires both Workers")
     for component_id in INSTALL_COMPONENT_IDS.values():
         target = targets[component_id]
         model = input_fn(f"Model ID for {target.current_name}: ").strip()

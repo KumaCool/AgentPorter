@@ -27,7 +27,7 @@ def test_runtime_skips_unsupported_custom_provider_auth_and_discloses_live_side_
     plan = build_activation_plan(discovery, found, inputs_fixture())
     prompts: list[str] = []
     output: list[str] = []
-    answers = iter((plan.confirmation_phrase, "RUN 3 WORKER CALLS"))
+    answers = iter((plan.confirmation_phrase, "RUN 2 WORKER CALLS"))
 
     def answer(prompt: str) -> str:
         prompts.append(prompt)

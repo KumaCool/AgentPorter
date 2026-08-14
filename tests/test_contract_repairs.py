@@ -138,5 +138,4 @@ def test_real_hermes_v020_installs_rendered_distributions_in_temporary_root(
     assert {path.name for path in installed.iterdir()} == {
         "agentporter-bounded-worker",
         "agentporter-mechanical-worker",
-        "agentporter-orchestrator",
     }

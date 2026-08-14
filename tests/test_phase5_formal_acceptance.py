@@ -33,7 +33,6 @@ uninstall_entry = importlib.import_module("agentporter.uninstall_entry")
 RENAMED = (
     "phase5-renamed-luna",
     "phase5-renamed-codex",
-    "phase5-renamed-orchestrator",
 )
 REAL_RUN_INSTALLER = install_application.run_installer
 REAL_RUN_UNINSTALLER = uninstall_entry.run_uninstaller
@@ -55,18 +54,14 @@ def _expected_families() -> tuple[str, ...]:
     return (
         *install_worker,
         *install_worker,
-        *install_worker,
         "profile-list",
-        *installed_readback,
         *installed_readback,
         *installed_readback,
         "kanban-create-help",
         "profile-rename",
         "profile-rename",
-        "profile-rename",
         "profile-list",
         "kanban-assignees-json",
-        "profile-delete",
         "profile-delete",
         "profile-delete",
         "profile-list",
@@ -396,7 +391,7 @@ def test_formal_entries_real_hermes_cold_hot_acceptance_and_resource_baseline(
 
             install_output, install_seconds = _install_formally(monkeypatch, env, runner)
             assert "Model calls: false" in install_output
-            assert len(runner.profile_install_seconds) == 3
+            assert len(runner.profile_install_seconds) == 2
 
             foreign_cwd = cycle_root / "different-project" / "nested"
             foreign_cwd.mkdir(parents=True)
@@ -569,7 +564,7 @@ def test_closed_grammar_rejects_mismatched_description_and_nested_staging_source
     staging.mkdir()
     runner.watch_staging(staging)
     pairs = sorted(_profile_description_pairs())
-    assert len(pairs) == 3
+    assert len(pairs) == 2
 
     with pytest.raises(AssertionError):
         _command_family(

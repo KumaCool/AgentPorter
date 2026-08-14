@@ -10,7 +10,7 @@ import pytest
 import yaml
 
 from agentporter.hermes import HermesCapabilities, HermesDetection
-from agentporter.identity import COMPONENT_IDS, INSTALL_COMPONENT_IDS, PRODUCT_ID
+from agentporter.identity import INSTALL_COMPONENT_IDS, LEGACY_V020_COMPONENT_IDS, PRODUCT_ID
 from agentporter.transaction import InstallTransactionStatus
 from agentporter.workflow import WorkflowOutcome, WorkflowStatus
 from tests.plan06_support import runtime_bindings
@@ -180,8 +180,8 @@ def test_confirmed_application_composes_fresh_native_transaction(
     assert len(detections) == 5
 
 
-def test_formal_installer_discovers_renamed_legacy_and_stages_only_orchestrator(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_formal_installer_requires_separate_authorization_for_v020_profile_removal(
+    tmp_path: Path,
 ) -> None:
     import agentporter.application as application
 
@@ -189,7 +189,9 @@ def test_formal_installer_discovers_renamed_legacy_and_stages_only_orchestrator(
     legacy = [
         _installed_marker(detection, name, component)
         for name, component in zip(
-            ("renamed-luna", "renamed-codex"), COMPONENT_IDS.values(), strict=True
+            ("renamed-luna", "renamed-codex", "renamed-orchestrator"),
+            LEGACY_V020_COMPONENT_IDS.values(),
+            strict=True,
         )
     ]
     before = {
@@ -201,40 +203,22 @@ def test_formal_installer_discovers_renamed_legacy_and_stages_only_orchestrator(
         )
         for path in legacy
     }
-    captured: list[object] = []
-    transaction = SimpleNamespace(status=InstallTransactionStatus.INSTALLED)
-    monkeypatch.setattr(
-        application,
-        "execute_install_transaction",
-        lambda plan, **kwargs: captured.append(plan) or transaction,
-    )
-    adapter = SimpleNamespace(
-        enumerate_profiles=lambda: (),
-        set_description=object(),
-        read_distribution_info=object(),
-        read_description=object(),
-    )
     output = StringIO()
 
     result = application.run_installer(
         _manifest(tmp_path),
         tmp_path / "staging",
         {},
-        input_fn=_answer(output),
         output=output,
         detector=lambda **kwargs: detection,
-        executor_factory=lambda: object(),  # type: ignore[arg-type]
-        adapter_factory=lambda *args: adapter,  # type: ignore[arg-type]
-        installation_id_factory=lambda: pytest.fail("legacy upgrade must retain installation id"),
+        executor_factory=lambda: pytest.fail("migration-required must not execute"),
+        installation_id_factory=lambda: pytest.fail("migration-required must not create an id"),
         binding_selection=runtime_bindings(),
     )
 
-    assert result.workflow.status is WorkflowStatus.CONFIRMED
-    plan = captured[0]
-    assert plan.installation_id == str(INSTALLATION_ID)  # type: ignore[attr-defined]
-    assert [worker.component_id for worker in plan.workers] == [  # type: ignore[attr-defined]
-        INSTALL_COMPONENT_IDS["agentporter_orchestrator"]
-    ]
+    assert result.workflow.status is WorkflowStatus.REJECTED
+    assert "separate authorized migration" in result.workflow.reason
+    assert result.transaction is None
     assert before == {
         path: (
             (path / "agentporter-profile.json").read_bytes(),
@@ -253,7 +237,7 @@ def test_formal_installer_rejects_complete_current_installation_without_writes(
 
     detection = _detection(tmp_path)
     for name, component in zip(
-        ("renamed-luna", "renamed-codex", "renamed-orchestrator"),
+        ("renamed-luna", "renamed-codex"),
         INSTALL_COMPONENT_IDS.values(),
         strict=True,
     ):
