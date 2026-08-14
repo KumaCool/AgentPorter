@@ -20,6 +20,7 @@ import yaml
 
 import agentporter
 import agentporter.application as install_application
+from agentporter.activation_application import ActivationResult, ActivationStatus
 from agentporter.execution import CommandExecutor
 from agentporter.identity import INITIAL_PROFILE_NAMES, INSTALL_COMPONENT_IDS, PRODUCT_ID
 from agentporter.models import MarkerV1, WorkersManifest
@@ -262,7 +263,15 @@ def _install_formally(
             binding_selection=runtime_bindings(),
         )
 
+    def completed_activation(
+        minimal_env: Mapping[str, str], *, binding_selection: Mapping[str, object]
+    ) -> ActivationResult:
+        assert minimal_env == env
+        assert binding_selection == runtime_bindings()
+        return ActivationResult(ActivationStatus.ACTIVATED)
+
     monkeypatch.setattr(agentporter, "run_installer", entry_run_installer)
+    monkeypatch.setattr(agentporter, "run_activation_with_role_migration", completed_activation)
     started = time.perf_counter()
     agentporter.run_product_installer()
     return output.getvalue(), time.perf_counter() - started
