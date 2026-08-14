@@ -369,3 +369,7 @@ restricted dispatch
 - [x] bootstrap 安装成功后直接进入 activation，无额外 opt-in。
 - [x] activation 失败保留公开重试入口并返回非零。
 - [ ] 真实凭据 one-shot 仍需用户在 canary 门明确授权；本修订未执行真实模型调用。
+
+## v0.2.2 本地候选当前修正 ledger
+
+已集成的 activation 修复作为未打 tag、未 push、未发布的 v0.2.2 本地候选准备；v0.2.1 仍是不可变的正式发布版。当前产品恰好只有两个 Worker。安装对每个 Worker 的 model、provider、endpoint 各询问一次，并只在进程内把 sealed selection 传给 activation，不进入 argv、环境变量或输出。用户显式授权 source inheritance 后，activation 只把选定 `key_env` 的精确 assignment 复制到对应 Worker 的 0600 `.env`，并与 provider definition 处于同一事务和补偿边界。API key 不进入输出、日志、argv、环境、fingerprint 或 receipt。`failed`、`credential-required`、`canary-required` 均保持非零，bootstrap 不得为这些状态报告 completed。真实 canary 仍需独立明确确认，本候选未执行。

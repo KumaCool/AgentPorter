@@ -1,6 +1,6 @@
 # Installation, troubleshooting, and safe release
 
-> **v0.2.1 published release (current authority):** Fresh install, activation, and canary target exactly two Worker Profiles, `bounded_worker` and `mechanical_worker`; the main Hermes agent is the orchestrator. v0.2.0 truly shipped the erroneous third `agentporter-orchestrator`, now supported only for discovery/uninstall and separately confirmed migration removal.
+> **v0.2.2 local candidate (current source authority; v0.2.1 remains published):** Fresh install, activation, and canary target exactly two Worker Profiles, `bounded_worker` and `mechanical_worker`; the main Hermes agent is the orchestrator. v0.2.0 truly shipped the erroneous third `agentporter-orchestrator`, now supported only for discovery/uninstall and separately confirmed migration removal.
 
 
 English | [简体中文](04-installation-and-troubleshooting.zh-CN.md)
@@ -31,13 +31,13 @@ Linux has the strongest real-Hermes acceptance evidence. macOS and Windows are c
 
 ## Install from a release artifact
 
-To inspect the published v0.2.1 wheel, verify its checksum and create a disposable environment:
+To inspect a locally built v0.2.2 candidate wheel, verify its checksum and create a disposable environment:
 
 ```bash
 python -m venv .venv
 # POSIX: source .venv/bin/activate
 # Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install agentporter-0.2.1-py3-none-any.whl
+python -m pip install agentporter-0.2.2-py3-none-any.whl
 agentporter
 ```
 
@@ -45,7 +45,7 @@ agentporter
 
 ## Published bootstrap boundary
 
-The source-tree candidate `install.sh` is pinned to the future immutable `https://github.com/KumaCool/AgentPorter/releases/download/v0.2.1` assets; those assets do not yet exist because this candidate is local only. The published v0.2.0 release and its immutable URL remain unchanged, and the public `latest` alias still selects v0.2.0. All seven hosted assets were downloaded and passed byte/checksum comparison and the release verifier; fresh HTTPS clone, isolated wheel import, and public `latest/download/install.sh` byte comparison also passed.
+The source-tree candidate `install.sh` is pinned to future immutable `https://github.com/KumaCool/AgentPorter/releases/download/v0.2.2` assets; those assets do not exist because this candidate is local, untagged, unpushed, and unpublished. Published v0.2.1 remains immutable, and the public `latest` alias still selects v0.2.1.
 
 ## Run from source
 
@@ -64,7 +64,7 @@ The source checkout and artifact must come from a commit you trust. Do not run f
 
 Terminal statuses distinguish success, cancellation, preflight failure, install failure with compensation, incomplete compensation, and readback failure. Treat anything other than the explicit success result as not installed or requiring inspection; never infer success from some profile directories being present.
 
-The v0.2.0 release installs two dedicated Worker Profiles and one dedicated orchestrator Profile under the three role names above. It does not overwrite user-renamed Profiles, invoke a model during install/rename/static readback, install a daemon, or create a task database. Binding configuration and any provider-definition inheritance remain independently confirmed activation work; Profile-local credentials and runtime data remain managed by Hermes and the user.
+The current v0.2.2 candidate installs exactly two dedicated Worker Profiles; the main Hermes agent remains the orchestrator. v0.2.0’s three-Profile topology is historical only. It does not overwrite user-renamed Profiles, invoke a model during install/rename/static readback, install a daemon, or create a task database. Binding configuration and any provider-definition inheritance remain independently confirmed activation work; Profile-local credentials and runtime data remain managed by Hermes and the user.
 
 Static orchestrator configuration is installed and read back, but auto decomposition remains disabled; AgentPorter does **not** start Gateway, create Kanban tasks, enable live routing, or prove live task routing. Those capabilities are tracked in the [multi-agent orchestration plan](plan/02-multi-agent-orchestration.md).
 
@@ -86,15 +86,15 @@ If discovery is absent, incomplete, duplicated, conflicting, malformed, changed,
 
 | Dimension | Current state |
 |---|---|
-| installation | v0.2.0 is published; tag, seven hosted assets, verifier, fresh HTTPS clone, isolated wheel import, and `latest` bootstrap byte readback passed. |
-| public entries | v0.2.0 packages all three entries; legacy-name migration is reached only through independently confirmed `agentporter-activate`. |
-| binding/credential | v0.2.0 fresh installs require explicit model/provider/endpoint for all three Profiles before staging; credentials remain Profile/operator-owned. |
-| canary/live call | Real calls failed with `No inference provider configured`; `config check` remains static-only and is not canary evidence. |
+| installation | v0.2.1 is published; v0.2.2 is a local candidate only, with no tag, hosted assets, or public `latest` change. |
+| public entries | The v0.2.2 candidate packages all three software entries; legacy Profile migration remains separately confirmed through `agentporter-activate`. |
+| binding/credential | Each of the two Workers is asked exactly once for model/provider/endpoint before install. The sealed selection is passed in-process to activation, never via argv, environment, or output. Explicit source inheritance copies only the selected `key_env` assignment into that Worker’s mode-0600 `.env`, transactionally with its provider definition; API-key values are excluded from output, logs, argv, environment, and receipts. |
+| canary/live call | `failed`, `credential-required`, and `canary-required` are nonzero and bootstrap must not report completed. A real canary still requires a separate confirmation; none was run for this candidate. |
 | route proof | Hermes v0.20 usage exposes model/provider/api_calls but not tool/fallback fields; a 0.1.5 success initially has incomplete proof. |
 | dispatcher/route | AgentPorter does not start Gateway; Kanban mutation and live routing remain unaccepted. |
 | continuity | `DispatchReceipt`, task subscription (`notify-list`), observation, and structural resume remain offline-only; no live notification or continuation is claimed. |
 
-Plan 06 code/offline, tag, release, and hosted-artifact readback gates are closed, but no real model canary, Gateway change, or Kanban mutation/live routing was executed. Each live action requires separate authorization; v0.2.0 is not `operational` and does not modify Hermes source.
+The v0.2.2 candidate closes local code/package/document contracts only. It is not tagged, pushed, published, deployed, or operational; no real model canary, Gateway change, or Kanban mutation/live routing was executed.
 
 ## Troubleshooting
 
@@ -122,7 +122,7 @@ Never post raw config files, marker paths, credentials, sessions, memories, or p
 
    ```bash
    python scripts/verify_release.py \
-     --version 0.2.1 \
+     --version 0.2.2 \
      --dependency 'pydantic<3,>=2' \
      --dependency 'PyYAML<7,>=6' \
      --entry-point 'agentporter=agentporter:main' \
@@ -154,7 +154,7 @@ Never post raw config files, marker paths, credentials, sessions, memories, or p
 6. Inspect checksums, commit identity, tag, changelog, license, README, and verifier output before upload. Publish only the exact verified bytes.
 7. Download hosted artifacts, recompute checksums, and rerun verification. A tag or successful upload alone is not acceptance.
 
-The example resource path is the v0.2.0 release contract. Hosted release acceptance downloaded every published asset, recomputed checksums, reran this verifier, and byte-compared the public `latest/download/install.sh` endpoint; all checks passed.
+The example is the v0.2.2 local candidate contract. Hosted release/readback and public `latest` checks remain unperformed and cannot be claimed before publication.
 
 ## Historical 0.1.7 activation amendment
 
@@ -164,4 +164,4 @@ After the interactive install plan succeeds, the bootstrap now starts `agentport
 
 ## Corrected two-Worker activation and canary
 
-Current activation targets exactly two Worker bindings and authorizes at most two Worker calls. Canary timeout defaults to 30 seconds and may be configured to 90. An inherited unresolved `key_env` stops at `credential-required` unless the target Profile owns a resolvable `.env`. A sealed concrete custom provider uses canonical `custom`; exit-zero usage marked `failed` remains a closed classified failure.
+Current activation targets exactly two Worker bindings. Installation asks model/provider/endpoint once per Worker and passes those choices to activation only in process; they do not enter argv, environment variables, or output. Explicit source inheritance copies the exact selected `key_env` assignment into that Worker’s mode-0600 `.env` in the same transaction as the provider definition, while API-key values remain absent from output, logs, argv, environment, and receipts. Activation authorization does not authorize a call: real canary remains independently confirmed and bounded to at most two Worker calls. Canary timeout defaults to 30 seconds and may be configured to 90. An inherited unresolved `key_env` stops at `credential-required` unless the target Profile owns a resolvable `.env`. A sealed concrete custom provider uses canonical `custom`; exit-zero usage marked `failed` remains a closed classified failure.

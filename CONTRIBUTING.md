@@ -1,6 +1,6 @@
 # Contributing to AgentPorter
 
-AgentPorter v0.2.1 is the latest published release, with the corrected two-Worker topology and explicit model/provider/endpoint bindings; its tag, hosted assets, release verifier, and public `latest` readback passed. [Plan 06](docs/plan/06-role-identities-and-configurable-model-binding.md) and its [design](docs/06-role-identities-and-configurable-model-binding-design.md) remain engineering authorities. Contributions must not modify Hermes source or weaken credential, lifecycle, or evidence boundaries.
+AgentPorter v0.2.1 is the latest published release; v0.2.2 is currently a local candidate, with the corrected two-Worker topology and explicit model/provider/endpoint bindings; its tag, hosted assets, release verifier, and public `latest` readback passed. [Plan 06](docs/plan/06-role-identities-and-configurable-model-binding.md) and its [design](docs/06-role-identities-and-configurable-model-binding-design.md) remain engineering authorities. Contributions must not modify Hermes source or weaken credential, lifecycle, or evidence boundaries.
 
 ## Before you start
 
@@ -52,6 +52,6 @@ Update user, security, design, and changelog documentation when behavior or rele
 
 Report vulnerabilities privately according to [SECURITY.md](SECURITY.md). Contributions are licensed under the [MIT License](LICENSE).
 
-v0.2.0 release boundary
+v0.2.2 candidate activation boundary
 
-The release chains activation after install and supports Hermes v0.20 custom providers by transactionally inheriting one exact main/default Profile provider definition. Tests must prove no `auth add/status` calls, source-config CAS/revalidation, preservation of unrelated Worker providers, no provider-definition disclosure in output/receipts/argv, and retained retryability after activation failure. No real model call belongs in the portable gate.
+The candidate passes each Worker’s one-time model/provider/endpoint selections to activation in-process after install and supports Hermes v0.20 custom providers by transactionally inheriting one exact main/default Profile provider definition. Tests must prove no `auth add/status` calls, source-config CAS/revalidation, preservation of unrelated Worker providers, no provider-definition or API-key disclosure in output/logs/receipts/argv/environment, exact authorized `key_env` assignment copy into a mode-0600 Worker `.env` in the same transaction, and retained retryability after activation failure. No real model call belongs in the portable gate.

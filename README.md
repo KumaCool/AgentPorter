@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
 
 AgentPorter is an open-source deployment kit for a reusable [Hermes Agent](https://hermes-agent.nousresearch.com/) multi-agent Worker team. It installs role-specific Profiles in one run and is evolving toward verified task decomposition and routing through Hermes-native Kanban orchestration. The [role-identity and configurable-binding design](docs/06-role-identities-and-configurable-model-binding-design.md) is published in v0.2.0.
 
-> **Current status:** v0.2.1 is the latest published non-prerelease release. Tag `v0.2.1` points to `d7078ef0351f92867a033aafd1fdfc6786d13e88`; its GitHub Release and seven hosted assets passed checksum/verifier, fresh HTTPS clone, isolated package import, and public `latest/download/install.sh` byte-readback checks. The corrected product installs exactly two Worker Profiles, `bounded_worker` and `mechanical_worker`, with explicit sealed model/provider/endpoint selections for both. The main Hermes agent is the orchestrator; no independent orchestrator Profile is current. No deployment, credentialed model canary, Gateway change, Kanban mutation, or live routing was performed, so this release is not `operational`.
+> **Current status:** v0.2.1 remains the latest published non-prerelease release; this source tree is the untagged, unpushed AgentPorter v0.2.2 local candidate. Tag `v0.2.1` points to `d7078ef0351f92867a033aafd1fdfc6786d13e88`; its GitHub Release and seven hosted assets passed checksum/verifier, fresh HTTPS clone, isolated package import, and public `latest/download/install.sh` byte-readback checks. The corrected product installs exactly two Worker Profiles, `bounded_worker` and `mechanical_worker`, with explicit sealed model/provider/endpoint selections for both. The main Hermes agent is the orchestrator; no independent orchestrator Profile is current. No deployment, credentialed model canary, Gateway change, Kanban mutation, or live routing was performed, so this release is not `operational`.
 
 ## One-line install (POSIX)
 
@@ -58,8 +58,8 @@ Until a later Hermes seam passes separately authorized live acceptance, use Herm
 |---|---|
 | installation | v0.2.1 is published; its tag, seven hosted assets, release verifier, fresh HTTPS clone, isolated package import, and `latest` bootstrap byte readback passed. |
 | public entries | `agentporter`, `agentporter-activate`, and `agentporter-uninstall` are published by the bootstrap transaction. |
-| binding/credential | Custom-provider binding can inherit a sealed definition into each execution Worker; credential availability remains Profile/operator-owned and must be proven by a live call. |
-| canary/live call | No credentialed live canary is claimed for the 0.1.8 release; `config check=0` remains static-only evidence. |
+| binding/credential | Before installation, model, provider, and endpoint are asked exactly once for each Worker and are passed in-process to activation—not through argv, environment variables, or output. After explicit source-inheritance authorization, the selected `key_env` assignment is copied exactly into that Worker’s mode-0600 `.env` in the same transaction as its provider definition; API-key values never enter output, logs, argv, environment, or receipts. |
+| canary/live call | `failed`, `credential-required`, and `canary-required` remain nonzero and bootstrap must not print `completed`; the real canary still requires its own explicit confirmation. No credentialed live canary is claimed. |
 | route proof | The activation path verifies model/provider/api_calls from Hermes usage reports; v0.20 remains `route-proof-incomplete` without tool/fallback telemetry. |
 | dispatcher/route | The main Hermes agent is the orchestrator; no separate control-plane Profile is current. Gateway, Kanban mutation, and live routing are unaccepted. |
 | continuity | `DispatchReceipt`, task subscription (`notify-list`), observation, and structural-resume contracts remain offline-only; no live notification or continuation is claimed. |
@@ -68,7 +68,7 @@ The released v0.2.0 publishes `agentporter-activate`, transactionally writes the
 
 ## Safety boundary
 
-Installation preflights the entire set, presents one exact plan, requires interactive confirmation, installs through Hermes, reads back results, and performs bounded compensation on failure. It never overwrites existing/default Profiles, copies credentials, calls a model, installs a daemon, or keeps a task database.
+Installation preflights the entire set, presents one exact plan, requires interactive confirmation, installs through Hermes, reads back results, and performs bounded compensation on failure. It never overwrites existing/default Profiles, calls a model before the separate canary confirmation, installs a daemon, or keeps a task database. The only credential-copy boundary is explicitly authorized source inheritance of one selected `key_env` assignment into a Worker-owned mode-0600 `.env`, transactionally paired with that provider definition.
 
 The separate `uninstall.py` discovers AgentPorter Profiles even after rename by fixed marker identity, warns that Profile-local data and later customization will be deleted, requires installation-bound confirmation, revalidates against races, and uses Hermes-native deletion. Ambiguous or changed sets fail closed.
 
@@ -135,7 +135,7 @@ AgentPorter is licensed under the [MIT License](LICENSE).
 
 ## Current custom-provider install-to-activation flow
 
-AgentPorter 0.1.8 chains activation immediately after a successful Profile installation; there is no extra “enter activation?” prompt. For Hermes v0.20 custom providers, activation does not call unsupported bare-provider `auth add/status`. Instead, it requires an exact provider definition in the main/default Profile, seals that source config, and transactionally copies the complete selected `custom_providers` entry into each Worker before binding and the separately confirmed live canary. This intentionally copies provider configuration, including whichever `api_key` or `key_env` field the operator already placed there; it never prints that definition or stores it in AgentPorter receipts. Missing, duplicate, endpoint-mismatched, or concurrently changed definitions fail closed.
+AgentPorter 0.2.2 chains activation in-process immediately after a successful Profile installation; there is no extra “enter activation?” prompt. For Hermes v0.20 custom providers, activation does not call unsupported bare-provider `auth add/status`. Instead, it requires an exact provider definition in the main/default Profile, seals that source config, and transactionally copies the complete selected `custom_providers` entry into each Worker before binding and the separately confirmed live canary. This copies the selected provider definition only after authorization. For `key_env`, it also copies exactly that selected source assignment into the target Worker’s mode-0600 `.env` in the same transaction; it does not copy unrelated dotenv entries. API-key material is never printed, logged, placed in argv/environment, or stored in AgentPorter receipts. Missing, duplicate, endpoint-mismatched, or concurrently changed definitions fail closed.
 
 ### Truthful canary contract (v0.2.1 correction)
 

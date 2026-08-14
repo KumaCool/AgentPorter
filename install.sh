@@ -1,11 +1,11 @@
 #!/bin/sh
-# AgentPorter v0.2.1 release-candidate bootstrap for POSIX systems.
+# AgentPorter v0.2.2 release-candidate bootstrap for POSIX systems.
 set -eu
 
-VERSION=0.2.1
+VERSION=0.2.2
 PREVIOUS_VERSION=0.1.4
-RELEASE_BASE_URL=https://github.com/KumaCool/AgentPorter/releases/download/v0.2.1
-WHEEL=agentporter-0.2.1-py3-none-any.whl
+RELEASE_BASE_URL=https://github.com/KumaCool/AgentPorter/releases/download/v0.2.2
+WHEEL=agentporter-0.2.2-py3-none-any.whl
 CHECKSUM=${WHEEL}.sha256
 ENTRY_POINTS='agentporter agentporter-activate agentporter-uninstall'
 PACKAGED_RESOURCES='agentporter/resources/workers.yaml'
@@ -142,28 +142,28 @@ else:
 # The 0.1.4 -> 0.1.5 journal recovery above intentionally remains unchanged and runs first.
 recover_upgrade
 
-# The v0.2.1 transaction helper is also shipped inside the wheel/sdist; the
+# The v0.2.2 transaction helper is also shipped inside the wheel/sdist; the
 # standalone checksum-verified copy below is the pre-install bootstrap asset.
 
-PREVIOUS_VERSION=0.2.0
+PREVIOUS_VERSION=0.2.1
 INSTALL_ROOT=${PRODUCT_ROOT}/${VERSION}
 OLD_ROOT=${PRODUCT_ROOT}/${PREVIOUS_VERSION}
-JOURNAL=${PRODUCT_ROOT}/.0.2.1-entry-transaction.json
-SPEC=${PRODUCT_ROOT}/.0.2.1-entry-spec.json
+JOURNAL=${PRODUCT_ROOT}/.0.2.2-entry-transaction.json
+SPEC=${PRODUCT_ROOT}/.0.2.2-entry-spec.json
 TXN_HELPER=bootstrap_txn.py
 TXN_HELPER_CHECKSUM=${TXN_HELPER}.sha256
 
 recover_entry_transaction() {
     [ -e "$JOURNAL" ] || [ -L "$JOURNAL" ] || return 0
-    [ -f "$SPEC" ] && [ ! -L "$SPEC" ] || fail 'partial/mixed interrupted 0.2.1 install; residue retained'
+    [ -f "$SPEC" ] && [ ! -L "$SPEC" ] || fail 'partial/mixed interrupted 0.2.2 install; residue retained'
     [ -f "$INSTALL_ROOT/$TXN_HELPER" ] && [ ! -L "$INSTALL_ROOT/$TXN_HELPER" ] \
-        || fail 'partial/mixed interrupted 0.2.1 install; residue retained'
+        || fail 'partial/mixed interrupted 0.2.2 install; residue retained'
     "$PYTHON" "$INSTALL_ROOT/$TXN_HELPER" recover "$SPEC" \
-        || fail 'partial/mixed interrupted 0.2.1 install; residue retained'
+        || fail 'partial/mixed interrupted 0.2.2 install; residue retained'
     if [ -e "$JOURNAL" ] || [ -L "$JOURNAL" ]; then
-        fail 'partial/mixed interrupted 0.2.1 install; residue retained'
+        fail 'partial/mixed interrupted 0.2.2 install; residue retained'
     fi
-    printf 'AgentPorter bootstrap: safely recovered interrupted 0.2.1 install\n' >&2
+    printf 'AgentPorter bootstrap: safely recovered interrupted 0.2.2 install\n' >&2
     exit 0
 }
 
@@ -188,12 +188,12 @@ root,bin_home=map(pathlib.Path,sys.argv[1:]); receipt=root/"bootstrap-install.js
 try: data=json.loads(receipt.read_bytes())
 except (OSError,ValueError,TypeError): raise SystemExit(1)
 names=("agentporter","agentporter-activate","agentporter-uninstall")
-expected={"schema_version":2,"product":"agentporter","version":"0.2.0","public_entries":[str(bin_home/name) for name in names]}
+expected={"schema_version":2,"product":"agentporter","version":"0.2.1","public_entries":[str(bin_home/name) for name in names]}
 if data != expected or receipt.is_symlink() or not root.is_dir() or root.is_symlink(): raise SystemExit(1)
 for name in names:
  public=bin_home/name; private=root/"venv/bin"/name
  if not public.is_symlink() or os.readlink(public) != str(private) or not private.is_file(): raise SystemExit(1)' \
-        "$OLD_ROOT" "$BIN_HOME" || fail 'existing 0.2.0 installation is not safe to upgrade'
+        "$OLD_ROOT" "$BIN_HOME" || fail 'existing 0.2.1 installation is not safe to upgrade'
     UPGRADE=1
 else
     for public_entry in $PUBLIC_ENTRIES; do
@@ -217,7 +217,7 @@ cleanup() {
     return "$status"
 }
 trap cleanup EXIT HUP INT TERM
-STAGING=$(mktemp -d "${PRODUCT_ROOT}/.0.2.1-stage.XXXXXX") || fail 'could not create a private staging directory'
+STAGING=$(mktemp -d "${PRODUCT_ROOT}/.0.2.2-stage.XXXXXX") || fail 'could not create a private staging directory'
 chmod 700 "$STAGING" || fail 'could not secure the staging directory'
 
 printf 'Downloading AgentPorter v%s release artifacts...\n' "$VERSION"
@@ -285,7 +285,7 @@ PUBLISHED=1
 "$PYTHON" -c 'import json,pathlib,sys
 out,mode,old_root,new_root,bin_home=map(pathlib.Path,sys.argv[1:])
 names=("agentporter","agentporter-activate","agentporter-uninstall")
-spec={"schema":2,"mode":str(mode),"old_root":str(old_root),"new_root":str(new_root),"old_receipt":str(old_root/"bootstrap-install.json"),"new_receipt":str(new_root/"bootstrap-install.json"),"journal":str(new_root.parent/".0.2.1-entry-transaction.json"),"entries":[]}
+spec={"schema":2,"mode":str(mode),"old_root":str(old_root),"new_root":str(new_root),"old_receipt":str(old_root/"bootstrap-install.json"),"new_receipt":str(new_root/"bootstrap-install.json"),"journal":str(new_root.parent/".0.2.2-entry-transaction.json"),"entries":[]}
 for name in names: spec["entries"].append({"name":name,"public":str(bin_home/name),"old_target":str(old_root/"venv/bin"/name) if str(mode)=="upgrade" else "","new_target":str(new_root/"venv/bin"/name)})
 out.write_text(json.dumps(spec,sort_keys=True)+"\n"); out.chmod(0o600)' \
     "$SPEC" "$([ "$UPGRADE" -eq 1 ] && printf upgrade || printf fresh)" "$OLD_ROOT" "$INSTALL_ROOT" "$BIN_HOME"

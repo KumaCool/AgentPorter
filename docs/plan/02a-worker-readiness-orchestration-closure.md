@@ -933,3 +933,7 @@ python scripts/verify_release.py <按当前 release contract 的完整参数>
 3. `agentporter-orchestrator` 只允许进入 legacy discovery/uninstall 与单独确认的 removal migration；不得进入 fresh manifest、staging、activation binding 或 canary 集合。
 4. fresh install、activation、readiness 聚合、确认计数及 canary 上限均为两个 Worker。
 5. canary 默认 30 秒并支持 90 秒；未解析 inherited `key_env` 在目标 Profile 无可解析 `.env` 时为 `credential-required`；canonical `custom` 只映射封印定义；exit-zero failed usage 保持封闭失败原因。
+
+## v0.2.2 本地候选当前修正 ledger
+
+已集成的 activation 修复作为未打 tag、未 push、未发布的 v0.2.2 本地候选准备；v0.2.1 仍是不可变的正式发布版。当前产品恰好只有两个 Worker。安装对每个 Worker 的 model、provider、endpoint 各询问一次，并只在进程内把 sealed selection 传给 activation，不进入 argv、环境变量或输出。用户显式授权 source inheritance 后，activation 只把选定 `key_env` 的精确 assignment 复制到对应 Worker 的 0600 `.env`，并与 provider definition 处于同一事务和补偿边界。API key 不进入输出、日志、argv、环境、fingerprint 或 receipt。`failed`、`credential-required`、`canary-required` 均保持非零，bootstrap 不得为这些状态报告 completed。真实 canary 仍需独立明确确认，本候选未执行。

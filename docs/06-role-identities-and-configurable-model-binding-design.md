@@ -330,3 +330,7 @@ operational（仍要求 dispatcher/route/continuity）
 - 每 Worker canary 默认 30 秒，可显式配置为 90 秒；授权短语与调用上限均为两个 Worker。
 - inherited `key_env` 未解析时返回 `credential-required`，除非目标 Profile 自有 `.env` 可解析。canonical `custom` 只映射封印的具体定义；exit-zero 且 usage `failed=true` 仍按封闭原因失败。
 - 失败原因保持封闭：`authentication-failed`、`model-unsupported`、`endpoint-unavailable`、`rate-limited`、`probe-timeout`、`response-contract-failed`、`usage-evidence-invalid`、`unexpected-runtime-route`。
+
+## v0.2.2 本地候选当前修正 ledger
+
+已集成的 activation 修复作为未打 tag、未 push、未发布的 v0.2.2 本地候选准备；v0.2.1 仍是不可变的正式发布版。当前产品恰好只有两个 Worker。安装对每个 Worker 的 model、provider、endpoint 各询问一次，并只在进程内把 sealed selection 传给 activation，不进入 argv、环境变量或输出。用户显式授权 source inheritance 后，activation 只把选定 `key_env` 的精确 assignment 复制到对应 Worker 的 0600 `.env`，并与 provider definition 处于同一事务和补偿边界。API key 不进入输出、日志、argv、环境、fingerprint 或 receipt。`failed`、`credential-required`、`canary-required` 均保持非零，bootstrap 不得为这些状态报告 completed。真实 canary 仍需独立明确确认，本候选未执行。

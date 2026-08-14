@@ -12,11 +12,11 @@ from agentporter.self_cleanup import (
     execute_cleanup_plan,
 )
 
-VERSION = "0.2.1"
+VERSION = "0.2.2"
 
 
-def test_v021_version_is_covered_by_complete_three_entry_cleanup_contract() -> None:
-    assert VERSION == "0.2.1"
+def test_v022_version_is_covered_by_complete_three_entry_cleanup_contract() -> None:
+    assert VERSION == "0.2.2"
 
 
 def _published_layout(tmp_path: Path, *, schema_version: int = 2) -> tuple[Path, Path, Path, Path]:

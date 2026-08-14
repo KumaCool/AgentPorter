@@ -46,7 +46,7 @@ def test_distribution_uses_only_phase_1_native_hermes_fields(tmp_path: Path) -> 
             "distribution_owned",
         )
         assert distribution["name"] == profile.profile_name
-        assert distribution["version"] == "0.2.1"
+        assert distribution["version"] == "0.2.2"
         assert "hermes_requires" not in distribution
         assert "minimum_hermes_version" not in distribution
     assert scan_staging(tmp_path) == ()

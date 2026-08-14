@@ -4,7 +4,7 @@
 
 AgentPorter 是一个开源的 [Hermes Agent](https://hermes-agent.nousresearch.com/) 多代理工作组部署方案：一次安装多个职责明确的 Worker Profile，并逐步接通 Hermes 原生 Kanban 的任务分解与合理路由。[职责型身份与自定义推理绑定设计](docs/06-role-identities-and-configurable-model-binding-design.md)已在 v0.2.0 正式发布。
 
-> **当前状态：** v0.2.1 是最新正式非预发布版。tag `v0.2.1` 精确指向 `d7078ef0351f92867a033aafd1fdfc6786d13e88`；GitHub Release 与 7 个托管 assets 已通过 checksum/verifier、fresh HTTPS clone、隔离 package import 和公开 `latest/download/install.sh` 字节回读。修正后的 fresh install 只创建 `bounded_worker` 与 `mechanical_worker` 两个 Worker Profile，并为两者显式封闭 model/provider/endpoint。主 Hermes agent 是 orchestrator；当前没有独立 orchestrator Profile。未执行部署、真实模型 canary、Gateway 变更、Kanban mutation 或 live routing，因此不能称为 `operational`。
+> **当前状态：** v0.2.1 仍是最新正式非预发布版；当前源码树是未打 tag、未 push 的 AgentPorter v0.2.2 本地候选。tag `v0.2.1` 精确指向 `d7078ef0351f92867a033aafd1fdfc6786d13e88`；GitHub Release 与 7 个托管 assets 已通过 checksum/verifier、fresh HTTPS clone、隔离 package import 和公开 `latest/download/install.sh` 字节回读。修正后的 fresh install 只创建 `bounded_worker` 与 `mechanical_worker` 两个 Worker Profile，并为两者显式封闭 model/provider/endpoint。主 Hermes agent 是 orchestrator；当前没有独立 orchestrator Profile。未执行部署、真实模型 canary、Gateway 变更、Kanban mutation 或 live routing，因此不能称为 `operational`。
 
 ## curl 一键安装（POSIX）
 
@@ -58,8 +58,8 @@ agentporter-uninstall
 |---|---|
 | installation | v0.2.1 已正式发布；tag、7 个托管 assets、verifier、fresh HTTPS clone、隔离 package import 与 `latest` bootstrap 字节回读均通过。 |
 | public entries | bootstrap 会发布 `agentporter`、`agentporter-activate` 和 `agentporter-uninstall`。 |
-| binding/credential | custom Provider binding 可将封印的定义写入两个执行 Worker；凭据可用性仍由 Profile/操作者持有，必须由真实调用证明。 |
-| canary/live call | v0.2.0 发布不声称已执行带凭据的真实 canary；`config check=0`仍只证明静态有效。 |
+| binding/credential | 安装前会对每个 Worker 的 model、provider、endpoint 各询问一次，并在进程内传给 activation，不进入 argv、环境变量或输出。用户显式授权 source inheritance 后，只把选定 `key_env` assignment 精确复制到该 Worker 的 0600 `.env`，并与 provider definition 同事务；API key 不进入输出、日志、argv、环境或 receipt。 |
+| canary/live call | `failed`、`credential-required`、`canary-required` 均保持非零，bootstrap 不得打印 completed；真实 canary 仍需独立确认。本文不声称已执行带凭据的真实 canary。 |
 | route proof | 激活路径使用 Hermes usage 报告验证 model/provider/api_calls；v0.20 缺 tool/fallback 遥测时只到 `route-proof-incomplete`。 |
 | dispatcher/route | 主 Hermes agent 是 orchestrator；当前无独立控制面 Profile。Gateway、Kanban mutation 和 live routing 未验收。 |
 | continuity | `DispatchReceipt`、任务订阅（`notify-list`）、运行观察与结构性恢复仍仅有离线合同；不声称真实通知或接续。 |
@@ -71,7 +71,7 @@ agentporter-uninstall
 安装前，AgentPorter 会对完整集合执行预检，展示一次精确计划并要求交互确认；随后通过 Hermes 原生命令安装、静态回读结果，并在失败时执行有界补偿。它不会：
 
 - 覆盖已有或 `default` Profile；
-- 复制凭据、令牌或供应商配置；
+- 未经明确 source-inheritance 授权复制凭据、令牌或供应商配置；获批边界仅是把选定 `key_env` assignment 精确写入 Worker 自有 0600 `.env`，并与 provider definition 同事务；
 - 调用模型；
 - 安装常驻服务；
 - 保存任务数据库。
@@ -159,7 +159,7 @@ AgentPorter 使用 [MIT License](LICENSE) 发布。
 
 ## 当前 custom Provider 安装到激活流程
 
-AgentPorter v0.2.0 会在 Profile 安装成功后直接串联激活，不再额外询问“是否进入激活”。针对 Hermes v0.20 的 custom Provider，激活器不再调用不受支持的裸 Provider `auth add/status`；它要求主/default Profile 中存在唯一且 endpoint 一致的完整定义，封印来源配置后，将所选 `custom_providers` 条目事务化复制到每个 Worker，再执行绑定和单独确认的真实 canary。复制范围包含用户已放入该定义的 `api_key` 或 `key_env`，但不会打印定义或写入 AgentPorter receipt。缺失、重复、endpoint 不匹配或并发变化均 fail closed。
+AgentPorter v0.2.2 会在 Profile 安装成功后在同一进程内直接串联激活，不再额外询问“是否进入激活”。针对 Hermes v0.20 的 custom Provider，激活器不再调用不受支持的裸 Provider `auth add/status`；它要求主/default Profile 中存在唯一且 endpoint 一致的完整定义，封印来源配置后，将所选 `custom_providers` 条目事务化复制到每个 Worker，再执行绑定和单独确认的真实 canary。source inheritance 经用户授权后，除 provider definition 外，只会把所选 `key_env` 的精确 assignment 写入对应 Worker 的 0600 `.env`，并纳入同一事务；不会复制无关 dotenv 项。API key 不进入输出、日志、argv、环境或 AgentPorter receipt。缺失、重复、endpoint 不匹配或并发变化均 fail closed。
 
 ### 真实 canary 合同（v0.2.1 修正）
 

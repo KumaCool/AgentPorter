@@ -4,6 +4,13 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+### Fixed
+
+- Prepared the integrated interactive-install and credential-activation fixes as the untagged, unpushed AgentPorter 0.2.2 local candidate; 0.2.1 remains the immutable published release and upgrade source.
+- Ask model/provider/endpoint exactly once per Worker before installation and pass the sealed selections to activation in process, without argv, environment-variable, or output transport.
+- After explicit source-inheritance authorization, copy only the selected `key_env` assignment into that Worker’s mode-0600 `.env` in the same transaction as its provider definition; keep API-key values out of output, logs, argv, environment, fingerprints, and receipts.
+- Keep `failed`, `credential-required`, and `canary-required` nonzero so bootstrap cannot report completed; real canary remains separately confirmed.
+
 ## [0.2.1] - 2026-08-14
 
 AgentPorter 0.2.1 is published as the corrective two-Worker release. Tag `v0.2.1`, its seven hosted assets, checksums, release verifier, fresh HTTPS clone, isolated package import, and public `latest` bootstrap byte readback passed. No deployment or post-deployment canary was performed.
@@ -122,7 +129,8 @@ AgentPorter 0.2.1 is published as the corrective two-Worker release. Tag `v0.2.1
 
 First supported public release.
 
-[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/KumaCool/AgentPorter/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/KumaCool/AgentPorter/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/KumaCool/AgentPorter/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/KumaCool/AgentPorter/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/KumaCool/AgentPorter/compare/v0.1.6...v0.1.7

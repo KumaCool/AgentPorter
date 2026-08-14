@@ -6,6 +6,7 @@ Security fixes are provided for the latest published release when reasonably pos
 
 | Version | Supported |
 | --- | --- |
+| 0.2.2 local candidate | No formal support |
 | 0.2.1 | Yes |
 | 0.2.0 | No |
 | 0.1.x | Yes |
@@ -24,7 +25,7 @@ AgentPorter:
 - completes preflight and presents one plan before writes;
 - refuses to overwrite existing/default Profiles;
 - compensates only Profiles proven to have been created by the current transaction;
-- never copies credentials and makes no model call during install, update, static readback, compensation, or uninstall;
+- makes no model call during install, update, static readback, compensation, or uninstall; source credential inheritance is limited to an explicitly authorized exact `key_env` assignment copied into the selected Worker’s mode-0600 `.env` in the same transaction as its provider definition;
 - keeps runtime binding, credential authorization, live-call evidence, route proof, dispatcher, route, and continuity as separate states; `config check` is static-only;
 - 0.1.4 fails closed as `probe-unsupported` / `mutation-unsupported`; the approved 0.1.5 work may use only public Hermes Profile auth/one-shot/usage interfaces and must report missing tool/fallback telemetry as `route-proof-incomplete`, never as strict runtime readiness;
 - discovers uninstall targets by fixed product/component identity and a random per-installation ID, never by editable names;
@@ -44,4 +45,4 @@ Maintainers will acknowledge valid private reports when possible, investigate, a
 
 ## Unreleased custom-provider inheritance boundary
 
-For Hermes v0.20 custom providers, AgentPorter does not invoke unsupported bare-provider auth commands. The operator-approved activation transaction copies one exact provider definition from the main/default Profile into each Worker. That definition may contain an API key and is therefore treated as secret configuration: it is never rendered, logged, passed in argv, fingerprinted, or persisted in AgentPorter receipts. Source/target identities and digests are revalidated and drift fails closed. This is a narrow exception to the older “never copies credentials” statement; AgentPorter still never reads or copies Hermes auth stores, `.env`, OAuth tokens, or unrelated provider definitions.
+For Hermes v0.20 custom providers, AgentPorter does not invoke unsupported bare-provider auth commands. The operator-approved activation transaction copies one exact provider definition from the main/default Profile into each Worker. That definition may contain an API key and is therefore treated as secret configuration: it is never rendered, logged, passed in argv, fingerprinted, or persisted in AgentPorter receipts. Source/target identities and digests are revalidated and drift fails closed. This is a narrow exception to the older “never copies credentials” statement. For a selected `key_env`, explicit source inheritance reads and copies only that exact assignment into the target Worker’s mode-0600 `.env`; it never copies unrelated dotenv entries, Hermes auth stores, or OAuth tokens. API-key values never enter output, logs, argv, environment, fingerprints, or receipts. Failure compensates provider definition and `.env` together.
